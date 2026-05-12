@@ -1,0 +1,60 @@
+# XcodeGen specification for Draconis
+# Run `xcodegen generate` (or `./bootstrap.sh`) to produce Draconis.xcodeproj
+#
+# Requires: macOS Tahoe (26+) and Xcode 26+ for Liquid Glass APIs.
+
+name: Draconis
+
+options:
+  bundleIdPrefix: org.draconis
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "26.0"
+  generateEmptyDirectories: true
+  groupSortPosition: top
+  defaultConfig: Release
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+    SWIFT_STRICT_CONCURRENCY: minimal
+    GENERATE_INFOPLIST_FILE: NO
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Draconis:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Draconis
+        excludes:
+          - "**/*.md"
+          - "Resources/Info.plist"
+          - "Resources/Draconis.entitlements"
+    resources:
+      - path: Draconis/Resources/Assets.xcassets
+    info:
+      path: Draconis/Resources/Info.plist
+    entitlements:
+      path: Draconis/Resources/Draconis.entitlements
+    settings:
+      base:
+        PRODUCT_NAME: Draconis
+        PRODUCT_BUNDLE_IDENTIFIER: org.draconis.launcher
+        INFOPLIST_FILE: Draconis/Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Draconis/Resources/Draconis.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_PREVIEWS: YES
+        COMBINE_HIDPI_IMAGES: YES

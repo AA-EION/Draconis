@@ -1,0 +1,24 @@
+{
+	"explanation": "This file is for storing contact information for the various maintainers of various languages/localizations",
+
+	"list": {
+		"es": [
+			"https://github.com/XNovaDelta",
+			"https://twitter.com/XNovaDelta",
+			"https://www.facebook.com/Juanesgtgt2/"
+		],
+
+		"fr": [
+			"https://github.com/Alystrasz"
+		],
+
+		"de": [
+			"https://github.com/DxsSucuk",
+			"https://twitter.com/memerinoto"
+		],
+
+		"zh": [
+			"https://github.com/KenMizz"
+		]
+	}
+}

@@ -1,0 +1,70 @@
+{
+	"name": "viper",
+	"productName": "Viper",
+	"version": "1.13.0",
+	"description": "Launcher+Updater for TF|2 Northstar",
+	"main": "src/index.js",
+	"build": {
+		"appId": "com.0negal.viper",
+		"directories": {
+			"buildResources": "src/assets/icons"
+		},
+		"nsis": {
+			"installerIcon": "icon.ico",
+			"uninstallerIcon": "icon.ico",
+			"installerHeaderIcon": "icon.ico"
+		},
+		"linux": {
+			"icon": "512x512.png",
+			"category": "Game",
+			"target": [
+				"AppImage",
+				"tar.gz",
+				"deb",
+				"rpm"
+			]
+		}
+	},
+	"scripts": {
+		"langs:check": "node scripts/langs.js --check",
+		"langs:format": "node scripts/langs.js --format",
+		"langs:localize": "node scripts/langs.js --localize",
+		"start": "npx electron src/index.js",
+		"debug": "npm run devtools",
+		"devtools": "npx electron src/index.js --devtools",
+		"build": "npx electron-builder --win nsis --win portable --linux --publish never",
+		"build:windows": "npx electron-builder --win nsis --win portable --publish never",
+		"build:linux": "npx electron-builder --linux --publish never",
+		"publish": "npx electron-builder --win nsis --win portable --linux --publish always",
+		"publish:windows": "npx electron-builder --win nsis --win portable --publish always",
+		"publish:linux": "npx electron-builder --linux --publish always"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/0neGal/viper"
+	},
+	"author": "0neGal <mail@0negal.com>",
+	"license": "GPL-3.0-or-later",
+	"bugs": {
+		"url": "https://github.com/0neGal/viper/issues"
+	},
+	"homepage": "https://github.com/0neGal/viper#readme",
+	"dependencies": {
+		"electron-updater": "^6.3.0",
+		"enquirer": "^2.4.1",
+		"flattenizer": "^1.1.3",
+		"follow-redirects": "^1.15.6",
+		"fs-extra": "^10.0.0",
+		"fuse.js": "^6.5.3",
+		"jsonrepair": "^2.2.1",
+		"marked": "^4.0.10",
+		"minimist": "^1.2.8",
+		"recursive-copy": "^2.0.13",
+		"simple-vdf": "^1.1.1",
+		"unzip-stream": "^0.3.2"
+	},
+	"devDependencies": {
+		"electron": "^33.2.1",
+		"electron-builder": "^24.13.3"
+	}
+}

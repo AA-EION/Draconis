@@ -1,0 +1,401 @@
+<html>
+	<head>
+		<meta name="viewport" content="width=device-width,initial-scale=1.0">
+		<link rel="stylesheet" href="fonts/import.css">
+		<link rel="stylesheet" href="main.css">
+		<meta charset="utf-8">
+	</head>
+	<body>
+		<div id="selection"></div>
+
+		<div id="tooltip">Test</div>
+
+		<div id="bgHolder"></div>
+		<div id="toasts"></div>
+
+		<div id="winbtns">
+			<div class="hidden" id="offline" tooltip="%%tooltip.offline%%" tooltip-position="horizontal">
+				<img src="icons/offline.png">
+			</div>
+			<div id="settings" tooltip="%%tooltip.settings%%" tooltip-position="horizontal" onclick="settings.popup.toggle()">
+				<img src="icons/settings.png">
+			</div>
+			<div id="minimize" tooltip="%%tooltip.minimize%%" tooltip-position="horizontal" onclick="ipcRenderer.send('minimize')">
+				<img src="icons/minimize.png">
+			</div>
+			<div id="close" tooltip="%%tooltip.close%%" tooltip-position="horizontal" onclick="ipcRenderer.send('exit')">
+				<img src="icons/close.png">
+			</div>
+		</div>
+
+		<div id="dragUI">
+			<div id="dragitems">
+				<div id="icon"></div>
+				<div id="text">%%gui.mods.drag_n_drop%%</div>
+			</div>
+		</div>
+
+		<div id="overlay" onclick="popups.set_all(false)"></div>
+		<div class="popup" id="options">
+			<div class="misc">
+				<input class="search default-selection requires-internet" placeholder="%%gui.search%%">
+				<button id="apply" onclick="settings.popup.apply();settings.popup.toggle(false)">
+					<img src="icons/apply.png">
+					%%gui.settings.save%%
+				</button>
+				<button id="close" onclick="settings.popup.toggle(false);settings.popup.load()">
+					<img src="icons/close.png">
+					%%gui.settings.discard%%
+				</button>
+			</div>
+			<div class="options">
+				<details open>
+					<summary>
+						<div class="title">
+							<img src="icons/game.png">
+							<h2>%%gui.settings.title.ns%%</h2>
+						</div>
+					</summary>
+					<div class="option" name="nsargs">
+						<div class="text">
+							%%gui.settings.nsargs.title%%
+							<div class="desc">
+								%%gui.settings.nsargs.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<input>
+						</div>
+					</div>
+				</details>
+				<details open platform="linux">
+					<summary>
+						<div class="title">
+							<img src="icons/linux.png">
+							<h2>%%gui.settings.title.linux%%</h2>
+						</div>
+					</summary>
+					<div class="option" name="linux_launch_method">
+						<div class="text">
+							%%gui.settings.linux_launch_method.title%%
+							<div class="desc">
+								%%gui.settings.linux_launch_method.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<select>
+								<option value="steam_auto">%%gui.settings.linux_launch_method.methods.steam_auto%%</option>
+								<option value="steam_executable">%%gui.settings.linux_launch_method.methods.steam_executable%%</option>
+								<option value="steam_flatpak">%%gui.settings.linux_launch_method.methods.steam_flatpak%%</option>
+								<option value="steam_protocol">%%gui.settings.linux_launch_method.methods.steam_protocol%%</option>
+								<option value="custom_command">%%gui.settings.linux_launch_method.methods.command%%</option>
+							</select>
+						</div>
+					</div>
+					<div class="option" name="linux_launch_cmd_ns">
+						<div class="text">
+							%%gui.settings.linux_launch_cmd_ns.title%%
+							<div class="desc">
+								%%gui.settings.linux_launch_cmd_ns.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<input>
+						</div>
+					</div>
+					<div class="option" name="linux_launch_cmd_vanilla">
+						<div class="text">
+							%%gui.settings.linux_launch_cmd_vanilla.title%%
+							<div class="desc">
+								%%gui.settings.linux_launch_cmd_vanilla.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<input>
+						</div>
+					</div>
+				</details>
+
+				<details open>
+					<summary>
+						<div class="title">
+							<img src="icons/language.png">
+							<h2>%%gui.settings.title.language%%</h2>
+						</div>
+					</summary>
+
+					<div class="option" name="autolang">
+						<div class="text">
+							%%gui.settings.autolang.title%%
+							<div class="desc">
+								%%gui.settings.autolang.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<button class="switch off"></button>
+						</div>
+					</div>
+					<div class="option" name="forcedlang">
+						<div class="text">
+							%%gui.settings.forcedlang.title%%
+							<div class="desc">
+								%%gui.settings.forcedlang.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<select onchange="settings.popup.switch(document.querySelector(`.option[name='autolang'] button`), false)">
+								<option></option>
+							</select>
+						</div>
+					</div>
+				</details>
+
+				<details open>
+					<summary>
+						<div class="title">
+							<img src="icons/updates.png">
+							<h2>%%gui.settings.title.updates%%</h2>
+						</div>
+					</summary>
+
+					<div class="option" name="autoupdate">
+						<div class="text">
+							%%gui.settings.autoupdate.title%%
+							<div class="desc">
+								%%gui.settings.autoupdate.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<button class="switch on"></button>
+						</div>
+					</div>
+					<div class="option" name="nsupdate">
+						<div class="text">
+							%%gui.settings.nsupdate.title%%
+							<div class="desc">
+								%%gui.settings.nsupdate.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<button class="switch on"></button>
+						</div>
+					</div>
+					<div class="option" name="excludes" type="array">
+						<div class="text">
+							%%gui.settings.excludes.title%%
+							<div class="desc">
+								%%gui.settings.excludes.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<input type="text" class="disable-when-installing">
+						</div>
+					</div>
+					<div class="buttons">
+						<div class="text">
+							%%gui.settings.updatebuttons.title%%
+							<div class="desc">
+								%%gui.settings.updatebuttons.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<button onclick="request.delete_cache()">%%gui.settings.updatebuttons.buttons.reset_cached_api_requests%%</button>
+							<button onclick="update.ns(true)" class="disable-when-installing">%%gui.settings.updatebuttons.buttons.force_northstar_reinstall%%</button>
+							<button onclick="update.delete_cache()" class="disable-when-installing">%%gui.settings.updatebuttons.buttons.force_delete_install_cache%%</button>
+						</div>
+					</div>
+				</details>
+
+				<details open>
+					<summary>
+						<div class="title">
+							<img src="icons/settings.png">
+							<h2>%%gui.settings.title.misc%%</h2>
+						</div>
+					</summary>
+
+					<div class="option" name="originkill">
+						<div class="text">
+							%%gui.settings.originkill.title%%
+							<div class="desc">
+								%%gui.settings.originkill.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<button class="switch off"></button>
+						</div>
+					</div>
+					<div class="buttons">
+						<div class="text">
+							%%gui.settings.miscbuttons.title%%
+							<div class="desc">
+								%%gui.settings.miscbuttons.desc%%
+							</div>
+						</div>
+						<div class="actions">
+							<button onclick="process.relaunch()">%%gui.settings.miscbuttons.buttons.restart_viper%%</button>
+							<button onclick="settings.reset()">%%gui.settings.miscbuttons.buttons.reset_config%%</button>
+							<button onclick="gamepath.open()">%%gui.settings.miscbuttons.buttons.open_gamepath%%</button>
+							<button onclick="kill('game')">%%gui.settings.miscbuttons.buttons.force_quit_game%%</button>
+							<button onclick="kill('origin')">%%gui.settings.miscbuttons.buttons.force_quit_origin%%</button>
+							<button onclick="gamepath.set()" class="disable-when-installing">%%gui.settings.miscbuttons.buttons.change_gamepath%%</button>
+						</div>
+					</div>
+				</details>
+			</div>
+		</div>
+
+		<div class="popup" id="browser">
+			<div class="overlay" id="filters">
+				<div class="checks">
+					<div class="check checked" value="Mods">%%gui.browser.filter.mods%%</div>
+					<div class="check checked" value="Skins">%%gui.browser.filter.skins%%</div>
+					<div class="check checked" value="Client-side">%%gui.browser.filter.client%%</div>
+					<div class="check" value="Server-side">%%gui.browser.filter.server%%</div>
+				</div>
+			</div>
+
+			<div class="misc">
+				<input class="search default-selection" placeholder="%%gui.search%%">
+				<button class="long" id="sort">
+					<img src="icons/sort.png" value="unix_created">
+					<select class="no-navigate">
+						<option value="unix_created">%%gui.browser.sort.newest%%</option>
+						<option value="unix_updated">%%gui.browser.sort.last_updated%%</option>
+						<option value="rating_score">%%gui.browser.sort.highest_rating%%</option>
+						<option value="downloads">%%gui.browser.sort.most_downloads%%</option>
+					</select>
+				</button>
+				<button id="filter" onclick="browser.filters.toggle()">
+					<img src="icons/filter.png">
+				</button>
+				<button id="close" onclick="browser.toggle(false)">
+					<img src="icons/close.png">
+				</button>
+			</div>
+			<div id="browserEntries" class="grid">
+				<div class="loading">%%gui.browser.loading%%</div>
+			</div>
+		</div>
+		<div class="popup small blur" id="preview">
+			<div class="misc fixed vertical default-selection">
+				<button id="close" onclick="browser.preview.hide()">
+					<img src="icons/close.png">
+				</button>
+				<button id="external" onclick="">
+					<img src="icons/external.png">
+				</button>
+			</div>
+
+			<webview class="scroll-selection"></webview>
+		</div>
+		
+		<nav class="gamesContainer">
+			<button id="vpBtn" tooltip="%%tooltip.pages.viper%%" tooltip-position="horizontal" onclick="launcher.change_page(0)"></button>
+			<button id="nsBtn" tooltip="%%tooltip.pages.northstar%%" tooltip-position="horizontal" onclick="launcher.change_page(1)"></button>
+			<button id="tfBtn" tooltip="%%tooltip.pages.titanfall%%" tooltip-position="horizontal" onclick="launcher.change_page(2)"></button>
+		</nav>
+
+		<div class="mainContainer">
+			<div id="vpContent" class="contentContainer">
+				<ul class="contentMenu">
+					<li id="vpMainBtn" active onclick="launcher.show_vp('main')">%%viper.menu.main%%</li>
+					<li id="vpReleaseBtn" onclick="launcher.show_vp('release')">%%viper.menu.release%%</li>
+					<li id="vpInfoBtn" onclick="launcher.show_vp('info')">%%viper.menu.info%%</li>
+				</ul>
+				<div class="contentBody">
+					<div id="vpMain" class="section">
+						<img src="icons/viper.png"/>
+						<div class="inline" style="margin-top: 20px;">
+							<div id="vpversion"></div> |
+							<a id="setpath" href="#" onclick="gamepath.set()" class="disable-when-installing">%%gui.setpath%%</a>
+						</div>
+					</div>
+					<div id="vpReleaseNotes" class="scroll-selection hidden section"></div>
+					<div id="vpInfo" class="hidden section">
+						<h2>%%viper.info.links%%</h2>
+						<ul>
+							<li>%%viper.info.discord%% <a href="https://northstar.tf/discord">northstar.tf/discord</a></li>
+							<li>%%viper.info.issues%% <a href="https://github.com/0neGal/viper/issues">github.com/0neGal/viper/issues</a></li>
+						</ul>
+						<h2>%%viper.info.credits%%</h2>
+						<ul>
+							<li>Viper Logo: Imply#9781</li>
+							<li>Viper Background: <a href="https://www.reddit.com/r/titanfall/comments/fwuh2x/take_to_the_skies">Uber Panzerhund</a></li>
+							<li>Titanfall+Northstar Logo: <a href="https://www.steamgriddb.com/logo/47851">Aftonstjarma</a></li>
+						</ul>
+					</div>
+				</div>
+			</div>
+
+			<div id="nsContent" class="contentContainer">
+				<ul class="contentMenu">
+					<li id="nsMainBtn" active onclick="launcher.show_ns('main')">%%ns.menu.main%%</li>
+					<li id="nsModsBtn" onclick="launcher.show_ns('mods')">%%ns.menu.mods%%</li>
+					<li id="nsReleaseBtn" onclick="launcher.show_ns('release')">%%ns.menu.release%%</li>
+				</ul>
+				<div class="contentBody">
+					<div id="nsMain" class="section">
+						<div class="img"><img src="../assets/ns.png"></div>
+						<div class="playBtnContainer">
+							<button id="playNsBtn" class="playBtn" onclick="launch('northstar')">%%gui.launch%%</button>
+							<div class="inline">
+								<div id="nsversion"></div>
+								<a id="update" href="#" onclick="update.ns()" class="disable-when-installing requires-internet">(%%gui.update.check%%)</a>
+								<div id="serverstatus" class="checking"></div>
+							</div>
+						</div>
+					</div>
+					<div id="nsMods" class="hidden section">
+						<div id="modsdiv" class="grid">
+							<div class="line">
+								<div class="text" id="modcount">%%gui.mods.title%%</div>
+								<div class="buttons modbtns">
+									<button id="removeall" class="bg-red2" onclick="mods.remove('allmods')">
+										<img src="icons/trash.png">
+										%%gui.mods.remove_all%%
+									</button>
+									<button id="toggleall" class="bg-orange2" onclick="mods.toggle('allmods')">
+										<img src="icons/toggles.png">
+										%%gui.mods.toggle_all%%
+									</button>
+									<button id="installmod" class="bg-blue" onclick="mods.install_prompt()">
+										<img src="icons/downloads.png">
+										%%gui.mods.install%%
+									</button>
+									<button id="findmod" class="requires-internet bg-blue2" onclick="browser.toggle(true)">
+										<img src="icons/search.png">
+										%%gui.mods.find%%
+									</button>
+								</div>
+							</div>
+							<div class="line">
+								<input id="mods-search" class="search default-selection" placeholder="%%gui.search%%">
+							</div>
+						</div>
+					</div>
+					<div id="nsRelease" class="scroll-selection hidden section"></div>
+				</div>
+			</div>
+
+			<div id="tfContent" class="contentContainer">
+				<ul class="contentMenu"><li style="opacity:0.0">filler</li></ul>
+				<div class="contentBody">
+					<div class="section">
+						<div class="img"><img src="../assets/vanilla.png"></div>
+						<div class="playBtnContainer">
+							<button class="playBtn" onclick="launch('vanilla')">%%gui.launch%%</button>
+							<div class="inline">
+								<div id="tf2Version"></div>
+								<a id="tfquit" style="display: none"
+									href="#" onclick="kill('game')">(%%ns.menu.force_quit%%)</a>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<script src="main.js"></script>
+	</body>
+</html>

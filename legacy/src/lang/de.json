@@ -1,0 +1,311 @@
+{
+	"cli": {
+		"auto_updates": {
+			"available": "Ein Update für Northstar wurde gefunden!",
+			"checking": "Überprüfe Northstar auf Updates...",
+			"no_update": "Kein Update für Northstar vorhanden.",
+			"updating_ns": "Updateprozess wird gestartet..."
+		},
+		"gamepath": {
+			"lost": "Installationspfad wurde nicht gefunden, bitte stelle sicher das er gemountet ist!"
+		},
+		"help": {
+			"cli": "Zwingt die CLI Einstellung auf \"an\".",
+			"devtools": "Öffnet Entwickler/Debug Werkzeuge.",
+			"help": "Zeigt die Hilfe Nachricht an.",
+			"install_mod": "Installiert einen Mod, eine ZIP-Datei oder einen Ordner.",
+			"no_vp_updates": "Überschreibt viper.json und deaktiviert das Aktualisieren von Viper.",
+			"remove_mod": "Entfernt einen Mod.",
+			"setpath": "Setzt den Installationspfad von Titanfall 2.",
+			"toggle_mod": "Aktiviert/Deaktiviert einen Mod.",
+			"update": "Aktualisiert den Installationspfad von Northstar, durch den gegeben Installationspfad von Titanfall 2.",
+			"update_vp": "Aktualisiert Viper, falls dies unterstützt wird.",
+			"version": "Gibt die Versions Informationen aus."
+		},
+		"launch": {
+			"linux_error": "Das Spiel starten ist derzeit nicht auf Linux unterstützt"
+		},
+		"mods": {
+			"cant_find": "Ein Mod mit diesem Namen konnte nicht gefunden werden!",
+			"failed": "Mod konnte nicht installiert werden!",
+			"improper_json": "Die mod.json vom Mod %s ist fehlerhaft!",
+			"installed": "Mod wurde erfolgreich installiert!",
+			"not_a_mod": "Die angegebene Datei/der angegebene Ordner ist kein Mod!",
+			"removed": "Mod wurde erfolgreich entfernt!",
+			"toggled": "Mod wurde erfolgreich aktiviert/deaktiviert!",
+			"toggled_all": "Alle Mods wurde erfolgreich aktiviert/deaktiviert!"
+		},
+		"setpath": {
+			"no_arg": "Keine Argument für --setpath wurden angegeben!"
+		},
+		"update": {
+			"checking": "Überprüfe auf Updates...",
+			"current": "Jetzige Version:",
+			"download_done": "Herunterladen abgeschlossen! Extrahiere...",
+			"downloading": "Wird heruntergeladen...",
+			"failed": "Installation/Aktualisierung fehlgeschlagen!",
+			"finished": "Installation/Aktualisierung abgeschlossen!",
+			"no_internet": "Keine Internetverbindung",
+			"uptodate": "Installation ist bereits auf dem neusten Stand (%s), aktualisieren wird übersprungen.",
+			"uptodate_short": "Auf dem neusten stand"
+		}
+	},
+	"general": {
+		"auto_updates": {
+			"game_running": "Spiel wird ausgeführt, Northstar wird nicht aktualisiert."
+		},
+		"launching": "Starte!",
+		"missing_path": "Installationspfad konnte nicht automatisch gefunden werden, bitte setze diesen manuell!",
+		"mods": {
+			"disabled": "Deaktivierte Mods:",
+			"enabled": "Aktivierte Mods:",
+			"installed": "Installierte Mods:"
+		},
+		"not_installed": "Northstar ist nicht installiert!",
+		"running": "Läuft bereits."
+	},
+	"gui": {
+		"browser": {
+			"end_of_list": "Alle Packete wurden geladen.",
+			"filter": {
+				"client": "Client-seitig",
+				"mods": "Mods",
+				"server": "Server-seitig",
+				"skins": "Skins"
+			},
+			"guide": "Anleitung",
+			"info": "Info",
+			"install": "Installieren",
+			"load_more": "Lade mehr...",
+			"loading": "Lade Mods...",
+			"made_by": "von",
+			"no_results": "Keine Ergebnisse...",
+			"reinstall": "Neuinstallieren",
+			"sort": {
+				"highest_rating": "Meist Bewertet",
+				"last_updated": "Zuletzt Aktualisiert",
+				"most_downloads": "Meist Heruntergeladen",
+				"newest": "Neuste"
+			},
+			"update": "Aktualisieren",
+			"view": "Anschauen"
+		},
+		"exit": "Schließen",
+		"gamepath": {
+			"found_missing_perms": "Es wurde ein Spielepfad automatisch gefunden, jedoch fehlen dir die Rechte Datein zulesen oder zuschreiben in diesem Pfad. Bitte wähle einen anderen Pfad aus oder erhalte die benötigten Berechtigungen für den gewählten Pfad:\n\n",
+			"lost": "Der angegeben Installationspfad ist nicht mehr gültig!\n\nBitte stelle sicher das die Festplatte mounted ist, oder falls sich der Installationspfad geändert hat, das du diesen auch in Viper aktualisierst!\n\nViper wird möglicherweiße bis zum nächsten Neustart nicht funktionieren!",
+			"lost_perms": "Wie es aussieht hat der jetzige Nutzer die Rechte Datein zulesen oder zuschreiben im Spielepfad verloren, bitte wähle einen richtigen Pfad aus oder erhalte die benötigten Berechtigungen für den jetzigen:\n\n",
+			"missing_perms": "Wie es aussieht hat der jetzige Nutzer die Rechte Datein zulesen oder zuschreiben im Spielepfad nicht, bitte wähle einen richtigen Pfad aus oder erhalte die benötigten Berechtigungen für den gewählten Pfad:\n\n",
+			"must": "Der Installationspfad muss gesetzt worden sein um Viper zu nutzen.",
+			"wrong": "Der angegebene Installationspfad ist nicht gültig!"
+		},
+		"install": "Installieren",
+		"launch": "Starten",
+		"mods": {
+			"cant_find_specific": "Mod %s-%s kann nicht gefunden werden!",
+			"cant_find_version": "Version %s von Mod %s-%s kann nicht gefunden werden!",
+			"confirm_dependencies": "Dieser Mod benötigt weitere Mods, diese werden unter dieser Nachricht angezeigt. Beim drücken auf \"Ok\" stimmst du zu da diese Installiert werden.\n\n",
+			"confirm_plugins": {
+				"description": "Native plugins haben sehr viel mehr Rechte als reguläre Mods, da durch ist das nutzen dieser um einiges unsicherer denn es ist einfacher ihnen zuschaden! Bitte installieren sie nur native plugins von vertrauten Entwicklern oder ähnliches, falls dir bewusst ist was du machst kannst du diese Nachricht ignorieren.",
+				"title": "Das folgende Packet hat native plugins::"
+			},
+			"count": "Installierte Mods:",
+			"disabled_tag": "Deaktiviert",
+			"drag_n_drop": "Drag and drop den Mod um ihn zu installieren!",
+			"extracting": "Extrahiere den Mod...",
+			"find": "Suche nach Mods",
+			"install": "Installiere den Mod",
+			"installed_mod": "Mod installiert!",
+			"installing": "Installiere den Mod...",
+			"not_a_mod": "Kein Mod!",
+			"nothing_selected": "Es wurde kein Mod ausgewählt.",
+			"remove": "Entfernen",
+			"remove_all": "Entferne alle Mods",
+			"remove_all_confirm": "Das Entfernen aller Mods führt meist dazu das eine Neuinstallation von Northstar nötig ist. Bist du dir sicher das du diese Aktion durchführen willst?",
+			"required_confirm": "Du hast einen von Northstar benötigten Mod ausgewählt, bist du dir sicher das du diese Aktion durchführen willst",
+			"title": "Mods",
+			"toggle_all": "Aktiviere/Deaktiviere alle Mods",
+			"toggle_all_confirm": "Das Deaktivieren aller Mods kann zum Deaktiveren von Mods führen die von Northstar benötigt werden. Bist du dir sicher das du diese Aktion durchführen willst?",
+			"unknown_author": "Unbekannt"
+		},
+		"nsupdate": {
+			"gaming": {
+				"body": "Ein Update für Northstar ist verfügbar! Du kannst die Aktualisierung nach dem schließen erzwingen!",
+				"title": "Northstar Update verfübar!"
+			}
+		},
+		"search": "Suchen...",
+		"server": {
+			"offline": "Masterserver ist offline",
+			"player": "Spieler",
+			"players": "Spieler",
+			"servers": "Server"
+		},
+		"setpath": "Installationspfad aktualisieren.",
+		"settings": {
+			"autolang": {
+				"desc": "Beim Aktiveren versucht Viper die richtige Sprache durch deine Systemsprache zu erkennen, durch das deaktivieren ist die manuelle Auswahl aktiviert.",
+				"title": "Automatische Spracherkennung"
+			},
+			"autoupdate": {
+				"desc": "Viper wird sich automatisch selbst aktualisieren!",
+				"title": "Viper Auto-Updates"
+			},
+			"discard": "Verwerfen",
+			"excludes": {
+				"desc": "Beim Aktualisieren von Northstar werden diese Datein nicht überschrieben. Solang du nicht weißt was du verändert solltest du diese Datein auch nicht berabeiten. Dateinamen sollte durch eine Lücke getrennt werden.",
+				"title": "Behalte Datein beim aktualisieren."
+			},
+			"forcedlang": {
+				"desc": "Wenn \"Automatische Spracherkennung\" deaktiviert ist, wird diese Option genutzt um die Sprachen zu ändern. Oft ist ein Neustart nötig!",
+				"title": "Sprache"
+			},
+			"linux_launch_cmd_ns": {
+				"desc": "Dieser Befehl wird zum starten von Northstar ausgeführt wenn die Startmethode \"Eigener Befehl\" ausgewählt ist. Startvariabeln werden am ende des Befehl angehangen und als Environmentvariable $TF_ARGS mitgegeben.",
+				"title": "Northstar Startbefehl"
+			},
+			"linux_launch_cmd_vanilla": {
+				"desc": "Dieser Befehl wird zum starten von Vanilla ausgeführt wenn die Startmethode \"Eigener Befehl\" ausgewählt ist. Startvariabeln werden am ende des Befehls angehangen und als Environmentvariable $TF_ARGS mitgegeben.",
+				"title": "Vanilla Startbefehl"
+			},
+			"linux_launch_method": {
+				"desc": "Die Methode welche zum start des Spieles auf Linux genutzt wird.",
+				"methods": {
+					"command": "Eigener Befehl",
+					"steam_auto": "Steam (Automatisch)",
+					"steam_executable": "Steam (Ausführungsdatei)",
+					"steam_flatpak": "Steam (Flatpak)",
+					"steam_protocol": "Steam (Protokoll)"
+				},
+				"title": "Linux Startmethode"
+			},
+			"miscbuttons": {
+				"buttons": {
+					"change_gamepath": "Spielepfad ändern",
+					"force_quit_game": "Titanfall/Northstar schließung erzwingen",
+					"force_quit_origin": "Origin/EA Desktop schließung erzwingen",
+					"open_gamepath": "Spielepfad öffnen",
+					"reset_config": "Konfiguration zurücksetzung erzwingen",
+					"restart_viper": "Viper neustarten"
+				},
+				"desc": "Beim weiteren Problemen könnten diesen Aktion helfen.",
+				"open_gamepath_alert": "Fehlerhafter Spielepfad, dadurch kann keiner geöffnet werden. Bitte wähle den richtigen Pfad zuerst!",
+				"reset_config_alert": "Bestätige die Zurücksetzung der Konfiguration, Viper wird nach dem bestätigen die Konfiguration Datein löschen und neustarten.",
+				"title": "Zusatz Aktionen"
+			},
+			"nsargs": {
+				"desc": "Hier kannst du Startoptionen für Northstar/Titanfall setzen.",
+				"title": "Startoptionen"
+			},
+			"nsupdate": {
+				"desc": "Viper wird Northstar automatisch aktualisieren, eine manuelle Aktualisierung ist trotzdem möglich.",
+				"title": "Northstar Auto-Updates"
+			},
+			"originkill": {
+				"desc": "Wenn Viper sich schließt soll Origin und oder EA Desktop sich auch schließen.",
+				"title": "Automatisch Origin und oder EA Desktop schließen"
+			},
+			"save": "Speichern",
+			"title": {
+				"language": "Sprache",
+				"linux": "Linux",
+				"misc": "Sonstiges",
+				"ns": "Northstar",
+				"updates": "Updates"
+			},
+			"updatebuttons": {
+				"buttons": {
+					"force_delete_install_cache": "Zwischengespeicherte Installationsdateien löschung erzwingen",
+					"force_northstar_reinstall": "Northstar neuinstallation erzwingen",
+					"reset_cached_api_requests": "API zwischenspeicher leerung erzwingen"
+				},
+				"desc": "Bei Problemen mit updates könnte diese Aktionen helfen.",
+				"title": "Reparations Aktionen"
+			}
+		},
+		"toast": {
+			"desc": {
+				"duped": "hat mehrere Ordner in sich mit dem selben Namen, wodurch ein duplizierter Ordner ensteht! Falls du der Entwickler bist solltest du dies beheben!",
+				"failed": "Ein unbekannter Fehler ist aufgetaucht beim Installieren, die Schuld kann beim Autor liegen oder bei Viper selbst!",
+				"failed_launch_command": "Es gab einen Fehler beim ausführen vom Startbefehl.",
+				"failed_to_connect": "Eine Verbindung mit %s konnte nicht hergestellt werden, überprüfe deine Internetverbindung, Firewall oder ob %s nicht erreichbar ist.",
+				"installed": "wurde installiert!",
+				"malformed": "hat eine fehlerhafte Ordnerstruktur, falls du der Entwickler bist, solltest du dies beheben.",
+				"missing_flatpak": "Konnte nicht mit Flatpak starten, da keine Instanz gefunden wurde.",
+				"missing_flatpak_steam": "Konnte nicht mit der Flatpak version von Steam starten, da keine Instanz gefunden wurde.",
+				"missing_launch_command": "Es wurde kein Startbefehl angegeben, bitte setze einen fest.",
+				"missing_steam": "Kann nicht direkt über Steam starten, da keine Instanz gefunden wurde.",
+				"no_internet": "Viper funktioniert möglicherweise nicht korrekt",
+				"unknown_error": "Ein unbekannter Fehler ist aufgetreten für mehr details drücken! Es wird empfohlen einen Screenshot von der detalierten Fehlernachricht zu machen wenn ein Bug-Report erstellt wird!"
+			},
+			"title": {
+				"duped": "Duplizierter Ordner name!",
+				"failed": "Fehler beim Installieren des Mods!",
+				"failed_launch_command": "Ausführungsfehler vom Startbefehl!",
+				"failed_to_connect": "Verbindung fehlgeschlagen",
+				"installed": "Mod installiert!",
+				"malformed": "Fehlerhafte Ordnerstruktur!",
+				"missing_flatpak": "Flatpak fehlt!",
+				"missing_flatpak_steam": "Flatpak Steam fehlt!",
+				"missing_launch_command": "Fehlender Startbefehl!",
+				"missing_steam": "Steam fehlt!",
+				"no_internet": "Kein Internet",
+				"unknown_error": "Unbekannter Fehler!"
+			}
+		},
+		"update": {
+			"available": "Ein neues update für Viper ist verfügbar willst du Viper neustarten und diese installieren?",
+			"button": "Aktualisieren",
+			"check": "Auf Update überprüfen",
+			"downloading": "Herunterladen...",
+			"extracting": "Extrahiere update...",
+			"finished": "Fertig! Spielbereit!",
+			"uptodate": "Bereits auf dem neusten Stand!"
+		},
+		"versions": {
+			"northstar": "Northstar Version",
+			"viper": "Viper Version"
+		},
+		"welcome": "Willkommen zu Viper!"
+	},
+	"lang": {
+		"title": "German - Deutsch"
+	},
+	"ns": {
+		"menu": {
+			"force_quit": "Schließen erzwingen",
+			"main": "Northstar Launcher",
+			"mods": "Mods",
+			"release": "Release Notes"
+		}
+	},
+	"request": {
+		"no_ns_release_notes": "<h3>Northstar Release Notes konnten nicht geladen werden.</h3>Versuche es erneut später!",
+		"no_vp_release_notes": "<h3>Viper Release Notes konnten nicht geladen werden.</h3>Versuche es erneut später!"
+	},
+	"tooltip": {
+		"close": "Schließen",
+		"minimize": "Minimieren",
+		"offline": "Internetverbindung nicht Verfügbar",
+		"pages": {
+			"northstar": "Northstar",
+			"titanfall": "Titanfall 2",
+			"viper": "Viper"
+		},
+		"settings": "Einstellungen"
+	},
+	"viper": {
+		"already_running": "Viper läuft bereits",
+		"info": {
+			"credits": "Credits",
+			"discord": "Tritt dem Discord bei:",
+			"issues": "Report ein Problem mit Viper:",
+			"links": "Links"
+		},
+		"menu": {
+			"info": "Extras",
+			"main": "Viper",
+			"release": "Release Notes"
+		}
+	}
+}

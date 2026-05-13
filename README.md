@@ -84,7 +84,8 @@ Draconis/
 │                   SteamInstaller, ProcessRunner, PathResolver
 ├── Views/          ContentView, PlayView, ModsView, ServersView,
 │                   SettingsView, OnboardingView, Components/
-└── Resources/      Info.plist, Draconis.entitlements, Assets.xcassets
+└── Resources/      Info.plist, Draconis.entitlements, Assets.xcassets,
+                    Draconis.icon
 ```
 
 ## Contributors

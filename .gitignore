@@ -30,11 +30,6 @@ Package.resolved
 *.pkg
 *.ipa
 
-# --- Legacy Viper artefacts (kept for reference under /legacy) ---
-legacy/node_modules/
-legacy/dist/
-legacy/out/
-
 # --- Editor noise ---
 .vscode/
 .idea/

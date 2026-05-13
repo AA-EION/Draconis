@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Each backend has its **own runtime** — Draconis never tries to be a "wine
 /// front-end" of its own. We always hand off to the backend's own launcher
-/// (CrossOver's `cxbottle`/`wine --cx-app`, Whisky's bundled wine64,
+/// (CrossOver's `cxbottle`/`cxstart`, Whisky's bundled wine64,
 /// Sikarugir wrapper apps, etc.) so the user gets exactly the same
 /// behaviour as if they had double-clicked from inside that backend.
 public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, Sendable {

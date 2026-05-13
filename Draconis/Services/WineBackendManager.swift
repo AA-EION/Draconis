@@ -116,23 +116,28 @@ struct CrossOverDriver: WineBackendDriver {
         )
     }
 
-    /// CrossOver-native launch: its bundled wine binary with `--bottle` and
-    /// `--cx-app` flags. This goes through CrossOver's bottle config and DXVK
-    /// settings exactly like double-clicking from the CrossOver UI.
+    /// CrossOver-native launch via `cxstart --bottle <name> --wait`. This is
+    /// CrossOver's supported CLI entry point and the same code path the
+    /// CrossOver UI uses to start an app. `--wait` keeps the returned Process
+    /// alive until the wine app exits so callers (e.g. the Maxima installer)
+    /// can read a meaningful `terminationStatus`.
+    ///
+    /// We avoid `wine --cx-app <path>`: that flag treats its argument as a
+    /// registered CXMenu app id, not a file path — passing an exe path makes
+    /// the wrapper exit 2 ("app not found").
     func launch(
         executable: String, arguments: [String],
         in bottle: WineBottle, workingDirectory: String?
     ) async throws -> Process {
-        guard let wine = await CrossOverDetector.shared.wineBinary() else {
-            throw WineBackendError.runtimeMissing(.crossover, "wine binary")
+        guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+            throw WineBackendError.runtimeMissing(.crossover, "cxstart binary")
         }
-        // CrossOver's wine wrapper accepts POSIX paths via --cx-app.
-        var args: [String] = ["--bottle", bottle.name, "--cx-app", executable]
+        var args: [String] = ["--bottle", bottle.name, "--wait", executable]
         args.append(contentsOf: arguments)
 
-        Log.run("crossover.launch", "\(wine.path) \(args.joined(separator: " "))")
+        Log.run("crossover.launch", "\(cxstart.path) \(args.joined(separator: " "))")
         return try ProcessRunner.shared.detached(
-            wine,
+            cxstart,
             arguments: args,
             environment: nil,                       // CrossOver injects its own
             currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) }

@@ -42,9 +42,17 @@ targets:
           - "**/*.md"
           - "Resources/Info.plist"
           - "Resources/Draconis.entitlements"
+    preBuildScripts:
+      - name: Fetch MaximaHelper
+        script: |
+          bash "${SRCROOT}/Scripts/fetch-maxima-helper.sh"
+        outputFiles:
+          - $(SRCROOT)/Draconis/Resources/MaximaHelper.app/Contents/MacOS/MaximaHelper
     resources:
       - path: Draconis/Resources/Assets.xcassets
       - path: Draconis/Resources/Draconis.icon
+      - path: Draconis/Resources/MaximaHelper.app
+        optional: true
     info:
       path: Draconis/Resources/Info.plist
     entitlements:

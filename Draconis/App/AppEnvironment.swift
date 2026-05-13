@@ -53,6 +53,14 @@ public final class AppEnvironment: ObservableObject {
     // Steam
     @Published public var steamInstalling: Bool = false
 
+    // Maxima
+    @Published public var maximaInstalled: Bool = false
+    @Published public var maximaHelperRegistered: Bool = false
+    @Published public var maximaInFlight: Bool = false
+    @Published public var maximaSettingUp: Bool = false
+    @Published public var maximaProgress: MaximaService.Progress?
+    @Published public var maximaError: String?
+
     public var selectedBottle: WineBottle? {
         bottles.first { $0.id == selectedBottleID }
     }
@@ -72,6 +80,7 @@ public final class AppEnvironment: ObservableObject {
             selectedBottleID = bottles.first(where: \.hasNorthstar)?.id ?? bottles.first?.id
         }
         try? await refreshNorthstarReleases()
+        await refreshMaximaState()
     }
 
     public func refreshBottles() async {
@@ -81,6 +90,7 @@ public final class AppEnvironment: ObservableObject {
             selectedBottleID = bottles.first?.id
         }
         DebugLog.shared.ok("app", "Found \(bottles.count) bottle(s) across all backends.")
+        await refreshMaximaState()
     }
 
     public func refreshBackends() async {
@@ -123,6 +133,48 @@ public final class AppEnvironment: ObservableObject {
         } catch {
             bottleCreationError = error.localizedDescription
             DebugLog.shared.error("app", error.localizedDescription)
+        }
+    }
+
+    // MARK: - Maxima
+
+    public func refreshMaximaState() async {
+        guard let bottle = selectedBottle else {
+            maximaInstalled = false
+            maximaHelperRegistered = false
+            return
+        }
+        maximaInstalled = await MaximaService.shared.isInstalled(in: bottle)
+        maximaHelperRegistered = await MaximaService.shared.isHelperRegistered()
+    }
+
+    public func setupMaxima() async {
+        guard let bottle = selectedBottle else { return }
+        maximaSettingUp = true
+        maximaError = nil
+        maximaProgress = nil
+        defer { maximaSettingUp = false; maximaProgress = nil }
+        do {
+            try await MaximaService.shared.downloadAndInstall(into: bottle) { @Sendable p in
+                Task { @MainActor in self.maximaProgress = p }
+            }
+            await refreshMaximaState()
+        } catch {
+            maximaError = error.localizedDescription
+            DebugLog.shared.error("maxima", error.localizedDescription)
+        }
+    }
+
+    public func launchMaxima() async {
+        guard let bottle = selectedBottle else { return }
+        maximaInFlight = true
+        maximaError = nil
+        defer { maximaInFlight = false }
+        do {
+            try await MaximaService.shared.launch(bottle: bottle)
+        } catch {
+            maximaError = error.localizedDescription
+            DebugLog.shared.error("maxima", error.localizedDescription)
         }
     }
 

@@ -22,7 +22,7 @@ jobs:
           xcode-version: '26'
 
       - name: Install dependencies
-        run: brew install xcodegen create-dmg
+        run: brew install xcodegen create-dmg librsvg
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -41,6 +41,8 @@ jobs:
 
       - name: Create DMG
         run: |
+          mkdir -p dmg-staging
+          cp -r "build/Build/Products/Release/Draconis.app" dmg-staging/
           create-dmg \
             --volname "Draconis" \
             --window-size 660 400 \
@@ -49,7 +51,7 @@ jobs:
             --app-drop-link 480 170 \
             --hide-extension "Draconis.app" \
             "Draconis-${GITHUB_REF_NAME}.dmg" \
-            "build/Build/Products/Release/"
+            dmg-staging/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

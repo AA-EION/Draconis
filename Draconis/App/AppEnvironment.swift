@@ -177,8 +177,17 @@ public final class AppEnvironment: ObservableObject {
         maximaProgress = nil
         defer { maximaSettingUp = false; maximaProgress = nil }
         do {
-            try await MaximaService.shared.downloadAndInstall(into: bottle) { @Sendable p in
-                Task { @MainActor in self.maximaProgress = p }
+            // If maxima-cli.exe is already in the bottle, skip the installer
+            // and just (re-)register the helper — this is the most common
+            // recovery path when the URL handler binding got lost.
+            if await MaximaService.shared.isInstalled(in: bottle) {
+                maximaProgress = .init(phase: .registeringHelper, fraction: -1,
+                                       detail: "Registering MaximaHelper…")
+                try await MaximaService.shared.registerHelper()
+            } else {
+                try await MaximaService.shared.downloadAndInstall(into: bottle) { @Sendable p in
+                    Task { @MainActor in self.maximaProgress = p }
+                }
             }
             await refreshMaximaState()
         } catch {

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Manages the Maxima EA launcher inside a Wine bottle and the MaximaHelper
 /// macOS agent that bridges the qrc:// OAuth redirect from the host to Wine.
@@ -121,19 +122,23 @@ public actor MaximaService {
 
     /// Registers MaximaHelper with macOS LaunchServices so it handles qrc:// URLs.
     ///
-    /// Must be called once on first setup and again if Draconis.app is moved.
-    /// MaximaHelper forwards qrc:// to http://127.0.0.1:31033 — the same
+    /// Two-step process:
+    ///   1. Strip `com.apple.quarantine` from the bundled helper (inherited
+    ///      from Draconis being delivered via DMG) — LaunchServices ignores
+    ///      URL handler claims from quarantined apps.
+    ///   2. `lsregister -f` to make LaunchServices aware of the bundle, then
+    ///      `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:)` to
+    ///      actually bind `qrc://` to us. The setDefaultApplication call may
+    ///      surface a system confirmation prompt to the user.
+    ///
+    /// MaximaHelper forwards `qrc://` to `http://127.0.0.1:31033` — the same
     /// loopback port that maxima-cli inside Wine listens on, since Wine shares
     /// the host's TCP stack.
-    public func registerHelper() throws {
+    public func registerHelper() async throws {
         guard let helperURL = bundledHelperURL else {
             throw MaximaError.helperNotBundled
         }
 
-        // When Draconis is delivered via DMG, the OS applies com.apple.quarantine
-        // to the .app and everything inside it. LaunchServices will register a
-        // quarantined helper but then ignore its URL handler claims, so qrc://
-        // doesn't get bound. Strip it before registering.
         _ = try? runProcess(
             "/usr/bin/xattr",
             arguments: ["-dr", "com.apple.quarantine", helperURL.path]
@@ -147,7 +152,25 @@ public actor MaximaService {
                 code: result.exitCode, stderr: result.stderr
             )
         }
-        Log.ok("maxima.helper", "Registered MaximaHelper at \(helperURL.path)")
+        Log.info("maxima.helper", "Bundle known to LaunchServices at \(helperURL.path)")
+
+        // setDefaultApplication is the supported way to claim a URL scheme on
+        // macOS 12+. On first run macOS shows the user a confirmation prompt;
+        // on subsequent calls it's silent. Throws if the user declines or if
+        // LaunchServices refuses (e.g. signature issues).
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            NSWorkspace.shared.setDefaultApplication(
+                at: helperURL,
+                toOpenURLsWithScheme: "qrc"
+            ) { error in
+                if let error = error {
+                    cont.resume(throwing: error)
+                } else {
+                    cont.resume()
+                }
+            }
+        }
+        Log.ok("maxima.helper", "MaximaHelper is now the default qrc:// handler")
     }
 
     private struct ProcessResult {
@@ -173,30 +196,21 @@ public actor MaximaService {
         return .init(exitCode: proc.terminationStatus, stdout: outStr, stderr: errStr)
     }
 
-    /// True if MaximaHelper is currently the system handler for qrc://.
-    ///
-    /// Checks lsregister's dump for our bundle identifier. This is the most
-    /// reliable way since NSWorkspace doesn't expose URL scheme handler queries.
+    /// True if MaximaHelper (our bundled copy) is the current system handler
+    /// for `qrc://`. Uses NSWorkspace.urlForApplication which queries
+    /// LaunchServices directly — no parsing of lsregister dumps, no pipes.
     public func isHelperRegistered() async -> Bool {
-        guard FileManager.default.fileExists(atPath: lsregister.path) else {
+        guard let helperURL = bundledHelperURL else { return false }
+        guard let probe = URL(string: "qrc://probe") else { return false }
+        guard let defaultApp = await MainActor.run(body: {
+            NSWorkspace.shared.urlForApplication(toOpen: probe)
+        }) else {
             return false
         }
-        let proc = Process()
-        let out = Pipe()
-        proc.executableURL = lsregister
-        proc.arguments = ["-dump"]
-        proc.standardOutput = out
-        proc.standardError = Pipe()
-        try? proc.run()
-        // Drain and wait off the actor thread to avoid blocking concurrency.
-        return await Task.detached(priority: .utility) {
-            proc.waitUntilExit()
-            let raw = String(
-                data: out.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            return raw.contains("com.armchairdevelopers.maxima.helper")
-        }.value
+        // Compare canonical paths (resolves symlinks, /private/tmp etc.)
+        let registered = defaultApp.resolvingSymlinksInPath().standardizedFileURL.path
+        let expected = helperURL.resolvingSymlinksInPath().standardizedFileURL.path
+        return registered == expected
     }
 
     // MARK: - Install
@@ -273,7 +287,7 @@ public actor MaximaService {
         // 5 — Register helper
         progress(.init(phase: .registeringHelper, fraction: -1,
                        detail: "Registering MaximaHelper…"))
-        try registerHelper()
+        try await registerHelper()
 
         progress(.init(phase: .done, fraction: 1, detail: "Maxima is ready"))
     }

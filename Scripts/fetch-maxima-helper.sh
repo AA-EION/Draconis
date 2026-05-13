@@ -10,9 +10,15 @@ API_URL="https://api.github.com/repos/AA-EION/Maxima-Draconis/releases/latest"
 
 echo "==> Checking latest Maxima-Draconis release…"
 
+AUTH_HEADER=()
+if [ -n "${GH_TOKEN:-}" ]; then
+    AUTH_HEADER=(-H "Authorization: Bearer $GH_TOKEN")
+fi
+
 RELEASE=$(curl -sf \
     -H "Accept: application/vnd.github+json" \
     -H "User-Agent: Draconis-Build" \
+    "${AUTH_HEADER[@]}" \
     "$API_URL")
 
 LATEST_TAG=$(echo "$RELEASE" | python3 -c \

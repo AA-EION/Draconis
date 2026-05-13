@@ -94,6 +94,8 @@ Draconis/
   <img src="https://contrib.rocks/image?repo=AA-EION/Draconis" />
 </a>
 
+Made with [contrib.rocks](https://contrib.rocks).
+
 ## Credits
 
 - The Northstar team at [R2Northstar](https://github.com/R2Northstar)

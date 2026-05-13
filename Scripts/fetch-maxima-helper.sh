@@ -1,14 +1,17 @@
 #!/bin/bash
-# Fetches MaximaHelper.app from the latest AA-EION/Maxima-Draconis release and
-# copies it into the built Draconis.app's Resources directory.
-#
-# We cannot rely on Xcode's "Copy Bundle Resources" phase because the .app
-# does not exist at `xcodegen generate` time — with `optional: true`,
-# XcodeGen omits the PBX reference and the resource is never copied. So this
-# script handles the copy itself, into BUILT_PRODUCTS_DIR.
+# Fetches MaximaHelper.app from the latest AA-EION/Maxima-Draconis release
+# into Draconis/Resources/. Must run BEFORE `xcodegen generate` so XcodeGen
+# sees the .app at project generation time and adds it as a regular Copy
+# Bundle Resources entry — that way xcodebuild's CodeSign phase signs the
+# helper coherently with the parent app (sealed Info.plist, valid parent
+# seal, etc.).
 #
 # Caches by tag name — re-downloads only when a new release is published.
 set -euo pipefail
+
+# Default SRCROOT to this script's parent dir so it works standalone
+# (./bootstrap.sh, CI pre-build step) and as a build phase.
+: "${SRCROOT:=$(cd "$(dirname "$0")/.." && pwd)}"
 
 CACHE_DIR="${SRCROOT}/Draconis/Resources/MaximaHelper.app"
 CACHE_TAG_FILE="${SRCROOT}/Draconis/Resources/.maxima_helper_version"
@@ -57,12 +60,11 @@ else
     echo "==> MaximaHelper ${LATEST_TAG} cached at ${CACHE_DIR}"
 fi
 
-if [ -n "${BUILT_PRODUCTS_DIR:-}" ] && [ -n "${PRODUCT_NAME:-}" ]; then
-    BUNDLE_RESOURCES="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources"
-    mkdir -p "$BUNDLE_RESOURCES"
-    rm -rf "$BUNDLE_RESOURCES/MaximaHelper.app"
-    cp -R "$CACHE_DIR" "$BUNDLE_RESOURCES/MaximaHelper.app"
-    echo "==> MaximaHelper copied into ${BUNDLE_RESOURCES}/MaximaHelper.app"
-else
-    echo "==> BUILT_PRODUCTS_DIR not set; skipping bundle copy (cache-only run)."
-fi
+# Re-sign the cached helper so its Info.plist is sealed into the signature.
+# The upstream MaximaHelper.zip ships linker-signed only (`Info.plist=not
+# bound`, `Sealed Resources=none`), and LaunchServices won't honor the
+# qrc:// CFBundleURLTypes claim from an unsealed Info.plist. xcodebuild will
+# pick this signed copy up as a bundle resource and re-seal it again as part
+# of the parent app's signature.
+codesign --force --deep --sign - "$CACHE_DIR" >/dev/null
+echo "==> MaximaHelper ready at ${CACHE_DIR} (Info.plist sealed)"

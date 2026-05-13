@@ -19,6 +19,11 @@ jobs:
       - name: Install dependencies
         run: brew install xcodegen create-dmg
 
+      - name: Fetch MaximaHelper
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash Scripts/fetch-maxima-helper.sh
+
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -32,7 +37,6 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
-            GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             clean build
 
       - name: Create DMG

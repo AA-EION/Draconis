@@ -28,7 +28,7 @@ settings:
     DEVELOPMENT_TEAM: ""
     SWIFT_STRICT_CONCURRENCY: minimal
     GENERATE_INFOPLIST_FILE: NO
-    MARKETING_VERSION: "0.3.5"
+    MARKETING_VERSION: "0.3.6"
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
@@ -42,13 +42,13 @@ targets:
           - "**/*.md"
           - "Resources/Info.plist"
           - "Resources/Draconis.entitlements"
-    postBuildScripts:
-      - name: Fetch and bundle MaximaHelper
-        script: |
-          bash "${SRCROOT}/Scripts/fetch-maxima-helper.sh"
     resources:
       - path: Draconis/Resources/Assets.xcassets
       - path: Draconis/Resources/Draconis.icon
+      # Fetched + re-signed by Scripts/fetch-maxima-helper.sh BEFORE
+      # `xcodegen generate` runs. bootstrap.sh and the CI workflows handle
+      # this for the developer.
+      - path: Draconis/Resources/MaximaHelper.app
     info:
       path: Draconis/Resources/Info.plist
     entitlements:

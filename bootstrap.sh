@@ -30,6 +30,9 @@ require_xcodegen() {
 require_macos
 require_xcodegen
 
+echo "→ Fetching MaximaHelper.app …"
+bash Scripts/fetch-maxima-helper.sh
+
 echo "→ Generating Draconis.xcodeproj …"
 xcodegen generate --spec project.yml
 

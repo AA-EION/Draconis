@@ -23,8 +23,6 @@ jobs:
         run: xcodegen generate
 
       - name: Build (Release)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           xcodebuild \
             -project Draconis.xcodeproj \
@@ -34,6 +32,7 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
+            GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
             clean build
 
       - name: Create DMG

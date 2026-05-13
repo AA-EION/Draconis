@@ -30,6 +30,9 @@ Package.resolved
 *.pkg
 *.ipa
 
+# Fetched at build time by Scripts/fetch-maxima-helper.sh
+Draconis/Resources/.maxima_helper_version
+
 # --- Editor noise ---
 .vscode/
 .idea/

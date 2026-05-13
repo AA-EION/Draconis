@@ -90,16 +90,9 @@ Draconis/
 
 ## Contributors
 
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/AA-EION">
-        <img src="https://avatars.githubusercontent.com/u/31860825" width="80" alt="EION" /><br />
-        <sub><b>EION</b></sub>
-      </a>
-    </td>
-  </tr>
-</table>
+<a href="https://github.com/AA-EION/Draconis/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=AA-EION/Draconis" />
+</a>
 
 ## Credits
 

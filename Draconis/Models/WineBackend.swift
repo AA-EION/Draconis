@@ -53,6 +53,32 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
         case .sikarugir, .whisky, .custom: return false
         }
     }
+
+    // MARK: - Codable (legacy migration)
+
+    /// Custom decoder that silently migrates the legacy `"kegworks"` raw value
+    /// (used in persisted data before the app was renamed Sikarugir) to
+    /// `.sikarugir`. Without this, any saved bottle list or selected-bottle
+    /// preference that contains `"kegworks"` would fail to decode on upgrade.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        if let value = WineBackend(rawValue: rawValue) {
+            self = value
+        } else if rawValue == "kegworks" {
+            self = .sikarugir
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown WineBackend: \(rawValue)"
+            )
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// A concrete bottle/prefix that Draconis can launch Northstar from.

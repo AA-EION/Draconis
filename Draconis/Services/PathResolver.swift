@@ -1,6 +1,7 @@
 import Foundation
 
 /// Common filesystem locations Draconis needs to know about.
+/// All paths are macOS-native — we never reach for Linux conventions.
 public enum PathResolver {
 
     public static let home: URL = FileManager.default
@@ -42,19 +43,19 @@ public enum PathResolver {
         return url
     }()
 
-    // MARK: - Third-party install roots
+    // MARK: - Third-party install roots (all standard macOS locations)
 
-    /// CrossOver default location.
+    /// CrossOver.app default location.
     public static let crossOverApp = URL(fileURLWithPath: "/Applications/CrossOver.app")
 
     /// CrossOver bottles live in ~/Library/Application Support/CrossOver/Bottles.
     public static let crossOverBottlesRoot: URL = applicationSupport
         .appendingPathComponent("CrossOver/Bottles", isDirectory: true)
 
-    /// Apple's Game Porting Toolkit installs into /usr/local/opt or via the
-    /// `gameportingtoolkit` binary in PATH. We also check common Homebrew
-    /// locations and the `~/Library/Application Support/com.apple.gameporting`
-    /// folder created by Apple's installer.
+    /// Apple's Game Porting Toolkit is shipped as `gameportingtoolkit` (a wine
+    /// wrapper script) plus a `wine64` binary. Both Homebrew prefixes are
+    /// checked. We also detect the GPTK wrapper script that ships with newer
+    /// versions of the toolkit.
     public static let gptkCandidatePaths: [URL] = [
         URL(fileURLWithPath: "/usr/local/bin/gameportingtoolkit"),
         URL(fileURLWithPath: "/opt/homebrew/bin/gameportingtoolkit"),
@@ -62,21 +63,36 @@ public enum PathResolver {
         URL(fileURLWithPath: "/opt/homebrew/opt/game-porting-toolkit/bin/wine64"),
     ]
 
-    /// Whisky bottles live in ~/Library/Containers/com.isaacmarovitz.Whisky/Bottles
-    public static let whiskyBottlesRoot: URL = home
-        .appendingPathComponent(
-            "Library/Containers/com.isaacmarovitz.Whisky/Bottles",
-            isDirectory: true
-        )
+    /// Whisky (current versions) stores bottles directly in Application
+    /// Support, not inside its container.
+    public static let whiskyBottlesRoot: URL = applicationSupport
+        .appendingPathComponent("Whisky/Bottles", isDirectory: true)
 
-    /// Kegworks installs bottles as self-contained .app bundles, usually in
-    /// ~/Applications/Wineskin or ~/Applications. We scan both.
+    /// Whisky bundles its own wine here.
+    public static let whiskyWineBinary: URL = applicationSupport
+        .appendingPathComponent("Whisky/Libraries/Wine/bin/wine64")
+
+    /// Kegworks wrappers live in ~/Applications/Wineskin or ~/Applications,
+    /// each as a self-contained .app bundle with `Contents/SharedSupport/wine`.
     public static let kegworksWrapperRoots: [URL] = [
         home.appendingPathComponent("Applications/Wineskin", isDirectory: true),
+        home.appendingPathComponent("Applications/Kegworks", isDirectory: true),
         home.appendingPathComponent("Applications", isDirectory: true),
     ]
 
-    /// Mapping helper: given a Wine prefix, return its `drive_c` URL.
+    /// Sikarugir is the *predecessor* of Kegworks (gcenx). Wrappers live in
+    /// the same kind of location and use the same self-contained .app pattern.
+    public static let sikarugirAppRoot = URL(
+        fileURLWithPath: "/Applications/Sikarugir"
+    )
+    public static let sikarugirWrapperRoots: [URL] = [
+        home.appendingPathComponent("Applications/Sikarugir", isDirectory: true),
+        home.appendingPathComponent("Applications", isDirectory: true),
+    ]
+
+    // MARK: - Helpers
+
+    /// drive_c URL inside a prefix.
     public static func driveC(in prefix: URL) -> URL {
         prefix.appendingPathComponent("drive_c", isDirectory: true)
     }

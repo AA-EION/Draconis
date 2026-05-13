@@ -21,7 +21,7 @@ struct ServersView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .glassEffect(.regular, in: .capsule)
+            .glassEffect(.regular.tint(.white.opacity(0.05)), in: .capsule)
 
             Button {
                 Task { await env.refreshServers() }
@@ -32,9 +32,7 @@ struct ServersView: View {
 
             Spacer()
 
-            Text("\(env.filteredServers.count) servers")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("\(env.filteredServers.count) servers").stencilLabel()
         }
         .padding(20)
     }
@@ -57,6 +55,7 @@ struct ServersView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
         }
+        .scrollContentBackground(.hidden)
     }
 }
 
@@ -68,7 +67,7 @@ private struct ServerRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(server.name)
-                        .font(.headline)
+                        .font(TF.title(15))
                         .lineLimit(1)
                     if server.hasPassword {
                         Image(systemName: "lock.fill")
@@ -78,7 +77,7 @@ private struct ServerRow: View {
                 }
                 if !server.description.isEmpty {
                     Text(server.description)
-                        .font(.caption)
+                        .font(TF.body(12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -93,14 +92,14 @@ private struct ServerRow: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 6) {
+            VStack(alignment: .trailing, spacing: 4) {
                 Text("\(server.playerCount) / \(server.maxPlayers)")
-                    .font(.title3.monospacedDigit().weight(.semibold))
-                Text("players")
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(TF.display(22).monospacedDigit())
+                Text("PLAYERS").stencilLabel(size: 9)
             }
         }
         .padding(14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .glassEffect(.regular.tint(.white.opacity(0.04)),
+                     in: .rect(cornerRadius: 16))
     }
 }

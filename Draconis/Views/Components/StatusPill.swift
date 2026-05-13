@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Small Liquid Glass capsule used in PlayView to summarise bottle state.
+/// Uses very light tints so the window stays see-through.
 struct StatusPill: View {
     let label: String
     let value: String
@@ -21,18 +22,17 @@ struct StatusPill: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Label(label, systemImage: symbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.8))
+                .stencilLabel(size: 10, color: tone.color.opacity(0.9))
             Text(value)
-                .font(.title3.weight(.semibold))
+                .font(TF.display(18))
                 .foregroundStyle(.white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
+        .padding(14)
         .glassEffect(
-            .regular.tint(tone.color.opacity(0.35)),
+            .regular.tint(tone.color.opacity(0.08)),
             in: .rect(cornerRadius: 16)
         )
     }

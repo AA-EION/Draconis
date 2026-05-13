@@ -3,6 +3,12 @@ import Foundation
 /// Talks to https://northstar.thunderstore.io/api/v1/package/ to list mods.
 /// Also handles install/uninstall against a given bottle's R2Northstar/mods
 /// directory.
+///
+/// Thunderstore returns ISO 8601 dates *with fractional seconds*
+/// (e.g. `2020-08-08T15:25:35.555000Z`). Swift's stock `.iso8601` decoder does
+/// NOT accept fractional seconds, which is the most common reason for the mod
+/// list silently coming back empty. We use a multi-format date decoder so both
+/// shapes parse.
 public actor ThunderstoreClient {
     public static let shared = ThunderstoreClient()
 
@@ -21,47 +27,76 @@ public actor ThunderstoreClient {
         case badResponse(Int)
         case decodingFailed(String)
         case modsDirectoryMissing
-        case unzipFailed(String)
+        case extractFailed(String)
+        case downloadFailed(String)
 
         public var errorDescription: String? {
             switch self {
             case .badResponse(let c):       return "Thunderstore returned HTTP \(c)."
             case .decodingFailed(let s):    return "Couldn't parse Thunderstore data: \(s)"
             case .modsDirectoryMissing:     return "R2Northstar/mods folder is missing in that bottle."
-            case .unzipFailed(let s):       return "Couldn't extract the mod: \(s)"
+            case .extractFailed(let s):     return "Couldn't extract the mod: \(s)"
+            case .downloadFailed(let s):    return "Couldn't download the mod: \(s)"
             }
         }
     }
 
-    /// Returns all packages from Thunderstore. The endpoint is paginated by
-    /// the server with a hard cap; we follow no pagination because the
-    /// Northstar registry returns a single JSON array.
+    // MARK: - Listing
+
     public func listPackages() async throws -> [ThunderstorePackage] {
+        Log.info("thunderstore", "GET \(packagesURL.absoluteString)")
         let (data, response) = try await session.data(from: packagesURL)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw ThunderstoreError.badResponse(
-                (response as? HTTPURLResponse)?.statusCode ?? -1
-            )
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            Log.error("thunderstore", "HTTP \(code)")
+            throw ThunderstoreError.badResponse(code)
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+
+        let decoder = Self.makeDecoder()
         do {
-            return try decoder.decode([ThunderstorePackage].self, from: data)
+            let packages = try decoder.decode([ThunderstorePackage].self, from: data)
+            Log.ok("thunderstore", "Decoded \(packages.count) packages")
+            return packages
         } catch {
+            // Most likely a date format mismatch — log a sliver of the payload
+            // so the user can see what came back.
+            let preview = String(data: data.prefix(400), encoding: .utf8) ?? "(binary)"
+            Log.error("thunderstore", "Decode failed: \(error)\nFirst bytes: \(preview)")
             throw ThunderstoreError.decodingFailed(String(describing: error))
         }
     }
 
-    /// Inspect the local mods directory of a bottle.
-    /// Pure FileManager read — safe to call from anywhere.
+    /// Multi-format ISO 8601 decoder that handles fractional seconds.
+    static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+
+        decoder.dateDecodingStrategy = .custom { dec in
+            let container = try dec.singleValueContainer()
+            let str = try container.decode(String.self)
+            if let d = withFraction.date(from: str) { return d }
+            if let d = standard.date(from: str) { return d }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unrecognised ISO date: \(str)"
+            )
+        }
+        return decoder
+    }
+
+    // MARK: - Installed mods (nonisolated — pure FileManager reads)
+
     public nonisolated func installedMods(in bottle: WineBottle) -> [InstalledMod] {
         guard let tf2 = bottle.titanfall2InstallPath else { return [] }
         let modsRoot = (tf2 as NSString)
             .appendingPathComponent("R2Northstar/mods")
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            atPath: modsRoot
-        ) else { return [] }
+        guard let entries = try? fm.contentsOfDirectory(atPath: modsRoot) else {
+            return []
+        }
 
         return entries.compactMap { name -> InstalledMod? in
             let folder = (modsRoot as NSString).appendingPathComponent(name)
@@ -86,7 +121,8 @@ public actor ThunderstoreClient {
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// Download a Thunderstore mod and extract it into the bottle.
+    // MARK: - Install / extract
+
     public func install(
         _ version: ThunderstoreVersion, into bottle: WineBottle
     ) async throws {
@@ -102,27 +138,32 @@ public actor ThunderstoreClient {
         let tmp = PathResolver.downloadsCache.appendingPathComponent(
             "\(version.fullName).zip"
         )
-        let (downloadedURL, _) = try await session.download(from: version.downloadURL)
-        try? FileManager.default.removeItem(at: tmp)
-        try FileManager.default.moveItem(at: downloadedURL, to: tmp)
+        Log.info("thunderstore.install", "Downloading \(version.fullName)")
+        do {
+            let (downloadedURL, _) = try await session.download(from: version.downloadURL)
+            try? FileManager.default.removeItem(at: tmp)
+            try FileManager.default.moveItem(at: downloadedURL, to: tmp)
+        } catch {
+            throw ThunderstoreError.downloadFailed(error.localizedDescription)
+        }
 
+        Log.run("thunderstore.install", "ditto -x -k \(tmp.path) \(modsRoot)")
         let result = try await ProcessRunner.shared.capture(
-            URL(fileURLWithPath: "/usr/bin/unzip"),
-            arguments: ["-o", tmp.path, "-d", modsRoot]
+            URL(fileURLWithPath: "/usr/bin/ditto"),
+            arguments: ["-x", "-k", tmp.path, modsRoot]
         )
         if !result.ok {
-            throw ThunderstoreError.unzipFailed(result.stderr)
+            throw ThunderstoreError.extractFailed(result.stderr)
         }
+        Log.ok("thunderstore.install", "Installed \(version.fullName)")
     }
 
-    /// Toggle enabled by renaming the folder with a leading `.` (mirrors how
-    /// Northstar itself treats hidden mods).
     public nonisolated func setEnabled(_ enabled: Bool, mod: InstalledMod) throws {
         let parent = mod.folderURL.deletingLastPathComponent()
         let current = mod.folderURL.lastPathComponent
-        let target  = enabled
-            ? current.hasPrefix(".") ? String(current.dropFirst()) : current
-            : current.hasPrefix(".") ? current : "." + current
+        let target = enabled
+            ? (current.hasPrefix(".") ? String(current.dropFirst()) : current)
+            : (current.hasPrefix(".") ? current : "." + current)
         if current == target { return }
         try FileManager.default.moveItem(
             at: mod.folderURL,

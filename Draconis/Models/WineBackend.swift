@@ -2,17 +2,16 @@ import Foundation
 
 /// Identifies which Wine/translation layer a given bottle/prefix belongs to.
 ///
-/// Draconis prefers a backend in this order:
-///   1. CrossOver    (paid, most polished; honour it if the user already has it)
-///   2. GPTK         (free; Apple Game Porting Toolkit 2 + wine-crossover)
-///   3. Kegworks     (free; community successor to Wineskin, self-contained .app)
-///
-/// `whisky` is included so we can detect legacy installs and offer to migrate
-/// them, but Draconis won't create new Whisky bottles.
+/// Each backend has its **own runtime** — Draconis never tries to be a "wine
+/// front-end" of its own. We always hand off to the backend's own launcher
+/// (CrossOver's `cxbottle`/`wine --cx-app`, Whisky's bundled wine64,
+/// Sikarugir/Kegworks wrapper apps, etc.) so the user gets exactly the same
+/// behaviour as if they had double-clicked from inside that backend.
 public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, Sendable {
     case crossover
     case gptk
     case kegworks
+    case sikarugir
     case whisky      // legacy, read-only support
     case custom      // user-pointed prefix
 
@@ -23,8 +22,18 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
         case .crossover: return "CrossOver"
         case .gptk:      return "Apple GPTK"
         case .kegworks:  return "Kegworks"
+        case .sikarugir: return "Sikarugir"
         case .whisky:    return "Whisky (legacy)"
         case .custom:    return "Custom prefix"
+        }
+    }
+
+    /// True for backends a user has to *pay* for. Draconis will never try to
+    /// auto-install these.
+    public var isPaid: Bool {
+        switch self {
+        case .crossover: return true
+        default:         return false
         }
     }
 
@@ -34,30 +43,31 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
         case .crossover: return "wineglass.fill"
         case .gptk:      return "applelogo"
         case .kegworks:  return "shippingbox.fill"
+        case .sikarugir: return "tortoise.fill"
         case .whisky:    return "drop.fill"
         case .custom:    return "questionmark.folder.fill"
         }
     }
 
-    /// True when Draconis can *create* new bottles with this backend.
-    public var isManagedByDraconis: Bool {
+    /// True when Draconis can *create* new bottles with this backend itself.
+    public var canCreateBottles: Bool {
         switch self {
-        case .crossover, .whisky: return false
-        case .gptk, .kegworks, .custom: return true
+        case .crossover, .gptk: return true
+        case .kegworks, .sikarugir, .whisky, .custom: return false
         }
     }
 }
 
 /// A concrete bottle/prefix that Draconis can launch Northstar from.
 public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
-    public var id: String           // stable, derived from prefixURL
+    public var id: String           // stable, derived from backend + prefixURL
     public var name: String
     public var backend: WineBackend
     public var prefixURL: URL       // the WINEPREFIX (the .wine / Bottles/<name>)
     public var wineBinaryURL: URL?  // optional explicit wine64 / wine to use
     public var hasNorthstar: Bool
     public var hasTitanfall2: Bool
-    public var titanfall2InstallPath: String?  // C:\... drive_c path inside prefix
+    public var titanfall2InstallPath: String?  // POSIX path to TF2 root inside drive_c
 
     public init(
         id: String,

@@ -41,7 +41,7 @@ struct ModsView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .glassEffect(.regular, in: .capsule)
+            .glassEffect(.regular.tint(.white.opacity(0.05)), in: .capsule)
 
             Button {
                 Task { await env.refreshThunderstore() }
@@ -57,7 +57,22 @@ struct ModsView: View {
         let filtered = filteredPackages
         return ScrollView {
             LazyVStack(spacing: 12) {
-                if env.modsLoading && filtered.isEmpty {
+                if let err = env.modsLoadError, filtered.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.octagon.fill")
+                            .font(.title2).foregroundStyle(.red)
+                        Text("Couldn't load Thunderstore").font(TF.title(15))
+                        Text(err)
+                            .font(TF.body(12))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 28)
+                        Button("Retry") { Task { await env.refreshThunderstore() } }
+                            .buttonStyle(.glass)
+                    }
+                    .padding(40)
+                    .glassEffect(.regular.tint(.red.opacity(0.10)), in: .rect(cornerRadius: 16))
+                } else if env.modsLoading && filtered.isEmpty {
                     ProgressView("Fetching Thunderstore…")
                         .padding(40)
                 } else if filtered.isEmpty {
@@ -76,6 +91,7 @@ struct ModsView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
         }
+        .scrollContentBackground(.hidden)
     }
 
     private var installedList: some View {
@@ -125,7 +141,7 @@ private struct ThunderstoreRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(package.name)
-                        .font(.headline)
+                        .font(TF.title(16))
                     Text("by \(package.owner)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -146,7 +162,7 @@ private struct ThunderstoreRow: View {
                         Text(cat)
                             .font(.caption2)
                             .padding(.horizontal, 8).padding(.vertical, 2)
-                            .glassEffect(.regular, in: .capsule)
+                            .glassEffect(.regular.tint(.white.opacity(0.05)), in: .capsule)
                     }
                 }
             }
@@ -157,7 +173,7 @@ private struct ThunderstoreRow: View {
             .disabled(package.latest == nil)
         }
         .padding(14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 18))
     }
 }
 
@@ -168,8 +184,8 @@ private struct InstalledModRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(mod.name).font(.headline)
-                Text(mod.version).font(.caption).foregroundStyle(.secondary)
+                Text(mod.name).font(TF.title(15))
+                Text(mod.version).font(TF.body(11)).foregroundStyle(.secondary)
             }
             Spacer()
             Toggle("", isOn: Binding(
@@ -190,6 +206,6 @@ private struct InstalledModRow: View {
             .buttonStyle(.glass)
         }
         .padding(14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 14))
     }
 }

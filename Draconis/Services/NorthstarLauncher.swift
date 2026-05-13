@@ -1,6 +1,7 @@
 import Foundation
 
-/// Launches Titanfall 2 (vanilla or via Northstar) inside a given bottle.
+/// Launches Titanfall 2 (vanilla or via Northstar) inside a given bottle by
+/// delegating to the backend's own runtime — we never invoke `wine` directly.
 public actor NorthstarLauncher {
     public static let shared = NorthstarLauncher()
 
@@ -17,17 +18,15 @@ public actor NorthstarLauncher {
     }
 
     public enum LaunchError: Error, LocalizedError {
-        case bottleMissingWine
         case titanfallNotFound
         case northstarNotFound
-        case launchFailed(String)
+        case noDriverForBackend(WineBackend)
 
         public var errorDescription: String? {
             switch self {
-            case .bottleMissingWine:  return "This bottle has no usable wine binary."
-            case .titanfallNotFound:  return "Titanfall 2 wasn't found in this bottle."
-            case .northstarNotFound:  return "NorthstarLauncher.exe wasn't found in this bottle."
-            case .launchFailed(let s): return "Launch failed: \(s)"
+            case .titanfallNotFound:         return "Titanfall 2 wasn't found in this bottle."
+            case .northstarNotFound:         return "NorthstarLauncher.exe wasn't found in this bottle."
+            case .noDriverForBackend(let b): return "No driver registered for \(b.displayName)."
             }
         }
     }
@@ -38,71 +37,44 @@ public actor NorthstarLauncher {
         mode: LaunchMode,
         extraArgs: [String] = []
     ) async throws -> Process {
-        // Resolve the wine binary
-        guard let wine = await resolveWine(for: bottle) else {
-            throw LaunchError.bottleMissingWine
-        }
+        Log.info(
+            "northstar.launch",
+            "Asked to launch \(mode.label) in “\(bottle.name)” [\(bottle.backend.rawValue)]"
+        )
 
-        // Resolve the executable inside the prefix
-        guard let tf2Path = bottle.titanfall2InstallPath else {
+        // Resolve install path (might have been picked up since we last
+        // scanned — re-resolve so the user doesn't have to rescan).
+        guard let tf2Root = bottle.titanfall2InstallPath
+            ?? CrossOverDetector.locateTitanfall2(
+                in: PathResolver.driveC(in: bottle.prefixURL)
+            )?.path
+        else {
+            Log.error("northstar.launch", "Titanfall 2 root not found in prefix")
             throw LaunchError.titanfallNotFound
         }
-        let exeName: String
-        switch mode {
-        case .northstar: exeName = "NorthstarLauncher.exe"
-        case .vanilla:   exeName = "Titanfall2.exe"
-        }
-        let exePath = (tf2Path as NSString).appendingPathComponent(exeName)
+        let exeName = mode == .northstar ? "NorthstarLauncher.exe" : "Titanfall2.exe"
+        let exePath = (tf2Root as NSString).appendingPathComponent(exeName)
         guard FileManager.default.fileExists(atPath: exePath) else {
+            Log.error("northstar.launch", "\(exeName) missing at \(exePath)")
             throw mode == .northstar
                 ? LaunchError.northstarNotFound
                 : LaunchError.titanfallNotFound
         }
 
-        var args = [exePath]
-        if mode == .northstar {
-            // Northstar respects standard Source engine args
-            args.append("-novid")
+        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
+            throw LaunchError.noDriverForBackend(bottle.backend)
         }
+
+        var args: [String] = []
+        if mode == .northstar { args.append("-novid") }
         args.append(contentsOf: extraArgs)
 
-        do {
-            return try ProcessRunner.shared.detached(
-                wine, arguments: args,
-                environment: launchEnvironment(for: bottle),
-                currentDirectory: URL(fileURLWithPath: tf2Path)
-            )
-        } catch {
-            throw LaunchError.launchFailed(error.localizedDescription)
-        }
-    }
-
-    // MARK: - Helpers
-
-    func resolveWine(for bottle: WineBottle) async -> URL? {
-        if let explicit = bottle.wineBinaryURL,
-           FileManager.default.fileExists(atPath: explicit.path) {
-            return explicit
-        }
-        // Fall back to the backend's default wine.
-        return await WineBackendManager.shared
-            .driver(for: bottle.backend)?
-            .wineBinary()
-    }
-
-    func launchEnvironment(for bottle: WineBottle) -> [String: String] {
-        var env: [String: String] = [
-            "WINEPREFIX": bottle.prefixURL.path,
-            "WINEDEBUG":  "-all",
-        ]
-        // GPTK requires MTL_HUD_ENABLED + DXMT/DXVK toggles; Apple's wrapper
-        // also sets MTL_CAPTURE_ENABLED. We leave most knobs to the backend
-        // and only inject what's universally safe.
-        if bottle.backend == .gptk {
-            env["MTL_HUD_ENABLED"] = "0"
-            // Apple's wine64 sometimes needs ROSETTA_ADVERTISE_AVX=1
-            env["ROSETTA_ADVERTISE_AVX"] = "1"
-        }
-        return env
+        Log.info("northstar.launch", "Handing off to \(bottle.backend.displayName) driver…")
+        return try await driver.launch(
+            executable: exePath,
+            arguments: args,
+            in: bottle,
+            workingDirectory: tf2Root
+        )
     }
 }

@@ -58,7 +58,6 @@ public actor WineBackendManager {
         GPTKDriver(),
         WhiskyDriver(),
         SikarugirDriver(),
-        KegworksDriver(),
     ]
 
     /// All bottles from all backends, sorted Northstar-ready first.
@@ -81,9 +80,9 @@ public actor WineBackendManager {
     }
 
     /// Preferred backend for new installs, in this order: CrossOver → GPTK →
-    /// Sikarugir → Kegworks → Whisky.
+    /// Sikarugir → Whisky.
     public func preferredBackend() async -> WineBackend? {
-        let order: [WineBackend] = [.crossover, .gptk, .sikarugir, .kegworks, .whisky]
+        let order: [WineBackend] = [.crossover, .gptk, .sikarugir, .whisky]
         let avail = Set(await availableBackends())
         return order.first { avail.contains($0) }
     }
@@ -298,10 +297,10 @@ struct WhiskyDriver: WineBackendDriver {
     }
 }
 
-// MARK: - Wrapper-based drivers (Sikarugir, Kegworks)
+// MARK: - Wrapper-based drivers (Sikarugir / Wineskin)
 
-/// Common logic for self-contained `.app` wrappers (Sikarugir / Kegworks /
-/// Wineskin). Each wrapper bundles its own wine under
+/// Common logic for self-contained `.app` wrappers (Sikarugir / Wineskin).
+/// Each wrapper bundles its own wine under
 /// `Contents/SharedSupport/wine/bin/wine64` and its own prefix at
 /// `Contents/Resources/wineprefix`.
 private func wrapperBottles(
@@ -337,7 +336,7 @@ private func wrapperBottles(
     return out
 }
 
-/// Launch a wrapper bottle (Sikarugir/Kegworks) using its OWN bundled wine.
+/// Launch a wrapper bottle (Sikarugir) using its OWN bundled wine.
 private func launchInWrapper(
     backend: WineBackend, executable: String, arguments: [String],
     bottle: WineBottle, workingDirectory: String?
@@ -393,22 +392,3 @@ struct SikarugirDriver: WineBackendDriver {
     }
 }
 
-struct KegworksDriver: WineBackendDriver {
-    let backend: WineBackend = .kegworks
-    func isAvailable() async -> Bool { !wrapperBottles(backend: .kegworks, roots: PathResolver.kegworksWrapperRoots).isEmpty }
-    func bottles() async -> [WineBottle] {
-        wrapperBottles(backend: .kegworks, roots: PathResolver.kegworksWrapperRoots)
-    }
-    func createBottle(named name: String) async throws -> WineBottle {
-        throw WineBackendError.bottleCreationUnsupported(.kegworks)
-    }
-    func launch(
-        executable: String, arguments: [String],
-        in bottle: WineBottle, workingDirectory: String?
-    ) async throws -> Process {
-        try await launchInWrapper(
-            backend: .kegworks, executable: executable, arguments: arguments,
-            bottle: bottle, workingDirectory: workingDirectory
-        )
-    }
-}

@@ -4,8 +4,8 @@ import Foundation
 /// setup .exe down from Valve's CDN and run it under the backend's own runtime.
 ///
 /// We delegate to the backend driver's `launch()` rather than calling wine
-/// directly, so this works the same way for CrossOver / Whisky / Kegworks /
-/// Sikarugir / GPTK.
+/// directly, so this works the same way for CrossOver / Whisky / Sikarugir /
+/// GPTK.
 public actor SteamInstaller {
     public static let shared = SteamInstaller()
 

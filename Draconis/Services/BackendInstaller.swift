@@ -45,8 +45,6 @@ public actor BackendInstaller {
         case .gptk:
             // Apple's official tap.
             return ("apple/apple", "game-porting-toolkit")
-        case .kegworks:
-            return ("Kegworks-App/kegworks", "kegworks")
         case .sikarugir:
             return ("Sikarugir-App/sikarugir", "sikarugir")
         case .crossover, .whisky, .custom:

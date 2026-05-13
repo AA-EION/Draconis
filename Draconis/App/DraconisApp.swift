@@ -121,8 +121,8 @@ struct DraconisCommands: Commands {
             Button("Get Game Porting Toolkit…") {
                 NSWorkspace.shared.open(URL(string: "https://developer.apple.com/games/")!)
             }
-            Button("Get Kegworks…") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Kegworks-App/Kegworks")!)
+            Button("Get Sikarugir…") {
+                NSWorkspace.shared.open(URL(string: "https://github.com/Sikarugir-App/sikarugir")!)
             }
         }
 

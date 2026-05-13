@@ -11,12 +11,15 @@ public actor CrossOverDetector {
         FileManager.default.fileExists(atPath: PathResolver.crossOverApp.path)
     }
 
-    /// CrossOver's bundled wine binary. We try wine64 first since Titanfall 2
-    /// is 64-bit, and fall back to the universal wine launcher.
+    /// CrossOver's wine wrapper script. We prefer the `wine` shell wrapper over
+    /// `wine64` because the wrapper is the only binary that understands CrossOver's
+    /// `--bottle` and `--cx-app` flags (it sets WINEPREFIX, loads per-bottle DXVK/
+    /// MoltenVK config, then delegates to wine64 internally). Calling wine64 directly
+    /// with those flags silently ignores them, leaving the bottle uninitialised.
     public func wineBinary() -> URL? {
         let candidates = [
-            "Contents/SharedSupport/CrossOver/bin/wine64",
             "Contents/SharedSupport/CrossOver/bin/wine",
+            "Contents/SharedSupport/CrossOver/bin/wine64",
         ]
         for sub in candidates {
             let url = PathResolver.crossOverApp.appendingPathComponent(sub)

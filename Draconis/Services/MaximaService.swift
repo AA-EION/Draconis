@@ -138,7 +138,7 @@ public actor MaximaService {
     ///
     /// Checks lsregister's dump for our bundle identifier. This is the most
     /// reliable way since NSWorkspace doesn't expose URL scheme handler queries.
-    public func isHelperRegistered() -> Bool {
+    public func isHelperRegistered() async -> Bool {
         guard FileManager.default.fileExists(atPath: lsregister.path) else {
             return false
         }
@@ -149,12 +149,15 @@ public actor MaximaService {
         proc.standardOutput = out
         proc.standardError = Pipe()
         try? proc.run()
-        proc.waitUntilExit()
-        let raw = String(
-            data: out.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
-        return raw.contains("com.armchairdevelopers.maxima.helper")
+        // Drain and wait off the actor thread to avoid blocking concurrency.
+        return await Task.detached(priority: .utility) {
+            proc.waitUntilExit()
+            let raw = String(
+                data: out.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            return raw.contains("com.armchairdevelopers.maxima.helper")
+        }.value
     }
 
     // MARK: - Install
@@ -203,8 +206,30 @@ public actor MaximaService {
             in: bottle,
             workingDirectory: nil
         )
-        proc.waitUntilExit()
-        Log.ok("maxima.install", "Installer exited with code \(proc.terminationStatus)")
+
+        // Tick the UI every second so the user can see elapsed time.
+        // waitUntilExit() would block the cooperative thread pool and prevent
+        // @MainActor tasks from running, so we use terminationHandler instead.
+        let installStart = Date()
+        let tickTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                let elapsed = Int(-installStart.timeIntervalSinceNow)
+                progress(.init(phase: .installing, fraction: -1,
+                               detail: "Running installer… (\(elapsed)s)"))
+            }
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            proc.terminationHandler = { _ in cont.resume() }
+            if !proc.isRunning { cont.resume() }
+        }
+        tickTask.cancel()
+
+        let code = proc.terminationStatus
+        Log.ok("maxima.install", "Installer exited with code \(code)")
+        if code != 0 {
+            throw MaximaError.installerFailed(code)
+        }
 
         // 5 — Register helper
         progress(.init(phase: .registeringHelper, fraction: -1,

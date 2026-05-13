@@ -139,10 +139,34 @@ public actor MaximaService {
             throw MaximaError.helperNotBundled
         }
 
+        // Strip quarantine from both the helper and Draconis itself.
+        // LaunchServices ignores URL handler claims from quarantined apps.
+        // Without elevated perms these can silently fail (e.g. on /Applications
+        // installs the OS may keep quarantine pinned), so don't block on errors.
         _ = try? runProcess(
             "/usr/bin/xattr",
             arguments: ["-dr", "com.apple.quarantine", helperURL.path]
         )
+        _ = try? runProcess(
+            "/usr/bin/xattr",
+            arguments: ["-dr", "com.apple.quarantine", Bundle.main.bundleURL.path]
+        )
+
+        // Unregister any stale copies of the helper that LaunchServices knows
+        // about — leftovers from mounted DMGs (each Draconis-vX.dmg download
+        // becomes /Volumes/Draconis N/), local Debug builds in DerivedData,
+        // installers extracted to /private/tmp, etc. If any of those win the
+        // qrc:// binding, setDefaultApplication below silently no-ops.
+        let canonicalOurs = helperURL.resolvingSymlinksInPath().standardizedFileURL.path
+        let known = await MainActor.run {
+            NSWorkspace.shared.urlsForApplications(withBundleIdentifier: helperBundleID)
+        }
+        for url in known {
+            let canonical = url.resolvingSymlinksInPath().standardizedFileURL.path
+            if canonical == canonicalOurs { continue }
+            Log.info("maxima.helper", "Unregistering stale copy at \(canonical)")
+            _ = try? runProcess(lsregister.path, arguments: ["-u", canonical])
+        }
 
         let result = try runProcess(lsregister.path, arguments: ["-f", helperURL.path])
         guard result.exitCode == 0 else {
@@ -172,6 +196,8 @@ public actor MaximaService {
         }
         Log.ok("maxima.helper", "MaximaHelper is now the default qrc:// handler")
     }
+
+    private let helperBundleID = "com.armchairdevelopers.maxima.helper"
 
     private struct ProcessResult {
         let exitCode: Int32

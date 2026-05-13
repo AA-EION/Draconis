@@ -156,7 +156,7 @@ struct SettingsView: View {
                 GlassEffectContainer {
                     Text("""
                     Draconis launches Titanfall 2 through each backend's own runtime — \
-                    CrossOver's wine --bottle --cx-app, Whisky's bundled wine64, \
+                    CrossOver's cxstart --bottle --wait, Whisky's bundled wine64, \
                     Sikarugir wrappers' bundled wine, or Apple's gameportingtoolkit. \
                     It never invokes a system wine.
                     """)

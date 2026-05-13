@@ -13,9 +13,9 @@ public actor CrossOverDetector {
 
     /// CrossOver's wine wrapper script. We prefer the `wine` shell wrapper over
     /// `wine64` because the wrapper is the only binary that understands CrossOver's
-    /// `--bottle` and `--cx-app` flags (it sets WINEPREFIX, loads per-bottle DXVK/
-    /// MoltenVK config, then delegates to wine64 internally). Calling wine64 directly
-    /// with those flags silently ignores them, leaving the bottle uninitialised.
+    /// `--bottle` flag (it sets WINEPREFIX, loads per-bottle DXVK/MoltenVK config,
+    /// then delegates to wine64 internally). Calling wine64 directly with that
+    /// flag silently ignores it, leaving the bottle uninitialised.
     public func wineBinary() -> URL? {
         let candidates = [
             "Contents/SharedSupport/CrossOver/bin/wine",
@@ -28,6 +28,16 @@ public actor CrossOverDetector {
             }
         }
         return nil
+    }
+
+    /// CrossOver's `cxstart` CLI. This is the supported way to run an arbitrary
+    /// executable inside a bottle: it accepts a POSIX path, sets up the bottle
+    /// environment, and (with `--wait`) blocks until the wine process exits so
+    /// `terminationStatus` reflects the real app exit code.
+    public func cxstartBinary() -> URL? {
+        let url = PathResolver.crossOverApp
+            .appendingPathComponent("Contents/SharedSupport/CrossOver/bin/cxstart")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
     /// Enumerate bottles in ~/Library/Application Support/CrossOver/Bottles.

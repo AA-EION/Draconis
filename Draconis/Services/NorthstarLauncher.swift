@@ -52,21 +52,24 @@ public actor NorthstarLauncher {
             Log.error("northstar.launch", "Titanfall 2 root not found in prefix")
             throw LaunchError.titanfallNotFound
         }
-        let exeName = mode == .northstar ? "NorthstarLauncher.exe" : "Titanfall2.exe"
-        let exePath = (tf2Root as NSString).appendingPathComponent(exeName)
+        // Both modes go through NorthstarLauncher.exe — vanilla just adds
+        // `-vanilla`, which boots the unmodded game while still using
+        // Northstar's auth bypass. Launching Titanfall2.exe directly fails
+        // silently on CrossOver bottles (it spawns wine processes but the
+        // game exits because real EA/Origin auth is missing), so we never
+        // invoke it. UI must gate the launch button on hasNorthstar.
+        let exePath = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
         guard FileManager.default.fileExists(atPath: exePath) else {
-            Log.error("northstar.launch", "\(exeName) missing at \(exePath)")
-            throw mode == .northstar
-                ? LaunchError.northstarNotFound
-                : LaunchError.titanfallNotFound
+            Log.error("northstar.launch", "NorthstarLauncher.exe missing at \(exePath)")
+            throw LaunchError.northstarNotFound
         }
 
         guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
             throw LaunchError.noDriverForBackend(bottle.backend)
         }
 
-        var args: [String] = []
-        if mode == .northstar { args.append("-novid") }
+        var args: [String] = ["-novid"]
+        if mode == .vanilla { args.append("-vanilla") }
         args.append(contentsOf: extraArgs)
 
         Log.info("northstar.launch", "Handing off to \(bottle.backend.displayName) driver…")

@@ -168,7 +168,7 @@ struct PlayView: View {
                 .disabled(
                     env.selectedBottle == nil
                     || env.launchInFlight
-                    || (mode == .northstar && env.selectedBottle?.hasNorthstar != true)
+                    || env.selectedBottle?.hasNorthstar != true
                 )
 
                 Button {
@@ -228,7 +228,7 @@ struct PlayView: View {
             // Action row
             HStack(spacing: 12) {
                 if env.maximaInstalled && env.maximaHelperRegistered {
-                    // Ready — show launch button
+                    // Ready — show launch button + uninstall
                     Button {
                         Task { await env.launchMaxima() }
                     } label: {
@@ -247,6 +247,21 @@ struct PlayView: View {
                         || env.maximaInFlight
                         || env.selectedBottle?.hasTitanfall2 != true
                     )
+
+                    Button {
+                        Task { await env.uninstallMaxima() }
+                    } label: {
+                        Label(
+                            env.maximaSettingUp ? "Uninstalling…" : "Uninstall",
+                            systemImage: env.maximaSettingUp
+                                ? "hourglass" : "trash"
+                        )
+                        .font(TF.title(14))
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(env.selectedBottle == nil || env.maximaSettingUp || env.maximaInFlight)
                 } else {
                     // Not ready — show setup button
                     Button {
@@ -268,6 +283,22 @@ struct PlayView: View {
                         || env.maximaSettingUp
                         || env.selectedBottle?.hasTitanfall2 != true
                     )
+
+                    // Allow uninstalling helper registration even when
+                    // Maxima itself isn't in the bottle anymore (e.g.
+                    // user wants another app to own qrc://).
+                    if env.maximaHelperRegistered {
+                        Button {
+                            Task { await env.uninstallMaxima() }
+                        } label: {
+                            Label("Unregister", systemImage: "trash")
+                                .font(TF.title(14))
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.glass)
+                        .disabled(env.maximaSettingUp)
+                    }
                 }
             }
             .padding([.horizontal, .bottom], 18)

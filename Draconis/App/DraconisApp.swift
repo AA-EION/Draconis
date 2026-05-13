@@ -12,7 +12,7 @@ struct DraconisApp: App {
                 .frame(minWidth: 980, minHeight: 620)
                 .task { await environment.bootstrap() }
                 .background(WindowConfigurator())
-                .background(TransparentBackdrop())
+                .background(TransparentBackdrop().ignoresSafeArea())
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
@@ -51,7 +51,11 @@ struct DraconisCommands: Commands {
                 Task { await env.launch(mode: .vanilla) }
             }
             .keyboardShortcut("l", modifiers: [.command, .shift])
-            .disabled(env.selectedBottle == nil || env.launchInFlight)
+            .disabled(
+                env.selectedBottle == nil
+                || env.launchInFlight
+                || env.selectedBottle?.hasNorthstar != true
+            )
 
             Divider()
 
@@ -145,11 +149,12 @@ struct DraconisCommands: Commands {
 
 // MARK: - NSWindow transparency
 //
-// We want the user to *see through* Draconis onto whatever's behind it, while
-// still keeping Liquid Glass surfaces inside the window legible.
-//   • backgroundColor = .clear, isOpaque = false → window itself is transparent
-//   • Behind everything, an NSVisualEffectView with .hudWindow material gives a
-//     very soft tint so the Liquid Glass on top has something to refract.
+// We want a frosted/blurred backdrop behind the Liquid Glass surfaces so they
+// have something to refract, instead of letting the raw desktop show through.
+//   • titlebarAppearsTransparent + fullSizeContentView make the title bar
+//     blend into the content area
+//   • An NSVisualEffectView with .windowBackground material fills the ENTIRE
+//     window (titlebar area included) with a consistent dark frosted blur
 
 private struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { NSView() }
@@ -158,20 +163,18 @@ private struct WindowConfigurator: NSViewRepresentable {
             guard let window = nsView.window else { return }
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.isOpaque = false
-            window.backgroundColor = .clear
             window.hasShadow = true
             window.styleMask.insert(.fullSizeContentView)
         }
     }
 }
 
-/// Faint blurred backdrop sitting behind the SwiftUI content. NSVisualEffectView
-/// with `.behindWindow` blending lets the desktop / other windows show through.
+/// Frosted backdrop covering the entire window — including under the
+/// (transparent) title bar — so there is no bare-desktop strip at the top.
 private struct TransparentBackdrop: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
-        v.material = .hudWindow
+        v.material = .windowBackground
         v.blendingMode = .behindWindow
         v.state = .active
         v.isEmphasized = false

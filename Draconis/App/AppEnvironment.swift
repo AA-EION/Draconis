@@ -196,6 +196,30 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
+    public func uninstallMaxima() async {
+        maximaSettingUp = true
+        maximaError = nil
+        maximaProgress = nil
+        defer { maximaSettingUp = false; maximaProgress = nil }
+        do {
+            // If Maxima is in the bottle, run its uninstaller (which also
+            // unregisters the helper at the end). Otherwise just unregister
+            // the helper so another app can claim qrc://.
+            if let bottle = selectedBottle,
+               await MaximaService.shared.isInstalled(in: bottle) {
+                try await MaximaService.shared.uninstall(from: bottle) { @Sendable p in
+                    Task { @MainActor in self.maximaProgress = p }
+                }
+            } else {
+                try await MaximaService.shared.unregisterHelper()
+            }
+            await refreshMaximaState()
+        } catch {
+            maximaError = error.localizedDescription
+            DebugLog.shared.error("maxima", error.localizedDescription)
+        }
+    }
+
     public func launchMaxima() async {
         guard let bottle = selectedBottle else { return }
         maximaInFlight = true

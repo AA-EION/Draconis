@@ -101,11 +101,21 @@ public actor MaximaService {
 
     /// POSIX path to maxima-cli.exe inside the bottle, or nil if not installed.
     public func maximaCliPath(in bottle: WineBottle) -> String? {
+        maximaFilePath(in: bottle, named: "maxima-cli.exe")
+    }
+
+    /// POSIX path to MaximaSetup's NSIS uninstaller (`Uninstall.exe`) inside
+    /// the bottle, or nil if not present.
+    public func uninstallerPath(in bottle: WineBottle) -> String? {
+        maximaFilePath(in: bottle, named: "Uninstall.exe")
+    }
+
+    private func maximaFilePath(in bottle: WineBottle, named filename: String) -> String? {
         let driveC = PathResolver.driveC(in: bottle.prefixURL)
         for dir in possibleInstallDirs {
             let url = driveC
                 .appendingPathComponent(dir)
-                .appendingPathComponent("maxima-cli.exe")
+                .appendingPathComponent(filename)
             if FileManager.default.fileExists(atPath: url.path) {
                 return url.path
             }
@@ -197,6 +207,23 @@ public actor MaximaService {
         Log.ok("maxima.helper", "MaximaHelper is now the default qrc:// handler")
     }
 
+    /// Removes the qrc:// scheme claim and unregisters every known copy of
+    /// MaximaHelper from LaunchServices. Use this when uninstalling Maxima
+    /// or when the user wants another app (e.g. EA's launcher inside
+    /// CrossOver) to own qrc://.
+    public func unregisterHelper() async throws {
+        let known = await MainActor.run {
+            NSWorkspace.shared.urlsForApplications(withBundleIdentifier: helperBundleID)
+        }
+        for url in known {
+            let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+            Log.info("maxima.helper", "Unregistering \(path)")
+            _ = try? runProcess(lsregister.path, arguments: ["-u", path])
+        }
+        Log.ok("maxima.helper",
+               "MaximaHelper removed from LaunchServices (\(known.count) copies)")
+    }
+
     private let helperBundleID = "com.armchairdevelopers.maxima.helper"
 
     private struct ProcessResult {
@@ -261,7 +288,15 @@ public actor MaximaService {
             progress(.init(phase: .downloading, fraction: p.fraction, detail: p.detail))
         }
 
-        // 3 — Copy into bottle so the installer runs with correct Wine paths
+        // 3 — If Maxima is already installed we're effectively updating;
+        //     run the uninstaller first so the new version isn't fighting
+        //     a running maxima-cli or stale files. Best-effort.
+        if isInstalled(in: bottle) {
+            progress(.init(phase: .installing, fraction: -1,
+                           detail: "Removing previous Maxima install…"))
+            try? await uninstall(from: bottle) { _ in }
+        }
+
         progress(.init(phase: .installing, fraction: -1, detail: "Running installer…"))
         let bottleTemp = PathResolver.driveC(in: bottle.prefixURL)
             .appendingPathComponent("windows/Temp/MaximaSetup.exe")
@@ -316,6 +351,77 @@ public actor MaximaService {
         try await registerHelper()
 
         progress(.init(phase: .done, fraction: 1, detail: "Maxima is ready"))
+    }
+
+    // MARK: - Uninstall
+
+    /// Runs Maxima's bundled NSIS uninstaller inside the bottle (silently),
+    /// then unregisters the macOS helper. Before invoking the uninstaller
+    /// it kills wineserver processes for this prefix so an in-flight
+    /// maxima-cli or other locked file doesn't block removal.
+    public func uninstall(
+        from bottle: WineBottle,
+        progress: @escaping ProgressHandler
+    ) async throws {
+        guard let uninstallerPath = uninstallerPath(in: bottle) else {
+            throw MaximaError.notInstalled
+        }
+        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
+            throw MaximaError.noDriver
+        }
+
+        progress(.init(phase: .installing, fraction: -1,
+                       detail: "Stopping bottle processes…"))
+        await killBottleProcesses(bottle: bottle)
+
+        progress(.init(phase: .installing, fraction: -1,
+                       detail: "Running uninstaller…"))
+        let proc = try await driver.launch(
+            executable: uninstallerPath,
+            arguments: ["/S"],
+            in: bottle,
+            workingDirectory: nil
+        )
+
+        let start = Date()
+        let tickTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                let elapsed = Int(-start.timeIntervalSinceNow)
+                progress(.init(phase: .installing, fraction: -1,
+                               detail: "Running uninstaller… (\(elapsed)s)"))
+            }
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            proc.terminationHandler = { _ in cont.resume() }
+            if !proc.isRunning { cont.resume() }
+        }
+        tickTask.cancel()
+
+        let code = proc.terminationStatus
+        Log.ok("maxima.uninstall", "Uninstaller exited with code \(code)")
+        if code != 0 {
+            throw MaximaError.installerFailed(code)
+        }
+
+        progress(.init(phase: .registeringHelper, fraction: -1,
+                       detail: "Removing MaximaHelper handler…"))
+        try await unregisterHelper()
+
+        progress(.init(phase: .done, fraction: 1, detail: "Maxima uninstalled"))
+    }
+
+    /// `wineserver -k` against the bottle's WINEPREFIX kills every wine
+    /// process attached to that prefix. Best-effort — failure isn't fatal,
+    /// the uninstaller will just report any locked files itself.
+    private func killBottleProcesses(bottle: WineBottle) async {
+        guard let wine = bottle.wineBinaryURL else { return }
+        let wineserver = wine.deletingLastPathComponent()
+            .appendingPathComponent("wineserver")
+        guard FileManager.default.fileExists(atPath: wineserver.path) else { return }
+        _ = try? runProcess(wineserver.path, arguments: ["-k"])
+        // wineserver -k is async; give it a moment to actually quit.
+        try? await Task.sleep(nanoseconds: 500_000_000)
     }
 
     // MARK: - Launch

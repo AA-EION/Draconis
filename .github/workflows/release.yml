@@ -49,7 +49,7 @@ jobs:
             --app-drop-link 480 170 \
             --hide-extension "Draconis.app" \
             "Draconis-${GITHUB_REF_NAME}.dmg" \
-            "build/Build/Products/Release/Draconis.app"
+            "build/Build/Products/Release/"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

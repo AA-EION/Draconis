@@ -5,12 +5,11 @@ import Foundation
 /// Each backend has its **own runtime** — Draconis never tries to be a "wine
 /// front-end" of its own. We always hand off to the backend's own launcher
 /// (CrossOver's `cxbottle`/`wine --cx-app`, Whisky's bundled wine64,
-/// Sikarugir/Kegworks wrapper apps, etc.) so the user gets exactly the same
+/// Sikarugir wrapper apps, etc.) so the user gets exactly the same
 /// behaviour as if they had double-clicked from inside that backend.
 public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, Sendable {
     case crossover
     case gptk
-    case kegworks
     case sikarugir
     case whisky      // legacy, read-only support
     case custom      // user-pointed prefix
@@ -21,7 +20,6 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
         switch self {
         case .crossover: return "CrossOver"
         case .gptk:      return "Apple GPTK"
-        case .kegworks:  return "Kegworks"
         case .sikarugir: return "Sikarugir"
         case .whisky:    return "Whisky (legacy)"
         case .custom:    return "Custom prefix"
@@ -42,7 +40,6 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
         switch self {
         case .crossover: return "wineglass.fill"
         case .gptk:      return "applelogo"
-        case .kegworks:  return "shippingbox.fill"
         case .sikarugir: return "tortoise.fill"
         case .whisky:    return "drop.fill"
         case .custom:    return "questionmark.folder.fill"
@@ -53,7 +50,7 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
     public var canCreateBottles: Bool {
         switch self {
         case .crossover, .gptk: return true
-        case .kegworks, .sikarugir, .whisky, .custom: return false
+        case .sikarugir, .whisky, .custom: return false
         }
     }
 }

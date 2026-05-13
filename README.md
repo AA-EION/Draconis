@@ -23,13 +23,13 @@ Draconis is **not** a Wine front-end of its own — it is a polished native laun
 |---|---|---|
 | CrossOver | Preferred | Use CrossOver UI |
 | Apple Game Porting Toolkit 2 | Recommended | Managed by Draconis |
-| Kegworks (Wineskin successor) | Supported | Use Kegworks UI |
+| Sikarugir (Wineskin successor) | Supported | Use Sikarugir UI |
 | Whisky (discontinued) | Read-only | — |
 
 ## Features
 
 - **One-click launch** of Northstar or vanilla Titanfall 2 from any detected bottle
-- **Backend auto-detection** for CrossOver, GPTK, Kegworks, and Whisky
+- **Backend auto-detection** for CrossOver, GPTK, Sikarugir, and Whisky
 - **Northstar updater** that downloads releases from [`R2Northstar/Northstar`](https://github.com/R2Northstar/Northstar) and applies them in-place
 - **Thunderstore mod browser** with install / enable / disable / uninstall support
 - **Server browser** backed by the Northstar masterserver
@@ -40,7 +40,7 @@ Draconis is **not** a Wine front-end of its own — it is a polished native laun
 
 - macOS Tahoe (26) or later
 - Xcode 26 or later
-- A wine/translation layer (CrossOver, GPTK, or Kegworks)
+- A wine/translation layer (CrossOver, GPTK, or Sikarugir)
 - A legal copy of Titanfall 2 (Steam, Origin, or EA App)
 
 ## Building
@@ -99,7 +99,7 @@ Draconis/
 - The Northstar team at [R2Northstar](https://github.com/R2Northstar)
 - [Viper](https://github.com/0neGal/viper) by 0neGal — the original launcher that inspired Draconis
 - Apple's Game Porting Toolkit team
-- The Kegworks / former Wineskin maintainers
+- The Sikarugir / former Wineskin maintainers
 
 ## License
 

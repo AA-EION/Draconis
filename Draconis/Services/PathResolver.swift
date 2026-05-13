@@ -72,21 +72,16 @@ public enum PathResolver {
     public static let whiskyWineBinary: URL = applicationSupport
         .appendingPathComponent("Whisky/Libraries/Wine/bin/wine64")
 
-    /// Kegworks wrappers live in ~/Applications/Wineskin or ~/Applications,
+    /// Sikarugir wrappers live in ~/Applications/Sikarugir or ~/Applications,
     /// each as a self-contained .app bundle with `Contents/SharedSupport/wine`.
-    public static let kegworksWrapperRoots: [URL] = [
-        home.appendingPathComponent("Applications/Wineskin", isDirectory: true),
-        home.appendingPathComponent("Applications/Kegworks", isDirectory: true),
-        home.appendingPathComponent("Applications", isDirectory: true),
-    ]
-
-    /// Sikarugir is the *predecessor* of Kegworks (gcenx). Wrappers live in
-    /// the same kind of location and use the same self-contained .app pattern.
+    /// Legacy paths (Wineskin, Kegworks) are included for backwards compatibility.
     public static let sikarugirAppRoot = URL(
         fileURLWithPath: "/Applications/Sikarugir"
     )
     public static let sikarugirWrapperRoots: [URL] = [
         home.appendingPathComponent("Applications/Sikarugir", isDirectory: true),
+        home.appendingPathComponent("Applications/Kegworks", isDirectory: true),
+        home.appendingPathComponent("Applications/Wineskin", isDirectory: true),
         home.appendingPathComponent("Applications", isDirectory: true),
     ]
 

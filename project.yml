@@ -28,7 +28,7 @@ settings:
     DEVELOPMENT_TEAM: ""
     SWIFT_STRICT_CONCURRENCY: minimal
     GENERATE_INFOPLIST_FILE: NO
-    MARKETING_VERSION: "0.3.2"
+    MARKETING_VERSION: "0.3.3"
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
@@ -42,17 +42,13 @@ targets:
           - "**/*.md"
           - "Resources/Info.plist"
           - "Resources/Draconis.entitlements"
-    preBuildScripts:
-      - name: Fetch MaximaHelper
+    postBuildScripts:
+      - name: Fetch and bundle MaximaHelper
         script: |
           bash "${SRCROOT}/Scripts/fetch-maxima-helper.sh"
-        outputFiles:
-          - $(SRCROOT)/Draconis/Resources/MaximaHelper.app/Contents/MacOS/MaximaHelper
     resources:
       - path: Draconis/Resources/Assets.xcassets
       - path: Draconis/Resources/Draconis.icon
-      - path: Draconis/Resources/MaximaHelper.app
-        optional: true
     info:
       path: Draconis/Resources/Info.plist
     entitlements:

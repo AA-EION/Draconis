@@ -1,10 +1,16 @@
 #!/bin/bash
-# Fetches MaximaHelper.app from the latest AA-EION/Maxima-Draconis release.
+# Fetches MaximaHelper.app from the latest AA-EION/Maxima-Draconis release and
+# copies it into the built Draconis.app's Resources directory.
+#
+# We cannot rely on Xcode's "Copy Bundle Resources" phase because the .app
+# does not exist at `xcodegen generate` time — with `optional: true`,
+# XcodeGen omits the PBX reference and the resource is never copied. So this
+# script handles the copy itself, into BUILT_PRODUCTS_DIR.
+#
 # Caches by tag name — re-downloads only when a new release is published.
-# Run automatically as a pre-build phase by Xcode.
 set -euo pipefail
 
-DEST="${SRCROOT}/Draconis/Resources/MaximaHelper.app"
+CACHE_DIR="${SRCROOT}/Draconis/Resources/MaximaHelper.app"
 CACHE_TAG_FILE="${SRCROOT}/Draconis/Resources/.maxima_helper_version"
 API_URL="https://api.github.com/repos/AA-EION/Maxima-Draconis/releases/latest"
 
@@ -37,18 +43,26 @@ if [ -f "$CACHE_TAG_FILE" ]; then
     CACHED_TAG=$(cat "$CACHE_TAG_FILE")
 fi
 
-if [ "$CACHED_TAG" = "$LATEST_TAG" ] && [ -d "$DEST" ]; then
-    echo "==> MaximaHelper already at ${LATEST_TAG} -- skipping download."
-    exit 0
+if [ "$CACHED_TAG" = "$LATEST_TAG" ] && [ -d "$CACHE_DIR" ]; then
+    echo "==> MaximaHelper already cached at ${LATEST_TAG}."
+else
+    echo "==> Downloading MaximaHelper ${LATEST_TAG}..."
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    curl -sL "$DOWNLOAD_URL" -o "$TMP/MaximaHelper.zip"
+    rm -rf "$CACHE_DIR"
+    unzip -q "$TMP/MaximaHelper.zip" -d "$TMP"
+    cp -R "$TMP/MaximaHelper.app" "$CACHE_DIR"
+    echo "$LATEST_TAG" > "$CACHE_TAG_FILE"
+    echo "==> MaximaHelper ${LATEST_TAG} cached at ${CACHE_DIR}"
 fi
 
-echo "==> Downloading MaximaHelper ${LATEST_TAG}..."
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
-
-curl -sL "$DOWNLOAD_URL" -o "$TMP/MaximaHelper.zip"
-rm -rf "$DEST"
-unzip -q "$TMP/MaximaHelper.zip" -d "$TMP"
-cp -R "$TMP/MaximaHelper.app" "$DEST"
-echo "$LATEST_TAG" > "$CACHE_TAG_FILE"
-echo "==> MaximaHelper ${LATEST_TAG} installed at ${DEST}"
+if [ -n "${BUILT_PRODUCTS_DIR:-}" ] && [ -n "${PRODUCT_NAME:-}" ]; then
+    BUNDLE_RESOURCES="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Contents/Resources"
+    mkdir -p "$BUNDLE_RESOURCES"
+    rm -rf "$BUNDLE_RESOURCES/MaximaHelper.app"
+    cp -R "$CACHE_DIR" "$BUNDLE_RESOURCES/MaximaHelper.app"
+    echo "==> MaximaHelper copied into ${BUNDLE_RESOURCES}/MaximaHelper.app"
+else
+    echo "==> BUILT_PRODUCTS_DIR not set; skipping bundle copy (cache-only run)."
+fi

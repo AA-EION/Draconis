@@ -9,11 +9,13 @@ struct PlayView: View {
             VStack(spacing: 22) {
                 heroCard
                 bottleStatusCard
-                if let p = env.updateProgress { progressCard(p) }
-                if let err = env.lastUpdateError ?? env.lastLaunchError {
+                if let p = env.updateProgress  { northstarProgressCard(p) }
+                if let p = env.maximaProgress  { maximaProgressCard(p) }
+                if let err = env.lastUpdateError ?? env.lastLaunchError ?? env.maximaError {
                     errorCard(err)
                 }
                 actionsCard
+                maximaCard
                 Spacer(minLength: 60)
             }
             .padding(28)
@@ -23,7 +25,7 @@ struct PlayView: View {
         .scrollContentBackground(.hidden)
     }
 
-    // MARK: - Cards
+    // MARK: - Hero
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -52,6 +54,8 @@ struct PlayView: View {
         )
     }
 
+    // MARK: - Status pills
+
     private var bottleStatusCard: some View {
         HStack(spacing: 14) {
             StatusPill(
@@ -77,38 +81,65 @@ struct PlayView: View {
         }
     }
 
+    // MARK: - Progress cards
+
     @ViewBuilder
-    private func progressCard(_ p: NorthstarUpdater.Progress) -> some View {
+    private func northstarProgressCard(_ p: NorthstarUpdater.Progress) -> some View {
+        progressCard(
+            phase: northstarPhaseLabel(p.phase),
+            fraction: p.fraction,
+            detail: p.detail,
+            tint: .accentColor
+        )
+    }
+
+    @ViewBuilder
+    private func maximaProgressCard(_ p: MaximaService.Progress) -> some View {
+        progressCard(
+            phase: p.phase.label,
+            fraction: p.fraction,
+            detail: p.detail,
+            tint: .orange
+        )
+    }
+
+    @ViewBuilder
+    private func progressCard(
+        phase: String,
+        fraction: Double,
+        detail: String,
+        tint: Color
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(phaseLabel(p.phase)).stencilLabel()
+                Text(phase).stencilLabel()
                 Spacer()
-                Text(p.detail)
+                Text(detail)
                     .font(TF.body(12))
                     .foregroundStyle(.white.opacity(0.75))
             }
-            if p.fraction < 0 {
-                ProgressView()
-                    .progressViewStyle(.linear)
+            if fraction < 0 {
+                ProgressView().progressViewStyle(.linear)
             } else {
-                ProgressView(value: p.fraction)
+                ProgressView(value: fraction)
                     .progressViewStyle(.linear)
-                    .tint(.accentColor)
+                    .tint(tint)
             }
         }
         .padding(16)
-        .glassEffect(.regular.tint(.accentColor.opacity(0.10)),
-                     in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(tint.opacity(0.10)), in: .rect(cornerRadius: 18))
     }
 
-    private func phaseLabel(_ phase: NorthstarUpdater.Progress.Phase) -> String {
+    private func northstarPhaseLabel(_ phase: NorthstarUpdater.Progress.Phase) -> String {
         switch phase {
-        case .fetchingReleases:  return "FETCHING"
-        case .downloading:       return "DOWNLOADING"
-        case .extracting:        return "EXTRACTING"
-        case .done:              return "DONE"
+        case .fetchingReleases: return "FETCHING"
+        case .downloading:      return "DOWNLOADING"
+        case .extracting:       return "EXTRACTING"
+        case .done:             return "DONE"
         }
     }
+
+    // MARK: - Northstar / Vanilla actions
 
     private var actionsCard: some View {
         VStack(spacing: 16) {
@@ -137,8 +168,7 @@ struct PlayView: View {
                 .disabled(
                     env.selectedBottle == nil
                     || env.launchInFlight
-                    || (mode == .northstar
-                        && env.selectedBottle?.hasNorthstar != true)
+                    || (mode == .northstar && env.selectedBottle?.hasNorthstar != true)
                 )
 
                 Button {
@@ -158,9 +188,117 @@ struct PlayView: View {
             .padding([.horizontal, .bottom], 18)
         }
         .padding(.top, 18)
-        .glassEffect(.regular.tint(.white.opacity(0.04)),
-                     in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 22))
     }
+
+    // MARK: - Maxima card
+
+    private var maximaCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "gamecontroller.fill")
+                    .foregroundStyle(.orange.opacity(0.85))
+                Text("EA (MAXIMA)")
+                    .stencilLabel(color: .orange.opacity(0.85))
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
+
+            // Status pills
+            HStack(spacing: 10) {
+                StatusPill(
+                    label: "MaximaHelper",
+                    value: env.maximaHelperRegistered ? "Registered" : "Not registered",
+                    symbol: env.maximaHelperRegistered
+                        ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
+                    tone: env.maximaHelperRegistered ? .green : .orange
+                )
+                StatusPill(
+                    label: "Maxima",
+                    value: env.maximaInstalled ? "Installed" : "Not installed",
+                    symbol: env.maximaInstalled
+                        ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
+                    tone: env.maximaInstalled ? .green : .orange
+                )
+            }
+            .padding(.horizontal, 18)
+
+            // Action row
+            HStack(spacing: 12) {
+                if env.maximaInstalled && env.maximaHelperRegistered {
+                    // Ready — show launch button
+                    Button {
+                        Task { await env.launchMaxima() }
+                    } label: {
+                        Label(
+                            env.maximaInFlight ? "Launching…" : "Launch with EA",
+                            systemImage: env.maximaInFlight ? "hourglass" : "play.fill"
+                        )
+                        .font(TF.title(16))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(.orange)
+                    .disabled(
+                        env.selectedBottle == nil
+                        || env.maximaInFlight
+                        || env.selectedBottle?.hasTitanfall2 != true
+                    )
+                } else {
+                    // Not ready — show setup button
+                    Button {
+                        Task { await env.setupMaxima() }
+                    } label: {
+                        Label(
+                            env.maximaSettingUp ? "Setting up…" : "Set up Maxima",
+                            systemImage: env.maximaSettingUp
+                                ? "hourglass" : "arrow.down.circle.fill"
+                        )
+                        .font(TF.title(16))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(.orange)
+                    .disabled(
+                        env.selectedBottle == nil
+                        || env.maximaSettingUp
+                        || env.selectedBottle?.hasTitanfall2 != true
+                    )
+                }
+            }
+            .padding([.horizontal, .bottom], 18)
+
+            // Info note when not set up
+            if !env.maximaInstalled || !env.maximaHelperRegistered {
+                Text(maximaSetupNote)
+                    .font(TF.body(11))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 14)
+            }
+        }
+        .glassEffect(.regular.tint(.orange.opacity(0.06)), in: .rect(cornerRadius: 22))
+    }
+
+    private var maximaSetupNote: String {
+        if env.selectedBottle?.hasTitanfall2 != true {
+            return "Titanfall 2 must be installed in the bottle before setting up Maxima."
+        }
+        if !env.maximaInstalled && !env.maximaHelperRegistered {
+            return "Maxima installs the EA launcher replacement inside your CrossOver bottle " +
+                   "and registers a background helper on your Mac to handle EA's login redirect."
+        }
+        if !env.maximaInstalled {
+            return "Maxima is not yet installed in this bottle."
+        }
+        return "MaximaHelper is not registered. Re-run setup to fix this."
+    }
+
+    // MARK: - Error card
 
     @ViewBuilder
     private func errorCard(_ msg: String) -> some View {
@@ -175,8 +313,7 @@ struct PlayView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .glassEffect(.regular.tint(.red.opacity(0.18)),
-                     in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(.red.opacity(0.18)), in: .rect(cornerRadius: 14))
     }
 }
 

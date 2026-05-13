@@ -45,6 +45,8 @@ targets:
     resources:
       - path: Draconis/Resources/Assets.xcassets
       - path: Draconis/Resources/Draconis.icon
+      - path: Draconis/Resources/MaximaHelper.app
+        optional: true
     info:
       path: Draconis/Resources/Info.plist
     entitlements:

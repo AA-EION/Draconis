@@ -39,3 +39,4 @@ legacy/out/
 .vscode/
 .idea/
 *.swp
+.claude/

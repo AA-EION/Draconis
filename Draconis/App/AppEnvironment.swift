@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 import Combine
 
 /// Single source of truth for app-wide state.
@@ -65,8 +66,29 @@ public final class AppEnvironment: ObservableObject {
         bottles.first { $0.id == selectedBottleID }
     }
 
+    private var activationObserver: NSObjectProtocol?
+
     public init() {
         DebugLog.shared.info("app", "Draconis starting up")
+
+        // Re-check Maxima state when the user comes back to Draconis — covers
+        // the case where they installed Maxima inside CrossOver or registered
+        // the helper from outside, without re-opening the app.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshMaximaState()
+            }
+        }
+    }
+
+    deinit {
+        if let observer = activationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Bootstrap

@@ -60,6 +60,7 @@ public actor MaximaService {
     public enum MaximaError: Error, LocalizedError {
         case notInstalled
         case helperNotBundled
+        case helperRegistrationFailed(code: Int32, stderr: String)
         case noDriver
         case noInstallerAsset
         case installerDownloadFailed(String)
@@ -72,6 +73,10 @@ public actor MaximaService {
                 return "Maxima is not installed in this bottle. Use 'Set up Maxima' first."
             case .helperNotBundled:
                 return "MaximaHelper.app is missing from the Draconis bundle."
+            case .helperRegistrationFailed(let code, let stderr):
+                let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                return "MaximaHelper registration failed (lsregister exit \(code))"
+                    + (trimmed.isEmpty ? "" : ": \(trimmed)")
             case .noDriver:
                 return "No Wine driver available for this bottle's backend."
             case .noInstallerAsset:
@@ -124,14 +129,48 @@ public actor MaximaService {
         guard let helperURL = bundledHelperURL else {
             throw MaximaError.helperNotBundled
         }
+
+        // When Draconis is delivered via DMG, the OS applies com.apple.quarantine
+        // to the .app and everything inside it. LaunchServices will register a
+        // quarantined helper but then ignore its URL handler claims, so qrc://
+        // doesn't get bound. Strip it before registering.
+        _ = try? runProcess(
+            "/usr/bin/xattr",
+            arguments: ["-dr", "com.apple.quarantine", helperURL.path]
+        )
+
+        let result = try runProcess(lsregister.path, arguments: ["-f", helperURL.path])
+        guard result.exitCode == 0 else {
+            Log.error("maxima.helper",
+                      "lsregister failed (\(result.exitCode)): \(result.stderr)")
+            throw MaximaError.helperRegistrationFailed(
+                code: result.exitCode, stderr: result.stderr
+            )
+        }
+        Log.ok("maxima.helper", "Registered MaximaHelper at \(helperURL.path)")
+    }
+
+    private struct ProcessResult {
+        let exitCode: Int32
+        let stdout: String
+        let stderr: String
+    }
+
+    private func runProcess(_ executable: String, arguments: [String]) throws -> ProcessResult {
         let proc = Process()
-        proc.executableURL = lsregister
-        proc.arguments = ["-f", helperURL.path]
-        proc.standardOutput = Pipe()
-        proc.standardError = Pipe()
+        let out = Pipe()
+        let err = Pipe()
+        proc.executableURL = URL(fileURLWithPath: executable)
+        proc.arguments = arguments
+        proc.standardOutput = out
+        proc.standardError = err
         try proc.run()
         proc.waitUntilExit()
-        Log.ok("maxima.helper", "Registered MaximaHelper at \(helperURL.path)")
+        let outStr = String(data: out.fileHandleForReading.readDataToEndOfFile(),
+                            encoding: .utf8) ?? ""
+        let errStr = String(data: err.fileHandleForReading.readDataToEndOfFile(),
+                            encoding: .utf8) ?? ""
+        return .init(exitCode: proc.terminationStatus, stdout: outStr, stderr: errStr)
     }
 
     /// True if MaximaHelper is currently the system handler for qrc://.

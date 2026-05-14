@@ -11,7 +11,7 @@ public final class AppEnvironment: ObservableObject {
     @Published public private(set) var bottles: [WineBottle] = []
     @Published public var selectedBottleID: String?
 
-    // CrossOver availability (true iff /Applications/CrossOver.app exists)
+    // CrossOver availability (true iff LaunchServices knows the bundle ID)
     @Published public private(set) var crossOverInstalled: Bool = false
 
     // Launch status
@@ -47,6 +47,9 @@ public final class AppEnvironment: ObservableObject {
 
     // Steam
     @Published public var steamInstalling: Bool = false
+
+    // Auto bottle install (from Onboarding)
+    @Published public var autoInstallStage: BottleInstaller.Stage?
 
     // Maxima
     @Published public var maximaInstalled: Bool = false
@@ -127,6 +130,35 @@ public final class AppEnvironment: ObservableObject {
     /// hand-off was brittle and couldn't reach CrossOver's CrossTie database.
     public func openCrossOver() {
         NSWorkspace.shared.open(PathResolver.crossOverApp)
+    }
+
+    // MARK: - Auto bottle install
+
+    /// Hand the bundled Titanfall2.tie off to CrossOver and start polling
+    /// CrossOver's bottle directory every 5 s. UI observes `autoInstallStage`.
+    public func startAutoBottleInstall(frontend: BottleInstaller.Frontend) {
+        guard frontend == .steam else {
+            DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) frontend not implemented yet")
+            return
+        }
+        autoInstallStage = .waitingForBottle
+        _ = BottleInstaller.shared.openTitanfall2Crosstie()
+        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
+            guard let self else { return }
+            self.autoInstallStage = stage
+            Task { await self.refreshBottles() }
+            if case .waitingForTitanfall(let id) = stage {
+                self.selectedBottleID = id
+            }
+            if case .done(let id) = stage {
+                self.selectedBottleID = id
+            }
+        }
+    }
+
+    public func cancelAutoBottleInstall() {
+        BottleInstaller.shared.stopWatching()
+        autoInstallStage = nil
     }
 
     // MARK: - Maxima

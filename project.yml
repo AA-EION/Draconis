@@ -45,6 +45,7 @@ targets:
     resources:
       - path: Draconis/Resources/Assets.xcassets
       - path: Draconis/Resources/Draconis.icon
+      - path: Draconis/Resources/Titanfall2.tie
       # Fetched + re-signed by Scripts/fetch-maxima-helper.sh BEFORE
       # `xcodegen generate` runs. bootstrap.sh and the CI workflows handle
       # this for the developer.

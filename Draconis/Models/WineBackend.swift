@@ -90,6 +90,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     public var wineBinaryURL: URL?  // optional explicit wine64 / wine to use
     public var hasNorthstar: Bool
     public var hasTitanfall2: Bool
+    public var hasSteam: Bool
     public var titanfall2InstallPath: String?  // POSIX path to TF2 root inside drive_c
 
     public init(
@@ -100,6 +101,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         wineBinaryURL: URL? = nil,
         hasNorthstar: Bool = false,
         hasTitanfall2: Bool = false,
+        hasSteam: Bool = false,
         titanfall2InstallPath: String? = nil
     ) {
         self.id = id
@@ -109,6 +111,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         self.wineBinaryURL = wineBinaryURL
         self.hasNorthstar = hasNorthstar
         self.hasTitanfall2 = hasTitanfall2
+        self.hasSteam = hasSteam
         self.titanfall2InstallPath = titanfall2InstallPath
     }
 }

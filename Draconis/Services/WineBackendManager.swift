@@ -210,6 +210,7 @@ struct GPTKDriver: WineBackendDriver {
                 wineBinaryURL: binary,
                 hasNorthstar: ns != nil,
                 hasTitanfall2: tf2 != nil,
+                hasSteam: SteamInstaller.steamExePath(in: url) != nil,
                 titanfall2InstallPath: tf2?.path
             )
         }
@@ -297,6 +298,7 @@ struct WhiskyDriver: WineBackendDriver {
                 wineBinaryURL: PathResolver.whiskyWineBinary,
                 hasNorthstar: ns != nil,
                 hasTitanfall2: tf2 != nil,
+                hasSteam: SteamInstaller.steamExePath(in: url) != nil,
                 titanfall2InstallPath: tf2?.path
             )
         }
@@ -363,6 +365,7 @@ private func wrapperBottles(
                 wineBinaryURL: fm.fileExists(atPath: wine.path) ? wine : nil,
                 hasNorthstar: ns != nil,
                 hasTitanfall2: tf2 != nil,
+                hasSteam: SteamInstaller.steamExePath(in: prefix) != nil,
                 titanfall2InstallPath: tf2?.path
             ))
         }

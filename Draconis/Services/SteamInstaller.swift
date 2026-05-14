@@ -26,12 +26,29 @@ public actor SteamInstaller {
     }
 
     public func isSteamInstalled(in bottle: WineBottle) -> Bool {
-        let driveC = PathResolver.driveC(in: bottle.prefixURL)
-        return FileManager.default.fileExists(
-            atPath: driveC
-                .appendingPathComponent("Program Files (x86)/Steam/steam.exe")
-                .path
-        )
+        steamExePath(in: bottle) != nil
+    }
+
+    /// POSIX path to steam.exe inside the bottle, or nil if not installed.
+    public func steamExePath(in bottle: WineBottle) -> String? {
+        Self.steamExePath(in: bottle.prefixURL)
+    }
+
+    /// Free-function variant so bottle scanners can detect Steam without
+    /// having to `await` an actor.
+    public static func steamExePath(in prefixURL: URL) -> String? {
+        let driveC = PathResolver.driveC(in: prefixURL)
+        let candidates = [
+            "Program Files (x86)/Steam/steam.exe",
+            "Program Files/Steam/steam.exe",
+        ]
+        for rel in candidates {
+            let url = driveC.appendingPathComponent(rel)
+            if FileManager.default.fileExists(atPath: url.path) {
+                return url.path
+            }
+        }
+        return nil
     }
 
     public func ensureInstallerDownloaded() async throws -> URL {

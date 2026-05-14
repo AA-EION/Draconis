@@ -66,17 +66,18 @@ struct PlayView: View {
                 tone: env.selectedBottle?.hasTitanfall2 == true ? .green : .orange
             )
             StatusPill(
+                label: "Steam",
+                value: env.selectedBottle?.hasSteam == true ? "Installed" : "Missing",
+                symbol: env.selectedBottle?.hasSteam == true
+                    ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
+                tone: env.selectedBottle?.hasSteam == true ? .green : .orange
+            )
+            StatusPill(
                 label: "Northstar",
                 value: env.selectedBottle?.hasNorthstar == true ? "Ready" : "Not installed",
                 symbol: env.selectedBottle?.hasNorthstar == true
                     ? "bolt.shield.fill" : "questionmark.diamond.fill",
                 tone: env.selectedBottle?.hasNorthstar == true ? .green : .orange
-            )
-            StatusPill(
-                label: "Backend",
-                value: env.selectedBottle?.backend.displayName ?? "—",
-                symbol: env.selectedBottle?.backend.symbolName ?? "questionmark.folder",
-                tone: .accent
             )
         }
     }
@@ -168,7 +169,9 @@ struct PlayView: View {
                 .disabled(
                     env.selectedBottle == nil
                     || env.launchInFlight
-                    || env.selectedBottle?.hasNorthstar != true
+                    || env.selectedBottle?.hasTitanfall2 != true
+                    || (mode == .northstar && env.selectedBottle?.hasNorthstar != true)
+                    || (mode == .northstar && env.selectedBottle?.hasSteam != true)
                 )
 
                 Button {
@@ -225,28 +228,15 @@ struct PlayView: View {
             }
             .padding(.horizontal, 18)
 
-            // Action row
+            // Action row — Maxima card is setup-only. Launching itself goes
+            // through the main Launch button (which routes via Steam, so
+            // Maxima's link2ea:// bootstrap handles EA auth transparently).
             HStack(spacing: 12) {
                 if env.maximaInstalled && env.maximaHelperRegistered {
-                    // Ready — show launch button + uninstall
-                    Button {
-                        Task { await env.launchMaxima() }
-                    } label: {
-                        Label(
-                            env.maximaInFlight ? "Launching…" : "Launch with EA",
-                            systemImage: env.maximaInFlight ? "hourglass" : "play.fill"
-                        )
-                        .font(TF.title(16))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(.orange)
-                    .disabled(
-                        env.selectedBottle == nil
-                        || env.maximaInFlight
-                        || env.selectedBottle?.hasTitanfall2 != true
-                    )
+                    Text("Maxima is ready. Use the Launch button above to start the game — Steam will run it and Maxima will handle EA login.")
+                        .font(TF.body(12))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                     Button {
                         Task { await env.uninstallMaxima() }
@@ -261,7 +251,7 @@ struct PlayView: View {
                         .padding(.horizontal, 6)
                     }
                     .buttonStyle(.glass)
-                    .disabled(env.selectedBottle == nil || env.maximaSettingUp || env.maximaInFlight)
+                    .disabled(env.selectedBottle == nil || env.maximaSettingUp)
                 } else {
                     // Not ready — show setup button
                     Button {

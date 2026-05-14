@@ -69,6 +69,7 @@ public actor CrossOverDetector {
                 wineBinaryURL: wineBinary(),
                 hasNorthstar: northstar != nil,
                 hasTitanfall2: titanfall != nil,
+                hasSteam: SteamInstaller.steamExePath(in: url) != nil,
                 titanfall2InstallPath: titanfall?.path
             )
         }

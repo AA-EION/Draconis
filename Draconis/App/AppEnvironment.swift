@@ -57,7 +57,6 @@ public final class AppEnvironment: ObservableObject {
     // Maxima
     @Published public var maximaInstalled: Bool = false
     @Published public var maximaHelperRegistered: Bool = false
-    @Published public var maximaInFlight: Bool = false
     @Published public var maximaSettingUp: Bool = false
     @Published public var maximaProgress: MaximaService.Progress?
     @Published public var maximaError: String?
@@ -214,19 +213,6 @@ public final class AppEnvironment: ObservableObject {
                 try await MaximaService.shared.unregisterHelper()
             }
             await refreshMaximaState()
-        } catch {
-            maximaError = error.localizedDescription
-            DebugLog.shared.error("maxima", error.localizedDescription)
-        }
-    }
-
-    public func launchMaxima() async {
-        guard let bottle = selectedBottle else { return }
-        maximaInFlight = true
-        maximaError = nil
-        defer { maximaInFlight = false }
-        do {
-            try await MaximaService.shared.launch(bottle: bottle)
         } catch {
             maximaError = error.localizedDescription
             DebugLog.shared.error("maxima", error.localizedDescription)

@@ -44,7 +44,9 @@ struct DraconisCommands: Commands {
             .disabled(
                 env.selectedBottle == nil
                 || env.launchInFlight
+                || env.selectedBottle?.hasTitanfall2 != true
                 || env.selectedBottle?.hasNorthstar != true
+                || env.selectedBottle?.hasSteam != true
             )
 
             Button("Launch Titanfall 2 (Vanilla)") {
@@ -54,7 +56,7 @@ struct DraconisCommands: Commands {
             .disabled(
                 env.selectedBottle == nil
                 || env.launchInFlight
-                || env.selectedBottle?.hasNorthstar != true
+                || env.selectedBottle?.hasTitanfall2 != true
             )
 
             Divider()

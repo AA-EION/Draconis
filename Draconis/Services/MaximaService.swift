@@ -15,9 +15,6 @@ import AppKit
 public actor MaximaService {
     public static let shared = MaximaService()
 
-    // Titanfall 2 Steam App ID — used with `maxima-cli launch`
-    private let tf2SteamAppID = "1237970"
-
     // Possible install locations set by MaximaSetup.exe ($PROGRAMFILES64 or $PROGRAMFILES)
     private let possibleInstallDirs = [
         "Program Files/Maxima",
@@ -424,28 +421,17 @@ public actor MaximaService {
         try? await Task.sleep(nanoseconds: 500_000_000)
     }
 
-    // MARK: - Launch
-
-    /// Launches Titanfall 2 via `maxima-cli launch <tf2SteamAppID>` inside the bottle.
-    @discardableResult
-    public func launch(bottle: WineBottle) async throws -> Process {
-        guard let cliPath = maximaCliPath(in: bottle) else {
-            throw MaximaError.notInstalled
-        }
-        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
-            throw MaximaError.noDriver
-        }
-        let workDir = (cliPath as NSString).deletingLastPathComponent
-        Log.info("maxima.launch",
-                 "maxima-cli.exe launch \(tf2SteamAppID) in '\(bottle.name)'")
-        return try await driver.launch(
-            executable: cliPath,
-            arguments: ["launch", tf2SteamAppID],
-            in: bottle,
-            workingDirectory: workDir,
-            wait: false
-        )
-    }
+    // NOTE: There is intentionally no MaximaService.launch() anymore. For
+    // Steam-owned Titanfall 2 (the only configuration this fork supports),
+    // launching goes through `steam.exe -applaunch 1237970` — Steam invokes
+    // Titanfall2.exe, which emits a link2ea:// URI, which the maxima-bootstrap
+    // protocol handler (registered inside the bottle by MaximaSetup.exe)
+    // catches and resolves through maxima-cli automatically. See
+    // NorthstarLauncher.swift for the user-facing launch entry point.
+    //
+    // Invoking `maxima-cli launch <slug>` directly is for EA-store-owned
+    // games; it fails with "No owned offer found" when the user owns TF2
+    // on Steam.
 
     // MARK: - Private
 

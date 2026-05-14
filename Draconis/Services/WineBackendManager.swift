@@ -12,18 +12,37 @@ public protocol WineBackendDriver: Sendable {
 
     /// Run a Windows EXE inside the bottle using the backend's *own* runtime.
     ///
-    /// - executable: Path to the exe — expressed as a POSIX path (e.g.
-    ///   ".../drive_c/Program Files (x86)/.../NorthstarLauncher.exe"). Drivers
-    ///   convert to whatever form their backend prefers (CrossOver's
-    ///   `--cx-app` wants a Windows path; wine64 + WINEPREFIX accepts POSIX).
+    /// - executable: Path to the exe — expressed as a POSIX path.
     /// - workingDirectory: POSIX path to chdir into before launch.
+    /// - wait: When `true` the backend wrapper waits for the wine app to
+    ///   exit before its own process returns (right for installers, CLI
+    ///   tools, anything whose `terminationStatus` we need). When `false`
+    ///   the wrapper returns as soon as it has spawned the wine app — use
+    ///   this for long-running GUI apps (games) where holding the wrapper
+    ///   open lets macOS App Nap freeze the whole tree.
+    @discardableResult
+    func launch(
+        executable: String,
+        arguments: [String],
+        in bottle: WineBottle,
+        workingDirectory: String?,
+        wait: Bool
+    ) async throws -> Process
+}
+
+extension WineBackendDriver {
     @discardableResult
     func launch(
         executable: String,
         arguments: [String],
         in bottle: WineBottle,
         workingDirectory: String?
-    ) async throws -> Process
+    ) async throws -> Process {
+        try await launch(
+            executable: executable, arguments: arguments,
+            in: bottle, workingDirectory: workingDirectory, wait: true
+        )
+    }
 }
 
 public enum WineBackendError: Error, LocalizedError {
@@ -127,12 +146,15 @@ struct CrossOverDriver: WineBackendDriver {
     /// the wrapper exit 2 ("app not found").
     func launch(
         executable: String, arguments: [String],
-        in bottle: WineBottle, workingDirectory: String?
+        in bottle: WineBottle, workingDirectory: String?,
+        wait: Bool
     ) async throws -> Process {
         guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
             throw WineBackendError.runtimeMissing(.crossover, "cxstart binary")
         }
-        var args: [String] = ["--bottle", bottle.name, "--wait", executable]
+        var args: [String] = ["--bottle", bottle.name]
+        if wait { args.append("--wait") }
+        args.append(executable)
         args.append(contentsOf: arguments)
 
         Log.run("crossover.launch", "\(cxstart.path) \(args.joined(separator: " "))")
@@ -140,7 +162,8 @@ struct CrossOverDriver: WineBackendDriver {
             cxstart,
             arguments: args,
             environment: nil,                       // CrossOver injects its own
-            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) }
+            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) },
+            logFile: PathResolver.bottleLogFile(for: bottle)
         )
     }
 }
@@ -216,8 +239,10 @@ struct GPTKDriver: WineBackendDriver {
     /// way), or wine64 directly with the right env if only that's available.
     func launch(
         executable: String, arguments: [String],
-        in bottle: WineBottle, workingDirectory: String?
+        in bottle: WineBottle, workingDirectory: String?,
+        wait: Bool
     ) async throws -> Process {
+        _ = wait // gptk's wine wrapper inherently fire-and-forgets the wine app
         guard let wine = await wineBinary() else {
             throw WineBackendError.runtimeMissing(.gptk, "gameportingtoolkit/wine64")
         }
@@ -236,7 +261,8 @@ struct GPTKDriver: WineBackendDriver {
         Log.run("gptk.launch", "\(wine.path) \(args.joined(separator: " "))")
         return try ProcessRunner.shared.detached(
             wine, arguments: args, environment: env,
-            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) }
+            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) },
+            logFile: PathResolver.bottleLogFile(for: bottle)
         )
     }
 }
@@ -283,8 +309,10 @@ struct WhiskyDriver: WineBackendDriver {
 
     func launch(
         executable: String, arguments: [String],
-        in bottle: WineBottle, workingDirectory: String?
+        in bottle: WineBottle, workingDirectory: String?,
+        wait: Bool
     ) async throws -> Process {
+        _ = wait
         let wine = bottle.wineBinaryURL ?? PathResolver.whiskyWineBinary
         guard FileManager.default.fileExists(atPath: wine.path) else {
             throw WineBackendError.runtimeMissing(.whisky, "wine64")
@@ -297,7 +325,8 @@ struct WhiskyDriver: WineBackendDriver {
         return try ProcessRunner.shared.detached(
             wine, arguments: [executable] + arguments,
             environment: env,
-            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) }
+            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) },
+            logFile: PathResolver.bottleLogFile(for: bottle)
         )
     }
 }
@@ -358,7 +387,8 @@ private func launchInWrapper(
     return try ProcessRunner.shared.detached(
         wine, arguments: [executable] + arguments,
         environment: env,
-        currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) }
+        currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) },
+        logFile: PathResolver.bottleLogFile(for: bottle)
     )
 }
 
@@ -388,9 +418,11 @@ struct SikarugirDriver: WineBackendDriver {
     }
     func launch(
         executable: String, arguments: [String],
-        in bottle: WineBottle, workingDirectory: String?
+        in bottle: WineBottle, workingDirectory: String?,
+        wait: Bool
     ) async throws -> Process {
-        try await launchInWrapper(
+        _ = wait
+        return try await launchInWrapper(
             backend: .sikarugir, executable: executable, arguments: arguments,
             bottle: bottle, workingDirectory: workingDirectory
         )

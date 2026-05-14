@@ -43,6 +43,23 @@ public enum PathResolver {
         return url
     }()
 
+    public static let launchLogs: URL = {
+        let url = draconisSupport.appendingPathComponent("Logs", isDirectory: true)
+        try? FileManager.default.createDirectory(
+            at: url, withIntermediateDirectories: true
+        )
+        return url
+    }()
+
+    /// Per-bottle log file where detached wine launches funnel stdout/stderr.
+    /// Keeps GUI launches from inheriting Draconis's GUI-app fds.
+    public static func bottleLogFile(for bottle: WineBottle) -> URL {
+        let safeName = bottle.id
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+        return launchLogs.appendingPathComponent("\(safeName).log")
+    }
+
     // MARK: - Third-party install roots (all standard macOS locations)
 
     /// CrossOver.app default location.

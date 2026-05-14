@@ -77,7 +77,8 @@ public actor NorthstarLauncher {
             executable: exePath,
             arguments: args,
             in: bottle,
-            workingDirectory: tf2Root
+            workingDirectory: tf2Root,
+            wait: false
         )
     }
 }

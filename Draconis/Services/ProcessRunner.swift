@@ -73,11 +73,18 @@ public actor ProcessRunner {
     /// Fire-and-monitor: returns a `Process` so callers can stream output or
     /// terminate it. Used when launching the game so the launcher can keep a
     /// "Running…" indicator alive.
+    ///
+    /// stdin/stdout/stderr are explicitly redirected to a log file (or
+    /// `/dev/null`) instead of letting them inherit Draconis's GUI-app fds.
+    /// Wine processes sometimes block or silently fail when their stdio
+    /// points at a non-TTY non-pipe fd inherited from a GUI parent, which
+    /// presents as "wine processes spawn but no window ever appears."
     public nonisolated func detached(
         _ executable: URL,
         arguments: [String] = [],
         environment: [String: String]? = nil,
-        currentDirectory: URL? = nil
+        currentDirectory: URL? = nil,
+        logFile: URL? = nil
     ) throws -> Process {
         let process = Process()
         process.executableURL = executable
@@ -88,6 +95,29 @@ public actor ProcessRunner {
             process.environment = env
         }
         process.currentDirectoryURL = currentDirectory
+
+        process.standardInput = FileHandle(forReadingAtPath: "/dev/null")
+        if let logFile {
+            try? FileManager.default.createDirectory(
+                at: logFile.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if !FileManager.default.fileExists(atPath: logFile.path) {
+                FileManager.default.createFile(atPath: logFile.path, contents: nil)
+            }
+            if let handle = try? FileHandle(forWritingTo: logFile) {
+                handle.seekToEndOfFile()
+                process.standardOutput = handle
+                process.standardError = handle
+            } else {
+                process.standardOutput = FileHandle(forWritingAtPath: "/dev/null")
+                process.standardError = FileHandle(forWritingAtPath: "/dev/null")
+            }
+        } else {
+            process.standardOutput = FileHandle(forWritingAtPath: "/dev/null")
+            process.standardError = FileHandle(forWritingAtPath: "/dev/null")
+        }
+
         try process.run()
         return process
     }

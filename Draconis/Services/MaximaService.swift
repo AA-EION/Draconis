@@ -442,7 +442,8 @@ public actor MaximaService {
             executable: cliPath,
             arguments: ["launch", tf2SteamAppID],
             in: bottle,
-            workingDirectory: workDir
+            workingDirectory: workDir,
+            wait: false
         )
     }
 

@@ -28,7 +28,7 @@ settings:
     DEVELOPMENT_TEAM: ""
     SWIFT_STRICT_CONCURRENCY: minimal
     GENERATE_INFOPLIST_FILE: NO
-    MARKETING_VERSION: "0.4.0"
+    MARKETING_VERSION: "0.4.1"
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
@@ -49,8 +49,11 @@ targets:
       # `xcodegen generate` runs. bootstrap.sh and the CI workflows handle
       # this for the developer.
       - path: Draconis/Resources/MaximaHelper.app
-    info:
-      path: Draconis/Resources/Info.plist
+    # NOTE: no top-level `info:` directive — XcodeGen would rewrite the
+    # plist with hardcoded literals on every `xcodegen generate`, blowing
+    # away the `$(MARKETING_VERSION)` placeholders and shipping every
+    # release as "1.0" in the About panel. Instead we point INFOPLIST_FILE
+    # at the hand-managed plist in settings.base below.
     entitlements:
       path: Draconis/Resources/Draconis.entitlements
     settings:

@@ -103,7 +103,7 @@ struct OnboardingView: View {
                         action: { page = .manual }
                     )
                 } else {
-                    Text("CrossOver not detected at /Applications/CrossOver.app.")
+                    Text("CrossOver not detected. Install it and click Rescan.")
                         .font(.callout)
                         .foregroundStyle(.orange)
                     Link("Download CrossOver →",

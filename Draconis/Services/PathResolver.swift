@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Filesystem locations Draconis needs to know about. All paths are
 /// macOS-native — Draconis is CrossOver-only, so no Linux conventions
@@ -55,8 +56,23 @@ public enum PathResolver {
 
     // MARK: - CrossOver locations
 
-    /// CrossOver.app default location.
-    public static let crossOverApp = URL(fileURLWithPath: "/Applications/CrossOver.app")
+    /// `/Applications/CrossOver.app` — the conventional location, used as a
+    /// last-resort fallback when LaunchServices doesn't know about CrossOver.
+    public static let defaultCrossOverApp = URL(fileURLWithPath: "/Applications/CrossOver.app")
+
+    /// Where CrossOver.app lives **on this machine**. Asks LaunchServices
+    /// first (so `~/Applications`, external volumes, or renamed bundles all
+    /// work), then falls back to the default location. Re-resolved on every
+    /// read — cheap, and means an install during a Draconis session is picked
+    /// up without restarting.
+    public static var crossOverApp: URL {
+        if let url = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: "com.codeweavers.CrossOver"
+        ) {
+            return url
+        }
+        return defaultCrossOverApp
+    }
 
     /// Default bottles location when CrossOver hasn't been told otherwise.
     public static let defaultCrossOverBottlesRoot: URL = applicationSupport
@@ -109,11 +125,11 @@ public enum PathResolver {
         }
         guard var path = candidate else { return nil }
 
-        // 3. Sanitise: trim, expand ~, strip trailing slashes.
+        // 3. Sanitise. `standardizingPath` expands ~, collapses //, resolves
+        //    `..`, and strips trailing slashes in one go.
         path = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !path.isEmpty else { return nil }
-        path = (path as NSString).expandingTildeInPath
-        while path.count > 1 && path.hasSuffix("/") { path.removeLast() }
+        path = (path as NSString).standardizingPath
 
         // 4. Require an absolute path that exists as a directory. A relative
         //    path or stale value (drive unmounted, folder deleted) falls back

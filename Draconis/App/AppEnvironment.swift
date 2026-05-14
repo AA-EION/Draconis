@@ -11,7 +11,7 @@ public final class AppEnvironment: ObservableObject {
     @Published public private(set) var bottles: [WineBottle] = []
     @Published public var selectedBottleID: String?
 
-    // CrossOver availability (true iff /Applications/CrossOver.app exists)
+    // CrossOver availability (true iff LaunchServices knows the bundle ID)
     @Published public private(set) var crossOverInstalled: Bool = false
 
     // Launch status

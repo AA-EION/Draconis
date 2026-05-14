@@ -6,7 +6,8 @@ import Foundation
 public actor CrossOverDetector {
     public static let shared = CrossOverDetector()
 
-    /// True if CrossOver.app is present in /Applications.
+    /// True if CrossOver.app exists at the location LaunchServices resolves
+    /// (with a fallback check at the default /Applications path).
     public func isInstalled() -> Bool {
         FileManager.default.fileExists(atPath: PathResolver.crossOverApp.path)
     }

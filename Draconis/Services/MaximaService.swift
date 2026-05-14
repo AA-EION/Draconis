@@ -59,7 +59,6 @@ public actor MaximaService {
         case notInstalled
         case helperNotBundled
         case helperRegistrationFailed(code: Int32, stderr: String)
-        case noDriver
         case noInstallerAsset
         case installerDownloadFailed(String)
         case installerFailed(Int32)
@@ -75,8 +74,6 @@ public actor MaximaService {
                 let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
                 return "MaximaHelper registration failed (lsregister exit \(code))"
                     + (trimmed.isEmpty ? "" : ": \(trimmed)")
-            case .noDriver:
-                return "No Wine driver available for this bottle's backend."
             case .noInstallerAsset:
                 return "MaximaSetup.exe was not found in the latest Maxima-Draconis release."
             case .installerDownloadFailed(let s):
@@ -229,12 +226,21 @@ public actor MaximaService {
         let stderr: String
     }
 
-    private func runProcess(_ executable: String, arguments: [String]) throws -> ProcessResult {
+    private func runProcess(
+        _ executable: String,
+        arguments: [String],
+        extraEnv: [String: String] = [:]
+    ) throws -> ProcessResult {
         let proc = Process()
         let out = Pipe()
         let err = Pipe()
         proc.executableURL = URL(fileURLWithPath: executable)
         proc.arguments = arguments
+        if !extraEnv.isEmpty {
+            var env = ProcessInfo.processInfo.environment
+            for (k, v) in extraEnv { env[k] = v }
+            proc.environment = env
+        }
         proc.standardOutput = out
         proc.standardError = err
         try proc.run()
@@ -304,14 +310,10 @@ public actor MaximaService {
         )
         try FileManager.default.copyItem(at: tempExe, to: bottleTemp)
 
-        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
-            throw MaximaError.noDriver
-        }
-
         // 4 — Run the NSIS installer silently (/S) inside the bottle
         //     Files are installed before the service-creation step, so even if
         //     the Wine service manager rejects `sc create`, the binaries land.
-        let proc = try await driver.launch(
+        let proc = try await WineBackendManager.shared.launch(
             executable: bottleTemp.path,
             arguments: ["/S"],
             in: bottle,
@@ -363,9 +365,6 @@ public actor MaximaService {
         guard let uninstallerPath = uninstallerPath(in: bottle) else {
             throw MaximaError.notInstalled
         }
-        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
-            throw MaximaError.noDriver
-        }
 
         progress(.init(phase: .installing, fraction: -1,
                        detail: "Stopping bottle processes…"))
@@ -373,7 +372,7 @@ public actor MaximaService {
 
         progress(.init(phase: .installing, fraction: -1,
                        detail: "Running uninstaller…"))
-        let proc = try await driver.launch(
+        let proc = try await WineBackendManager.shared.launch(
             executable: uninstallerPath,
             arguments: ["/S"],
             in: bottle,
@@ -412,11 +411,16 @@ public actor MaximaService {
     /// process attached to that prefix. Best-effort — failure isn't fatal,
     /// the uninstaller will just report any locked files itself.
     private func killBottleProcesses(bottle: WineBottle) async {
-        guard let wine = bottle.wineBinaryURL else { return }
-        let wineserver = wine.deletingLastPathComponent()
-            .appendingPathComponent("wineserver")
-        guard FileManager.default.fileExists(atPath: wineserver.path) else { return }
-        _ = try? runProcess(wineserver.path, arguments: ["-k"])
+        guard let wineserver = await CrossOverDetector.shared.wineserverBinary() else {
+            return
+        }
+        var proc = ProcessResult(exitCode: 0, stdout: "", stderr: "")
+        proc = (try? runProcess(
+            wineserver.path,
+            arguments: ["-k"],
+            extraEnv: ["WINEPREFIX": bottle.prefixURL.path]
+        )) ?? proc
+        _ = proc
         // wineserver -k is async; give it a moment to actually quit.
         try? await Task.sleep(nanoseconds: 500_000_000)
     }

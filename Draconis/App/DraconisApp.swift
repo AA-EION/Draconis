@@ -75,30 +75,22 @@ struct DraconisCommands: Commands {
 
             Divider()
 
-            Button(env.creatingBottle ? "Creating bottle…" : "Create Titanfall 2 Bottle") {
-                Task { await env.createCrossOverTitanfallBottle() }
+            Button("Open CrossOver") {
+                env.openCrossOver()
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
-            .disabled(
-                env.creatingBottle
-                || !env.availableBackends.contains(.crossover)
-            )
+            .disabled(!env.crossOverInstalled)
         }
 
         // ── Bottle ────────────────────────────────────────────────────────────
         CommandMenu("Bottle") {
             Button("Rescan Bottles") {
-                Task { await env.refreshBottles() }
-            }
-            .keyboardShortcut("r", modifiers: .command)
-
-            Button("Rescan Backends") {
                 Task {
-                    await env.refreshBackends()
+                    await env.refreshCrossOverState()
                     await env.refreshBottles()
                 }
             }
-            .keyboardShortcut("r", modifiers: [.command, .option])
+            .keyboardShortcut("r", modifiers: .command)
 
             Divider()
 
@@ -119,16 +111,10 @@ struct DraconisCommands: Commands {
             }
         }
 
-        // ── Backends ──────────────────────────────────────────────────────────
-        CommandMenu("Backends") {
+        // ── Backend ───────────────────────────────────────────────────────────
+        CommandMenu("Backend") {
             Button("Get CrossOver…") {
                 NSWorkspace.shared.open(URL(string: "https://www.codeweavers.com/crossover")!)
-            }
-            Button("Get Game Porting Toolkit…") {
-                NSWorkspace.shared.open(URL(string: "https://developer.apple.com/games/")!)
-            }
-            Button("Get Sikarugir…") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Sikarugir-App/sikarugir")!)
             }
         }
 

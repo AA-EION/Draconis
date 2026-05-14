@@ -7,14 +7,12 @@ import Combine
 @MainActor
 public final class AppEnvironment: ObservableObject {
 
-    // Discovered bottles across every backend
+    // Discovered CrossOver bottles
     @Published public private(set) var bottles: [WineBottle] = []
     @Published public var selectedBottleID: String?
 
-    // Backend availability
-    @Published public private(set) var availableBackends: [WineBackend] = []
-    @Published public private(set) var preferredBackend: WineBackend?
-    @Published public var installingBackend: WineBackend?
+    // CrossOver availability (true iff /Applications/CrossOver.app exists)
+    @Published public private(set) var crossOverInstalled: Bool = false
 
     // Launch status
     @Published public var launchInFlight: Bool = false
@@ -46,10 +44,6 @@ public final class AppEnvironment: ObservableObject {
     @Published public var verboseLogging: Bool = UserDefaults.standard.bool(forKey: "verboseLogging") {
         didSet { UserDefaults.standard.set(verboseLogging, forKey: "verboseLogging") }
     }
-
-    // Bottle creation
-    @Published public var creatingBottle: Bool = false
-    @Published public var bottleCreationError: String?
 
     // Steam
     @Published public var steamInstalling: Bool = false
@@ -93,68 +87,46 @@ public final class AppEnvironment: ObservableObject {
     // MARK: - Bootstrap
 
     public func bootstrap() async {
-        await refreshBackends()
+        await refreshCrossOverState()
         await refreshBottles()
         if bottles.isEmpty {
             showOnboarding = true
         } else if selectedBottleID == nil {
-            selectedBottleID = bottles.first(where: \.hasNorthstar)?.id ?? bottles.first?.id
+            selectedBottleID = bottles.first(where: \.hasNorthstar)?.id
+                ?? bottles.first(where: \.hasTitanfall2)?.id
+                ?? bottles.first?.id
         }
         try? await refreshNorthstarReleases()
         await refreshMaximaState()
     }
 
+    public func refreshCrossOverState() async {
+        crossOverInstalled = await WineBackendManager.shared.isCrossOverAvailable()
+        DebugLog.shared.info(
+            "app",
+            crossOverInstalled
+                ? "CrossOver detected at \(PathResolver.crossOverApp.path)"
+                : "CrossOver not installed."
+        )
+    }
+
     public func refreshBottles() async {
-        DebugLog.shared.info("app", "Scanning bottles…")
+        DebugLog.shared.info("app", "Scanning CrossOver bottles…")
         bottles = await WineBackendManager.shared.allBottles()
         if let id = selectedBottleID, !bottles.contains(where: { $0.id == id }) {
             selectedBottleID = bottles.first?.id
         }
-        DebugLog.shared.ok("app", "Found \(bottles.count) bottle(s) across all backends.")
+        DebugLog.shared.ok("app", "Found \(bottles.count) bottle(s).")
         await refreshMaximaState()
     }
 
-    public func refreshBackends() async {
-        availableBackends = await WineBackendManager.shared.availableBackends()
-        preferredBackend  = await WineBackendManager.shared.preferredBackend()
-        DebugLog.shared.info(
-            "app",
-            "Backends ready: \(availableBackends.map(\.displayName).joined(separator: ", "))"
-        )
-    }
-
-    // MARK: - Backend auto-install
-
-    public func installBackend(_ backend: WineBackend) async {
-        installingBackend = backend
-        defer { installingBackend = nil }
-        do {
-            try await BackendInstaller.shared.ensureRosetta()
-            try await BackendInstaller.shared.install(backend)
-            await refreshBackends()
-            await refreshBottles()
-        } catch {
-            DebugLog.shared.error("app", "Backend install failed: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: - Bottle creation
-
-    public func createCrossOverTitanfallBottle() async {
-        creatingBottle = true
-        defer { creatingBottle = false }
-        do {
-            _ = try await CrossOverBottleCreator.shared.createTitanfall2Bottle()
-            bottleCreationError = nil
-            await refreshBottles()
-            // Select the new one if it appeared
-            if let bottle = bottles.first(where: { $0.name == "Titanfall 2" && $0.backend == .crossover }) {
-                selectedBottleID = bottle.id
-            }
-        } catch {
-            bottleCreationError = error.localizedDescription
-            DebugLog.shared.error("app", error.localizedDescription)
-        }
+    /// Open CrossOver.app so the user can create a Titanfall 2 bottle from
+    /// CrossOver's install profile (which handles win10_64 template + DXVK
+    /// settings + Steam install correctly). Draconis no longer drives bottle
+    /// creation programmatically — `cxbottle --create` plus our AppleScript
+    /// hand-off was brittle and couldn't reach CrossOver's CrossTie database.
+    public func openCrossOver() {
+        NSWorkspace.shared.open(PathResolver.crossOverApp)
     }
 
     // MARK: - Maxima

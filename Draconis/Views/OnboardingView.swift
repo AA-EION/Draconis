@@ -9,56 +9,69 @@ struct OnboardingView: View {
             Text("DRACONIS")
                 .font(TF.hero(34))
                 .tracking(8)
-            Text("Pick a Wine runtime to launch Titanfall 2 + Northstar.")
+            Text("Native macOS launcher for Titanfall 2 + Northstar via CrossOver.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .font(TF.body(13))
 
             GlassEffectContainer {
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("Runtimes", systemImage: "magnifyingglass.circle.fill")
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Setup", systemImage: "list.number")
                         .stencilLabel()
-                    ForEach(WineBackend.allCases) { backend in
-                        OnboardingBackendRow(backend: backend)
-                    }
+
+                    StepRow(
+                        number: 1,
+                        title: "Install CrossOver",
+                        body: "Required — Draconis runs the game inside a CrossOver bottle. Use the link below if you don't have it yet.",
+                        done: env.crossOverInstalled,
+                        link: env.crossOverInstalled ? nil : URL(string: "https://www.codeweavers.com/crossover")
+                    )
+                    StepRow(
+                        number: 2,
+                        title: "Create a Titanfall 2 bottle in CrossOver",
+                        body: "Open CrossOver and use its built-in Titanfall 2 install profile — it picks the right win10_64 template and installs Steam for you.",
+                        done: env.bottles.contains(where: \.hasTitanfall2)
+                    )
+                    StepRow(
+                        number: 3,
+                        title: "Install Titanfall 2 from your Steam library",
+                        body: "Inside the bottle, sign in to Steam and install Titanfall 2. Draconis will pick it up automatically.",
+                        done: env.bottles.contains(where: \.hasTitanfall2)
+                    )
+                    StepRow(
+                        number: 4,
+                        title: "Set up Maxima",
+                        body: "Once Titanfall 2 is installed, click Set up Maxima from the EA card on the Play tab — it bypasses the EA Desktop requirement.",
+                        done: env.maximaInstalled && env.maximaHelperRegistered
+                    )
                 }
                 .padding(18)
             }
             .glassEffect(.regular.tint(.white.opacity(0.04)),
                          in: .rect(cornerRadius: 18))
 
-            if env.availableBackends.contains(.crossover) {
+            if env.crossOverInstalled {
                 Button {
-                    Task { await env.createCrossOverTitanfallBottle() }
+                    env.openCrossOver()
                 } label: {
-                    Label(
-                        env.creatingBottle
-                            ? "Creating Titanfall 2 bottle in CrossOver…"
-                            : "Create Titanfall 2 bottle in CrossOver",
-                        systemImage: "wineglass.fill"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    Label("Open CrossOver", systemImage: "wineglass.fill")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(.accentColor)
-                .disabled(env.creatingBottle)
-                if let err = env.bottleCreationError {
-                    Text(err).font(.caption).foregroundStyle(.red)
-                }
-            } else if env.availableBackends.isEmpty {
-                Text("No runtimes detected. Install one above or click Rescan.")
+            } else {
+                Text("CrossOver not detected. Install it and click Rescan.")
                     .font(.callout)
                     .foregroundStyle(.orange)
-            } else {
-                Text("Detected \(env.availableBackends.count) runtime(s) and \(env.bottles.count) bottle(s).")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
 
             HStack {
                 Button("Rescan") {
-                    Task { await env.refreshBackends(); await env.refreshBottles() }
+                    Task {
+                        await env.refreshCrossOverState()
+                        await env.refreshBottles()
+                    }
                 }
                 .buttonStyle(.glass)
 
@@ -72,45 +85,50 @@ struct OnboardingView: View {
     }
 }
 
-private struct OnboardingBackendRow: View {
-    @EnvironmentObject private var env: AppEnvironment
-    let backend: WineBackend
+private struct StepRow: View {
+    let number: Int
+    let title: String
+    let detail: String
+    let done: Bool
+    var link: URL? = nil
+
+    init(number: Int, title: String, body: String, done: Bool, link: URL? = nil) {
+        self.number = number
+        self.title = title
+        self.detail = body
+        self.done = done
+        self.link = link
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: backend.symbolName)
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(backend.displayName).font(TF.title(13))
-                Text(backend.isPaid ? "Paid" : "Free / open source")
-                    .font(TF.body(10))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if env.availableBackends.contains(backend) {
-                Label("Ready", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(TF.body(11))
-            } else if backend.isPaid {
-                Link("Get CrossOver",
-                     destination: URL(string: "https://www.codeweavers.com/crossover")!)
-                    .font(TF.body(11))
-            } else {
-                Button {
-                    Task { await env.installBackend(backend) }
-                } label: {
-                    if env.installingBackend == backend {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Install", systemImage: "arrow.down.circle")
-                    }
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(done ? Color.green.opacity(0.25) : Color.white.opacity(0.08))
+                    .frame(width: 26, height: 26)
+                if done {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.green)
+                } else {
+                    Text("\(number)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.glass)
-                .controlSize(.small)
-                .disabled(env.installingBackend != nil)
             }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(TF.title(13))
+                Text(detail)
+                    .font(TF.body(11))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let link {
+                    Link("codeweavers.com →", destination: link)
+                        .font(TF.body(11))
+                }
+            }
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 }

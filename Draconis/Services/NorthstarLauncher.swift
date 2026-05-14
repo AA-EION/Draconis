@@ -39,7 +39,6 @@ public actor NorthstarLauncher {
         case titanfallNotFound
         case northstarNotFound
         case steamNotFoundForNorthstar
-        case noDriverForBackend(WineBackend)
 
         public var errorDescription: String? {
             switch self {
@@ -52,8 +51,6 @@ public actor NorthstarLauncher {
                 return "Northstar mode launches through Steam launch options " +
                        "(-northstar). Install Steam in this bottle first, or " +
                        "use Vanilla mode."
-            case .noDriverForBackend(let b):
-                return "No driver registered for \(b.displayName)."
             }
         }
     }
@@ -78,27 +75,20 @@ public actor NorthstarLauncher {
             throw LaunchError.titanfallNotFound
         }
 
-        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
-            throw LaunchError.noDriverForBackend(bottle.backend)
-        }
-
         switch mode {
         case .vanilla:
             return try await launchVanilla(
-                driver: driver, bottle: bottle, tf2Root: tf2Root, extraArgs: extraArgs
+                bottle: bottle, tf2Root: tf2Root, extraArgs: extraArgs
             )
         case .northstar:
             return try await launchNorthstar(
-                driver: driver, bottle: bottle, tf2Root: tf2Root, extraArgs: extraArgs
+                bottle: bottle, tf2Root: tf2Root, extraArgs: extraArgs
             )
         }
     }
 
     private func launchVanilla(
-        driver: WineBackendDriver,
-        bottle: WineBottle,
-        tf2Root: String,
-        extraArgs: [String]
+        bottle: WineBottle, tf2Root: String, extraArgs: [String]
     ) async throws -> Process {
         let exe = (tf2Root as NSString).appendingPathComponent("Titanfall2.exe")
         guard FileManager.default.fileExists(atPath: exe) else {
@@ -107,7 +97,7 @@ public actor NorthstarLauncher {
         }
         let args = ["-novid"] + extraArgs
         Log.info("northstar.launch", "Titanfall2.exe \(args.joined(separator: " "))")
-        return try await driver.launch(
+        return try await WineBackendManager.shared.launch(
             executable: exe,
             arguments: args,
             in: bottle,
@@ -117,10 +107,7 @@ public actor NorthstarLauncher {
     }
 
     private func launchNorthstar(
-        driver: WineBackendDriver,
-        bottle: WineBottle,
-        tf2Root: String,
-        extraArgs: [String]
+        bottle: WineBottle, tf2Root: String, extraArgs: [String]
     ) async throws -> Process {
         let nsExe = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
         guard FileManager.default.fileExists(atPath: nsExe) else {
@@ -136,7 +123,7 @@ public actor NorthstarLauncher {
         // launch option `-northstar` that Northstar's wiki documents.
         let args = ["-applaunch", tf2SteamAppID, "-novid", "-northstar"] + extraArgs
         Log.info("northstar.launch", "steam.exe \(args.joined(separator: " "))")
-        return try await driver.launch(
+        return try await WineBackendManager.shared.launch(
             executable: steamExe,
             arguments: args,
             in: bottle,

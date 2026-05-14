@@ -11,32 +11,22 @@ public actor CrossOverDetector {
         FileManager.default.fileExists(atPath: PathResolver.crossOverApp.path)
     }
 
-    /// CrossOver's wine wrapper script. We prefer the `wine` shell wrapper over
-    /// `wine64` because the wrapper is the only binary that understands CrossOver's
-    /// `--bottle` flag (it sets WINEPREFIX, loads per-bottle DXVK/MoltenVK config,
-    /// then delegates to wine64 internally). Calling wine64 directly with that
-    /// flag silently ignores it, leaving the bottle uninitialised.
-    public func wineBinary() -> URL? {
-        let candidates = [
-            "Contents/SharedSupport/CrossOver/bin/wine",
-            "Contents/SharedSupport/CrossOver/bin/wine64",
-        ]
-        for sub in candidates {
-            let url = PathResolver.crossOverApp.appendingPathComponent(sub)
-            if FileManager.default.fileExists(atPath: url.path) {
-                return url
-            }
-        }
-        return nil
-    }
-
-    /// CrossOver's `cxstart` CLI. This is the supported way to run an arbitrary
-    /// executable inside a bottle: it accepts a POSIX path, sets up the bottle
-    /// environment, and (with `--wait`) blocks until the wine process exits so
-    /// `terminationStatus` reflects the real app exit code.
+    /// CrossOver's `cxstart` CLI — the supported way to run an arbitrary
+    /// executable inside a bottle. Accepts POSIX paths, sets up the bottle
+    /// environment, and (with `--wait`) blocks until the wine process exits
+    /// so `terminationStatus` reflects the real app exit code.
     public func cxstartBinary() -> URL? {
         let url = PathResolver.crossOverApp
             .appendingPathComponent("Contents/SharedSupport/CrossOver/bin/cxstart")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// `wineserver` from CrossOver's bundled wine. Used to kill all wine
+    /// processes attached to a given prefix (`wineserver -k` with
+    /// `WINEPREFIX=...`).
+    public func wineserverBinary() -> URL? {
+        let url = PathResolver.crossOverApp
+            .appendingPathComponent("Contents/SharedSupport/CrossOver/bin/wineserver")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
@@ -64,9 +54,7 @@ public actor CrossOverDetector {
             return WineBottle(
                 id: "crossover:" + url.lastPathComponent,
                 name: url.lastPathComponent,
-                backend: .crossover,
                 prefixURL: url,
-                wineBinaryURL: wineBinary(),
                 hasNorthstar: northstar != nil,
                 hasTitanfall2: titanfall != nil,
                 hasSteam: SteamInstaller.steamExePath(in: url) != nil,

@@ -8,14 +8,20 @@ struct PlayView: View {
         ScrollView {
             VStack(spacing: 22) {
                 heroCard
-                bottleStatusCard
-                if let p = env.updateProgress  { northstarProgressCard(p) }
-                if let p = env.maximaProgress  { maximaProgressCard(p) }
-                if let err = env.lastUpdateError ?? env.lastLaunchError ?? env.maximaError {
-                    errorCard(err)
+                if env.selectedBottle == nil {
+                    noBottleCard
+                } else if env.selectedBottle?.hasTitanfall2 != true {
+                    noTitanfallCard
+                } else {
+                    bottleStatusCard
+                    if let p = env.updateProgress  { northstarProgressCard(p) }
+                    if let p = env.maximaProgress  { maximaProgressCard(p) }
+                    if let err = env.lastUpdateError ?? env.lastLaunchError ?? env.maximaError {
+                        errorCard(err)
+                    }
+                    actionsCard
+                    maximaCard
                 }
-                actionsCard
-                maximaCard
                 Spacer(minLength: 60)
             }
             .padding(28)
@@ -23,6 +29,91 @@ struct PlayView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - Empty / setup states
+
+    private var noBottleCard: some View {
+        instructionsCard(
+            title: "Set up a Titanfall 2 bottle in CrossOver",
+            body: [
+                "1. Open CrossOver.",
+                "2. Click Install a Windows Application.",
+                "3. Search for \"Titanfall 2\" in CrossOver's database — the profile will pick the win10_64 template and install Steam automatically.",
+                "4. Once the bottle exists, sign in to Steam and install Titanfall 2 from your library.",
+                "5. Come back to Draconis and hit Rescan.",
+            ].joined(separator: "\n"),
+            primaryActionTitle: env.crossOverInstalled ? "Open CrossOver" : "Get CrossOver…",
+            primaryActionDisabled: false,
+            primaryAction: {
+                if env.crossOverInstalled {
+                    env.openCrossOver()
+                } else {
+                    NSWorkspace.shared.open(
+                        URL(string: "https://www.codeweavers.com/crossover")!
+                    )
+                }
+            }
+        )
+    }
+
+    private var noTitanfallCard: some View {
+        instructionsCard(
+            title: "Titanfall 2 isn't installed in this bottle yet",
+            body: [
+                "Draconis sees the bottle but no Titanfall2.exe inside it.",
+                "",
+                "Open CrossOver, pick the Titanfall 2 install profile, and either:",
+                "• Let CrossOver install Steam and then install Titanfall 2 from your Steam library, or",
+                "• Point CrossOver's installer at a non-Steam Titanfall 2 installer file when prompted.",
+                "",
+                "Then come back here and hit Rescan.",
+            ].joined(separator: "\n"),
+            primaryActionTitle: "Open CrossOver",
+            primaryActionDisabled: !env.crossOverInstalled,
+            primaryAction: { env.openCrossOver() }
+        )
+    }
+
+    private func instructionsCard(
+        title: String,
+        body: String,
+        primaryActionTitle: String,
+        primaryActionDisabled: Bool,
+        primaryAction: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title).font(TF.title(16)).foregroundStyle(.white)
+            Text(body)
+                .font(TF.body(13))
+                .foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button(action: primaryAction) {
+                    Label(primaryActionTitle, systemImage: "wineglass.fill")
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 14)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.accentColor)
+                .disabled(primaryActionDisabled)
+
+                Button {
+                    Task {
+                        await env.refreshCrossOverState()
+                        await env.refreshBottles()
+                    }
+                } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 14)
+                }
+                .buttonStyle(.glass)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(22)
+        .glassEffect(.regular.tint(.orange.opacity(0.08)), in: .rect(cornerRadius: 22))
     }
 
     // MARK: - Hero

@@ -69,7 +69,7 @@ struct ContentView: View {
                 } else {
                     Picker("Active bottle", selection: $env.selectedBottleID) {
                         ForEach(env.bottles) { bottle in
-                            Label(bottle.name, systemImage: bottle.backend.symbolName)
+                            Label(bottle.name, systemImage: "wineglass.fill")
                                 .tag(Optional(bottle.id))
                         }
                     }
@@ -87,22 +87,25 @@ struct ContentView: View {
             }
 
             Section {
-                ForEach(WineBackend.allCases) { backend in
-                    HStack {
-                        Label(backend.displayName, systemImage: backend.symbolName)
-                            .font(TF.body(12))
-                        Spacer()
-                        if env.availableBackends.contains(backend) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        } else {
-                            Image(systemName: "circle.dashed")
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
+                HStack {
+                    Label("CrossOver", systemImage: "wineglass.fill")
+                        .font(TF.body(12))
+                    Spacer()
+                    Image(
+                        systemName: env.crossOverInstalled
+                            ? "checkmark.circle.fill" : "circle.dashed"
+                    )
+                    .foregroundStyle(env.crossOverInstalled ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
+                }
+                if !env.crossOverInstalled {
+                    Link(
+                        "Get CrossOver…",
+                        destination: URL(string: "https://www.codeweavers.com/crossover")!
+                    )
+                    .font(TF.body(11))
                 }
             } header: {
-                Text("Backends").stencilLabel()
+                Text("Backend").stencilLabel()
             }
         }
         .listStyle(.sidebar)

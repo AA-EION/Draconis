@@ -74,12 +74,9 @@ public actor SteamInstaller {
     public func install(into bottle: WineBottle, silent: Bool = true) async throws {
         let installer = try await ensureInstallerDownloaded()
 
-        guard let driver = await WineBackendManager.shared.driver(for: bottle.backend) else {
-            throw InstallError.launchFailed("No driver for \(bottle.backend.displayName)")
-        }
         let args = silent ? ["/S"] : []
         do {
-            let proc = try await driver.launch(
+            let proc = try await WineBackendManager.shared.launch(
                 executable: installer.path,
                 arguments: args,
                 in: bottle,

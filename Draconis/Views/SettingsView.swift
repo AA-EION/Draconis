@@ -8,8 +8,8 @@ struct SettingsView: View {
         TabView {
             generalTab
                 .tabItem { Label("General", systemImage: "gearshape.fill") }
-            backendsTab
-                .tabItem { Label("Backends", systemImage: "wineglass.fill") }
+            backendTab
+                .tabItem { Label("CrossOver", systemImage: "wineglass.fill") }
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "terminal") }
             aboutTab
@@ -28,12 +28,13 @@ struct SettingsView: View {
                         if let bottle = env.selectedBottle {
                             infoRow(label: "Active bottle", value: bottle.name)
                             Divider().overlay(.white.opacity(0.07))
-                            infoRow(label: "Backend", value: bottle.backend.displayName)
-                            Divider().overlay(.white.opacity(0.07))
                             infoRow(label: "Prefix", value: bottle.prefixURL.lastPathComponent)
                             if let tf2 = bottle.titanfall2InstallPath {
                                 Divider().overlay(.white.opacity(0.07))
-                                infoRow(label: "Titanfall 2", value: URL(fileURLWithPath: tf2).lastPathComponent)
+                                infoRow(
+                                    label: "Titanfall 2",
+                                    value: URL(fileURLWithPath: tf2).lastPathComponent
+                                )
                             }
                         } else {
                             Text("No bottle selected.")
@@ -48,7 +49,9 @@ struct SettingsView: View {
                 GlassEffectContainer {
                     VStack(spacing: 0) {
                         Button {
-                            NSWorkspace.shared.activateFileViewerSelecting([PathResolver.draconisSupport])
+                            NSWorkspace.shared.activateFileViewerSelecting(
+                                [PathResolver.draconisSupport]
+                            )
                         } label: {
                             Label("Open Support Folder in Finder", systemImage: "folder")
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,9 +63,11 @@ struct SettingsView: View {
                         Divider().overlay(.white.opacity(0.07))
 
                         Button {
-                            NSWorkspace.shared.activateFileViewerSelecting([PathResolver.downloadsCache])
+                            NSWorkspace.shared.activateFileViewerSelecting(
+                                [PathResolver.launchLogs]
+                            )
                         } label: {
-                            Label("Open Downloads Cache in Finder", systemImage: "arrow.down.circle")
+                            Label("Open Launch Logs in Finder", systemImage: "doc.text")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 14)
@@ -76,34 +81,34 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Backends
+    // MARK: - CrossOver
 
-    private var backendsTab: some View {
+    private var backendTab: some View {
         ScrollView {
             VStack(spacing: 16) {
                 GlassEffectContainer {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(WineBackend.allCases.enumerated()), id: \.element) { idx, backend in
-                            if idx > 0 { Divider().overlay(.white.opacity(0.07)) }
-                            BackendRow(backend: backend)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
-                        }
-
-                        if let preferred = env.preferredBackend {
-                            Divider().overlay(.white.opacity(0.1))
-                            HStack {
-                                Text("Preferred for new installs")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(preferred.displayName)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color.accentColor)
+                        HStack(spacing: 12) {
+                            Label("CrossOver", systemImage: "wineglass.fill")
+                                .font(.callout)
+                                .foregroundStyle(.white)
+                            Spacer()
+                            if env.crossOverInstalled {
+                                Label("Detected", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.green)
+                            } else {
+                                Link(
+                                    "Buy / install",
+                                    destination: URL(
+                                        string: "https://www.codeweavers.com/crossover"
+                                    )!
+                                )
+                                .font(.caption.weight(.medium))
                             }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
                     }
                 }
                 .glassEffect(.regular, in: .rect(cornerRadius: 16))
@@ -111,26 +116,15 @@ struct SettingsView: View {
                 GlassEffectContainer {
                     VStack(alignment: .leading, spacing: 0) {
                         Button {
-                            Task { await env.createCrossOverTitanfallBottle() }
+                            env.openCrossOver()
                         } label: {
-                            Label(
-                                env.creatingBottle ? "Creating…" : "Create Titanfall 2 Bottle (CrossOver)",
-                                systemImage: "wineglass"
-                            )
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 14)
+                            Label("Open CrossOver", systemImage: "wineglass")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
                         }
                         .buttonStyle(.glass)
-                        .disabled(env.creatingBottle || !env.availableBackends.contains(.crossover))
-
-                        if let err = env.bottleCreationError {
-                            Text(err)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .padding(.horizontal, 20)
-                                .padding(.bottom, 12)
-                        }
+                        .disabled(!env.crossOverInstalled)
                     }
                 }
                 .glassEffect(.regular, in: .rect(cornerRadius: 16))
@@ -155,10 +149,10 @@ struct SettingsView: View {
 
                 GlassEffectContainer {
                     Text("""
-                    Draconis launches Titanfall 2 through each backend's own runtime — \
-                    CrossOver's cxstart --bottle --wait, Whisky's bundled wine64, \
-                    Sikarugir wrappers' bundled wine, or Apple's gameportingtoolkit. \
-                    It never invokes a system wine.
+                    Draconis runs Titanfall 2 inside a CrossOver bottle via \
+                    `cxstart --bottle <name>`. Game launches go fire-and-forget \
+                    so macOS App Nap can't throttle the wine tree; their \
+                    stdout/stderr land in ~/Library/Application Support/Draconis/Logs.
                     """)
                     .font(.callout)
                     .foregroundStyle(.white.opacity(0.5))
@@ -183,6 +177,11 @@ struct SettingsView: View {
 
             VStack(spacing: 6) {
                 Text("Draconis").font(TF.hero(28))
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("Version \(version)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 Text("Open-source Titanfall 2 + Northstar launcher for macOS Tahoe.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -228,44 +227,5 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-    }
-}
-
-// MARK: - Backend row with auto-install button
-
-private struct BackendRow: View {
-    @EnvironmentObject private var env: AppEnvironment
-    let backend: WineBackend
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Label(backend.displayName, systemImage: backend.symbolName)
-                .font(.callout)
-                .foregroundStyle(.white)
-            Spacer()
-            if env.availableBackends.contains(backend) {
-                Label("Detected", systemImage: "checkmark.circle.fill")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.green)
-            } else if backend.isPaid {
-                Link("Buy / install",
-                     destination: URL(string: "https://www.codeweavers.com/crossover")!)
-                    .font(.caption.weight(.medium))
-            } else {
-                Button {
-                    Task { await env.installBackend(backend) }
-                } label: {
-                    if env.installingBackend == backend {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Install via Homebrew", systemImage: "arrow.down.circle")
-                            .font(.caption.weight(.medium))
-                    }
-                }
-                .buttonStyle(.glass)
-                .disabled(env.installingBackend != nil)
-                .controlSize(.small)
-            }
-        }
     }
 }

@@ -1,7 +1,8 @@
 import Foundation
 
-/// Common filesystem locations Draconis needs to know about.
-/// All paths are macOS-native — we never reach for Linux conventions.
+/// Filesystem locations Draconis needs to know about. All paths are
+/// macOS-native — Draconis is CrossOver-only, so no Linux conventions
+/// or other wine-flavour install roots live here.
 public enum PathResolver {
 
     public static let home: URL = FileManager.default
@@ -18,17 +19,9 @@ public enum PathResolver {
     }()
 
     /// ~/Library/Application Support/Draconis — where Draconis stores its
-    /// own settings, managed bottles, downloaded Northstar zips, etc.
+    /// own settings, downloaded Northstar zips, per-bottle launch logs.
     public static let draconisSupport: URL = {
         let url = applicationSupport.appendingPathComponent("Draconis", isDirectory: true)
-        try? FileManager.default.createDirectory(
-            at: url, withIntermediateDirectories: true
-        )
-        return url
-    }()
-
-    public static let managedBottles: URL = {
-        let url = draconisSupport.appendingPathComponent("Bottles", isDirectory: true)
         try? FileManager.default.createDirectory(
             at: url, withIntermediateDirectories: true
         )
@@ -60,7 +53,7 @@ public enum PathResolver {
         return launchLogs.appendingPathComponent("\(safeName).log")
     }
 
-    // MARK: - Third-party install roots (all standard macOS locations)
+    // MARK: - CrossOver locations
 
     /// CrossOver.app default location.
     public static let crossOverApp = URL(fileURLWithPath: "/Applications/CrossOver.app")
@@ -68,39 +61,6 @@ public enum PathResolver {
     /// CrossOver bottles live in ~/Library/Application Support/CrossOver/Bottles.
     public static let crossOverBottlesRoot: URL = applicationSupport
         .appendingPathComponent("CrossOver/Bottles", isDirectory: true)
-
-    /// Apple's Game Porting Toolkit is shipped as `gameportingtoolkit` (a wine
-    /// wrapper script) plus a `wine64` binary. Both Homebrew prefixes are
-    /// checked. We also detect the GPTK wrapper script that ships with newer
-    /// versions of the toolkit.
-    public static let gptkCandidatePaths: [URL] = [
-        URL(fileURLWithPath: "/usr/local/bin/gameportingtoolkit"),
-        URL(fileURLWithPath: "/opt/homebrew/bin/gameportingtoolkit"),
-        URL(fileURLWithPath: "/usr/local/opt/game-porting-toolkit/bin/wine64"),
-        URL(fileURLWithPath: "/opt/homebrew/opt/game-porting-toolkit/bin/wine64"),
-    ]
-
-    /// Whisky (current versions) stores bottles directly in Application
-    /// Support, not inside its container.
-    public static let whiskyBottlesRoot: URL = applicationSupport
-        .appendingPathComponent("Whisky/Bottles", isDirectory: true)
-
-    /// Whisky bundles its own wine here.
-    public static let whiskyWineBinary: URL = applicationSupport
-        .appendingPathComponent("Whisky/Libraries/Wine/bin/wine64")
-
-    /// Sikarugir wrappers live in ~/Applications/Sikarugir or ~/Applications,
-    /// each as a self-contained .app bundle with `Contents/SharedSupport/wine`.
-    /// Legacy paths (Wineskin, Kegworks) are included for backwards compatibility.
-    public static let sikarugirAppRoot = URL(
-        fileURLWithPath: "/Applications/Sikarugir"
-    )
-    public static let sikarugirWrapperRoots: [URL] = [
-        home.appendingPathComponent("Applications/Sikarugir", isDirectory: true),
-        home.appendingPathComponent("Applications/Kegworks", isDirectory: true),
-        home.appendingPathComponent("Applications/Wineskin", isDirectory: true),
-        home.appendingPathComponent("Applications", isDirectory: true),
-    ]
 
     // MARK: - Helpers
 

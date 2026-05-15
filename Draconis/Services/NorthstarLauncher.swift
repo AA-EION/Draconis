@@ -94,7 +94,7 @@ public actor NorthstarLauncher {
         // Maxima/EA launcher isn't running, and cleanly loads without mods.
         let nsExe = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
         if FileManager.default.fileExists(atPath: nsExe) {
-            let args = ["-vanilla"] + extraArgs
+            let args = ["-vanilla", "-novid"] + extraArgs
             Log.info("northstar.launch", "NorthstarLauncher.exe -vanilla \(args.joined(separator: " "))")
             return try await WineBackendManager.shared.launch(
                 executable: nsExe,
@@ -140,7 +140,7 @@ public actor NorthstarLauncher {
         //   -multiple         allows multiple game instances / avoids single-
         //                     instance lock that can conflict with Maxima
         //   -northstar        tells the game to load NorthstarLauncher hooks
-        let args = ["-applaunch", tf2SteamAppID, "-noOriginStartup", "-multiple", "-northstar"] + extraArgs
+        let args = ["-applaunch", tf2SteamAppID, "-noOriginStartup", "-multiple", "-northstar", "-novid"] + extraArgs
         Log.info("northstar.launch", "steam.exe \(args.joined(separator: " "))")
         return try await WineBackendManager.shared.launch(
             executable: steamExe,

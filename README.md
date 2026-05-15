@@ -5,7 +5,7 @@
 <h1 align="center">Draconis</h1>
 
 <p align="center">
-  A (BETA) native macOS launcher for <strong>Titanfall 2 + <a href="https://northstar.tf">Northstar</a></strong>, built with SwiftUI and the Liquid Glass design system.
+  A (BETA)(Mostly Vibecoded, Cringe, I know) native macOS launcher for <strong>Titanfall 2 + <a href="https://northstar.tf">Northstar</a></strong>, built with SwiftUI and the Liquid Glass design system.
 </p>
 
 <p align="center">

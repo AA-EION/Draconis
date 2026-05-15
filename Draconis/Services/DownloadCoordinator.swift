@@ -50,13 +50,24 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
         totalBytesWritten: Int64,
         totalBytesExpectedToWrite: Int64
     ) {
-        let total = max(totalBytesExpectedToWrite, 1)
-        let frac = Double(totalBytesWritten) / Double(total)
-        progress?(Progress(
-            phase: .downloading,
-            fraction: frac,
-            detail: "\(Self.bytes(totalBytesWritten)) / \(Self.bytes(totalBytesExpectedToWrite))"
-        ))
+        // totalBytesExpectedToWrite is -1 when the server omits Content-Length.
+        // In that case report indeterminate progress showing only downloaded bytes.
+        let unknown = totalBytesExpectedToWrite == NSURLSessionTransferSizeUnknown
+                   || totalBytesExpectedToWrite <= 0
+        if unknown {
+            progress?(Progress(
+                phase: .downloading,
+                fraction: -1,
+                detail: Self.bytes(totalBytesWritten)
+            ))
+        } else {
+            let frac = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            progress?(Progress(
+                phase: .downloading,
+                fraction: frac,
+                detail: "\(Self.bytes(totalBytesWritten)) / \(Self.bytes(totalBytesExpectedToWrite))"
+            ))
+        }
     }
 
     func urlSession(

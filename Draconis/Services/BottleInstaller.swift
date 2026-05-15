@@ -95,15 +95,15 @@ public final class BottleInstaller {
     /// Snapshot today's bottles and pick the most relevant one to report on.
     /// Preference order:
     ///   1. A bottle that already has Titanfall 2 → `.done`
-    ///   2. A bottle that has steam.exe → `.waitingForTitanfall`
+    ///   2. A bottle that has any launcher (Steam, EA App, or Epic Games) → `.waitingForTitanfall`
     ///   3. Nothing matching → `.waitingForBottle`
     private func detectStage() async -> Stage {
         let bottles = await CrossOverDetector.shared.bottles()
         if let withGame = bottles.first(where: \.hasTitanfall2) {
             return .done(bottleID: withGame.id)
         }
-        if let withSteam = bottles.first(where: \.hasSteam) {
-            return .waitingForTitanfall(bottleID: withSteam.id)
+        if let withLauncher = bottles.first(where: \.hasLauncher) {
+            return .waitingForTitanfall(bottleID: withLauncher.id)
         }
         return .waitingForBottle
     }

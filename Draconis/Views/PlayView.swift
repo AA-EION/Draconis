@@ -20,7 +20,10 @@ struct PlayView: View {
                         errorCard(err)
                     }
                     actionsCard
-                    maximaCard
+                    maximaToggleCard
+                    if env.maximaEnabled {
+                        maximaCard
+                    }
                 }
                 Spacer(minLength: 60)
             }
@@ -39,8 +42,9 @@ struct PlayView: View {
             body: [
                 "1. Open CrossOver.",
                 "2. Click Install a Windows Application.",
-                "3. Search for \"Titanfall 2\" in CrossOver's database — the profile will pick the win10_64 template and install Steam automatically.",
-                "4. Once the bottle exists, sign in to Steam and install Titanfall 2 from your library.",
+                "3. Search for \"Titanfall 2\" — the profile picks the win10_64 template and installs Steam automatically.",
+                "   Note: the CrossTie may appear untrusted in CrossOver — it is genuine and safe.",
+                "4. Once the bottle exists, sign in and install Titanfall 2.",
                 "5. Come back to Draconis and hit Rescan.",
             ].joined(separator: "\n"),
             primaryActionTitle: env.crossOverInstalled ? "Open CrossOver" : "Get CrossOver…",
@@ -65,7 +69,7 @@ struct PlayView: View {
                 "",
                 "Open CrossOver, pick the Titanfall 2 install profile, and either:",
                 "• Let CrossOver install Steam and then install Titanfall 2 from your Steam library, or",
-                "• Point CrossOver's installer at a non-Steam Titanfall 2 installer file when prompted.",
+                "• Point CrossOver's installer at the EA app or Epic Games launcher when prompted.",
                 "",
                 "Then come back here and hit Rescan.",
             ].joined(separator: "\n"),
@@ -157,20 +161,36 @@ struct PlayView: View {
                 tone: env.selectedBottle?.hasTitanfall2 == true ? .green : .orange
             )
             StatusPill(
-                label: "Steam",
-                value: env.selectedBottle?.hasSteam == true ? "Installed" : "Missing",
-                symbol: env.selectedBottle?.hasSteam == true
+                label: "Launcher",
+                value: launcherStatusValue,
+                symbol: env.selectedBottle?.hasLauncher == true
                     ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
-                tone: env.selectedBottle?.hasSteam == true ? .green : .orange
+                tone: env.selectedBottle?.hasLauncher == true ? .green : .orange
             )
             StatusPill(
                 label: "Northstar",
-                value: env.selectedBottle?.hasNorthstar == true ? "Ready" : "Not installed",
+                value: northstarStatusValue,
                 symbol: env.selectedBottle?.hasNorthstar == true
                     ? "bolt.shield.fill" : "questionmark.diamond.fill",
                 tone: env.selectedBottle?.hasNorthstar == true ? .green : .orange
             )
         }
+    }
+
+    private var launcherStatusValue: String {
+        guard let bottle = env.selectedBottle else { return "Missing" }
+        if bottle.hasSteam { return "Steam" }
+        if bottle.hasEAApp { return "EA App" }
+        if bottle.hasEpicGames { return "Epic" }
+        return "Missing"
+    }
+
+    private var northstarStatusValue: String {
+        guard let bottle = env.selectedBottle else { return "Not installed" }
+        if bottle.hasNorthstar {
+            return bottle.northstarVersion ?? "Ready"
+        }
+        return "Not installed"
     }
 
     // MARK: - Progress cards
@@ -263,21 +283,26 @@ struct PlayView: View {
                     || env.selectedBottle?.hasTitanfall2 != true
                     || (mode == .northstar && env.selectedBottle?.hasNorthstar != true)
                     || (mode == .northstar && env.selectedBottle?.hasSteam != true)
+                    || env.updating
                 )
 
-                Button {
-                    Task { await env.installLatestNorthstar() }
-                } label: {
-                    Label(
-                        env.updating ? "Installing…" : "Install / Update Northstar",
-                        systemImage: "arrow.down.circle.fill"
-                    )
-                    .font(TF.title(14))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                // Show Install button only when Northstar is not yet installed.
+                // When installed, auto-update runs on launch — no manual trigger needed.
+                if env.selectedBottle?.hasNorthstar != true {
+                    Button {
+                        Task { await env.installLatestNorthstar() }
+                    } label: {
+                        Label(
+                            env.updating ? "Installing…" : "Install Northstar",
+                            systemImage: "arrow.down.circle.fill"
+                        )
+                        .font(TF.title(14))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(env.selectedBottle == nil || env.updating)
                 }
-                .buttonStyle(.glass)
-                .disabled(env.selectedBottle == nil || env.updating)
             }
             .padding([.horizontal, .bottom], 18)
         }
@@ -285,21 +310,44 @@ struct PlayView: View {
         .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 22))
     }
 
+    // MARK: - Maxima toggle card
+
+    private var maximaToggleCard: some View {
+        HStack(spacing: 12) {
+            Toggle(isOn: $env.maximaEnabled) {
+                HStack(spacing: 8) {
+                    Image(systemName: "gamecontroller.fill")
+                        .foregroundStyle(.orange.opacity(0.85))
+                    Text("EA LAUNCHER (MAXIMA)")
+                        .stencilLabel(color: .orange.opacity(0.85))
+                }
+            }
+            .toggleStyle(.switch)
+
+            Button {
+                // no-op, popover shown via .help or a popover trigger below
+            } label: {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            .buttonStyle(.plain)
+            .help(maximaInfoText)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .glassEffect(.regular.tint(.orange.opacity(0.04)), in: .rect(cornerRadius: 18))
+    }
+
+    private var maximaInfoText: String {
+        "Maxima is an open-source replacement for the EA Desktop Launcher. " +
+        "It runs inside your CrossOver bottle and handles EA authentication for Titanfall 2. " +
+        "This feature is in beta — enable it only if you need EA account authentication."
+    }
+
     // MARK: - Maxima card
 
     private var maximaCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Header
-            HStack(spacing: 8) {
-                Image(systemName: "gamecontroller.fill")
-                    .foregroundStyle(.orange.opacity(0.85))
-                Text("EA (MAXIMA)")
-                    .stencilLabel(color: .orange.opacity(0.85))
-                Spacer()
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-
             // Status pills
             HStack(spacing: 10) {
                 StatusPill(
@@ -311,31 +359,45 @@ struct PlayView: View {
                 )
                 StatusPill(
                     label: "Maxima",
-                    value: env.maximaInstalled ? "Installed" : "Not installed",
+                    value: maximaVersionLabel,
                     symbol: env.maximaInstalled
                         ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
                     tone: env.maximaInstalled ? .green : .orange
                 )
             }
             .padding(.horizontal, 18)
+            .padding(.top, 16)
 
-            // Action row — Maxima card is setup-only. Launching itself goes
-            // through the main Launch button (which routes via Steam, so
-            // Maxima's link2ea:// bootstrap handles EA auth transparently).
             HStack(spacing: 12) {
                 if env.maximaInstalled && env.maximaHelperRegistered {
-                    Text("Maxima is ready. Use the Launch button above to start the game — Steam will run it and Maxima will handle EA login.")
+                    Text("Maxima is ready. Use the Launch button above to start the game.")
                         .font(TF.body(12))
                         .foregroundStyle(.white.opacity(0.65))
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if env.maximaUpdateAvailable {
+                        Button {
+                            Task { await env.updateMaxima() }
+                        } label: {
+                            Label(
+                                env.maximaSettingUp ? "Updating…" : "Update Maxima",
+                                systemImage: env.maximaSettingUp ? "hourglass" : "arrow.up.circle.fill"
+                            )
+                            .font(TF.title(14))
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(.orange)
+                        .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                    }
 
                     Button {
                         Task { await env.uninstallMaxima() }
                     } label: {
                         Label(
                             env.maximaSettingUp ? "Uninstalling…" : "Uninstall",
-                            systemImage: env.maximaSettingUp
-                                ? "hourglass" : "trash"
+                            systemImage: env.maximaSettingUp ? "hourglass" : "trash"
                         )
                         .font(TF.title(14))
                         .padding(.vertical, 12)
@@ -344,7 +406,6 @@ struct PlayView: View {
                     .buttonStyle(.glass)
                     .disabled(env.selectedBottle == nil || env.maximaSettingUp)
                 } else {
-                    // Not ready — show setup button
                     Button {
                         Task { await env.setupMaxima() }
                     } label: {
@@ -365,9 +426,6 @@ struct PlayView: View {
                         || env.selectedBottle?.hasTitanfall2 != true
                     )
 
-                    // Allow uninstalling helper registration even when
-                    // Maxima itself isn't in the bottle anymore (e.g.
-                    // user wants another app to own qrc://).
                     if env.maximaHelperRegistered {
                         Button {
                             Task { await env.uninstallMaxima() }
@@ -384,7 +442,6 @@ struct PlayView: View {
             }
             .padding([.horizontal, .bottom], 18)
 
-            // Info note when not set up
             if !env.maximaInstalled || !env.maximaHelperRegistered {
                 Text(maximaSetupNote)
                     .font(TF.body(11))
@@ -394,6 +451,14 @@ struct PlayView: View {
             }
         }
         .glassEffect(.regular.tint(.orange.opacity(0.06)), in: .rect(cornerRadius: 22))
+    }
+
+    private var maximaVersionLabel: String {
+        guard env.maximaInstalled else { return "Not installed" }
+        if let ver = env.maximaInstalledVersion {
+            return env.maximaUpdateAvailable ? "\(ver) (update)" : ver
+        }
+        return "Installed"
     }
 
     private var maximaSetupNote: String {

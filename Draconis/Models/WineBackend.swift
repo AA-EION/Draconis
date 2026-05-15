@@ -40,7 +40,13 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     public var hasNorthstar: Bool
     public var hasTitanfall2: Bool
     public var hasSteam: Bool
+    public var hasEAApp: Bool
+    public var hasEpicGames: Bool
+    public var northstarVersion: String?       // e.g. "v1.28.0", from ns_version.txt
     public var titanfall2InstallPath: String?  // POSIX path to TF2 root inside drive_c
+
+    /// True when any game-store launcher (Steam, EA App, or Epic Games) is present.
+    public var hasLauncher: Bool { hasSteam || hasEAApp || hasEpicGames }
 
     public init(
         id: String,
@@ -50,6 +56,9 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         hasNorthstar: Bool = false,
         hasTitanfall2: Bool = false,
         hasSteam: Bool = false,
+        hasEAApp: Bool = false,
+        hasEpicGames: Bool = false,
+        northstarVersion: String? = nil,
         titanfall2InstallPath: String? = nil
     ) {
         self.id = id
@@ -58,7 +67,10 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         self.prefixURL = prefixURL
         self.hasNorthstar = hasNorthstar
         self.hasTitanfall2 = hasTitanfall2
-        self.titanfall2InstallPath = titanfall2InstallPath
         self.hasSteam = hasSteam
+        self.hasEAApp = hasEAApp
+        self.hasEpicGames = hasEpicGames
+        self.northstarVersion = northstarVersion
+        self.titanfall2InstallPath = titanfall2InstallPath
     }
 }

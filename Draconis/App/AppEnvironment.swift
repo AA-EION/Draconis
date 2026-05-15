@@ -57,6 +57,13 @@ public final class AppEnvironment: ObservableObject {
     @Published public var maximaSettingUp: Bool = false
     @Published public var maximaProgress: MaximaService.Progress?
     @Published public var maximaError: String?
+    @Published public var maximaUpdateAvailable: Bool = false
+    @Published public var maximaInstalledVersion: String?
+
+    // Maxima section visibility (persisted preference)
+    @Published public var maximaEnabled: Bool = UserDefaults.standard.bool(forKey: "maximaEnabled") {
+        didSet { UserDefaults.standard.set(maximaEnabled, forKey: "maximaEnabled") }
+    }
 
     public var selectedBottle: WineBottle? {
         bottles.first { $0.id == selectedBottleID }
@@ -101,6 +108,22 @@ public final class AppEnvironment: ObservableObject {
         }
         try? await refreshNorthstarReleases()
         await refreshMaximaState()
+        await checkMaximaForUpdate()
+
+        // Auto-update Northstar when it is already installed and a newer
+        // release is available. If Northstar isn't installed yet we leave the
+        // Install button enabled so the user triggers it manually.
+        if let bottle = selectedBottle, bottle.hasNorthstar,
+           let latest = northstarReleases.first {
+            let installed = bottle.northstarVersion
+            if installed != latest.tagName {
+                DebugLog.shared.info("app",
+                    "Northstar update: installed=\(installed ?? "unknown") → latest=\(latest.tagName)")
+                await installLatestNorthstar()
+            } else {
+                DebugLog.shared.ok("app", "Northstar is up to date (\(latest.tagName))")
+            }
+        }
     }
 
     public func refreshCrossOverState() async {
@@ -161,16 +184,42 @@ public final class AppEnvironment: ObservableObject {
         autoInstallStage = nil
     }
 
+    // MARK: - Auto bottle install
+
+    /// Start watching for a bottle to appear without opening the CrossTie.
+    /// Used by the manual onboarding path so progress steps update as the
+    /// user installs things inside CrossOver themselves.
+    public func startManualBottleWatching() {
+        autoInstallStage = .waitingForBottle
+        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
+            guard let self else { return }
+            self.autoInstallStage = stage
+            Task { await self.refreshBottles() }
+            if case .waitingForTitanfall(let id) = stage { self.selectedBottleID = id }
+            if case .done(let id) = stage { self.selectedBottleID = id }
+        }
+    }
+
     // MARK: - Maxima
+
+    public func checkMaximaForUpdate() async {
+        maximaUpdateAvailable = await MaximaService.shared.isUpdateAvailable()
+        if maximaUpdateAvailable {
+            DebugLog.shared.info("maxima",
+                "Update available: local=\(MaximaService.shared.installedVersion ?? "?") → newer release found")
+        }
+    }
 
     public func refreshMaximaState() async {
         guard let bottle = selectedBottle else {
             maximaInstalled = false
             maximaHelperRegistered = false
+            maximaInstalledVersion = nil
             return
         }
         maximaInstalled = await MaximaService.shared.isInstalled(in: bottle)
         maximaHelperRegistered = await MaximaService.shared.isHelperRegistered()
+        maximaInstalledVersion = MaximaService.shared.installedVersion
     }
 
     public func setupMaxima() async {
@@ -193,6 +242,28 @@ public final class AppEnvironment: ObservableObject {
                 }
             }
             await refreshMaximaState()
+            await checkMaximaForUpdate()
+        } catch {
+            maximaError = error.localizedDescription
+            DebugLog.shared.error("maxima", error.localizedDescription)
+        }
+    }
+
+    /// Downloads and installs the latest Maxima release regardless of whether
+    /// a previous version is already in the bottle. Called when the user
+    /// explicitly clicks "Update Maxima".
+    public func updateMaxima() async {
+        guard let bottle = selectedBottle else { return }
+        maximaSettingUp = true
+        maximaError = nil
+        maximaProgress = nil
+        defer { maximaSettingUp = false; maximaProgress = nil }
+        do {
+            try await MaximaService.shared.downloadAndInstall(into: bottle) { @Sendable p in
+                Task { @MainActor in self.maximaProgress = p }
+            }
+            await refreshMaximaState()
+            await checkMaximaForUpdate()
         } catch {
             maximaError = error.localizedDescription
             DebugLog.shared.error("maxima", error.localizedDescription)

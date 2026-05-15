@@ -269,20 +269,71 @@ public actor MaximaService {
         return registered == expected
     }
 
+    // MARK: - Version tracking
+
+    private let versionKey = "maximaInstalledVersion"
+
+    /// The tag string stored when Maxima was last installed (e.g. "v0.3.1").
+    /// Nil if Maxima was never installed through Draconis, or if the preference
+    /// was cleared. Since the MaximaSetup.exe binary doesn't embed its own
+    /// version, we use the GitHub release tag that produced it.
+    ///
+    /// `nonisolated` because it only reads UserDefaults (thread-safe) and the
+    /// immutable `versionKey` constant — no actor-isolated state is touched.
+    public nonisolated var installedVersion: String? {
+        UserDefaults.standard.string(forKey: versionKey)
+    }
+
+    /// Fetches the latest release tag from GitHub without downloading the asset.
+    /// Returns `(tagName, downloadURL)`.
+    public func fetchLatestRelease() async throws -> (tagName: String, downloadURL: URL) {
+        var request = URLRequest(url: githubReleasesURL)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("Draconis-Launcher", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 20
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw MaximaError.badGitHubResponse(http.statusCode)
+        }
+
+        let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
+        guard let asset = release.assets.first(where: { $0.name == "MaximaSetup.exe" }),
+              let url = URL(string: asset.browserDownloadURL) else {
+            throw MaximaError.noInstallerAsset
+        }
+        return (release.tagName, url)
+    }
+
+    /// Returns true when the installed version tag is older than the latest
+    /// GitHub release. Returns false if Maxima is not installed yet.
+    public func isUpdateAvailable() async -> Bool {
+        guard let local = installedVersion else { return false }
+        guard let (remote, _) = try? await fetchLatestRelease() else { return false }
+        return local != remote
+    }
+
     // MARK: - Install
 
     /// Downloads MaximaSetup.exe from the latest Maxima-Draconis release,
     /// runs it silently inside the bottle, then registers MaximaHelper.
+    ///
+    /// The installer is saved to `PathResolver.downloadsCache/MaximaSetup.exe`
+    /// (overwriting any previous copy) so it lives alongside Northstar zips.
     public func downloadAndInstall(
         into bottle: WineBottle,
         progress: @escaping ProgressHandler
     ) async throws {
-        // 1 — Resolve download URL from GitHub Releases
+        // 1 — Resolve download URL and tag from GitHub Releases
         progress(.init(phase: .fetchingRelease, fraction: -1,
                        detail: "Looking up latest release…"))
-        let installerURL = try await fetchInstallerURL()
+        let (tagName, installerURL) = try await fetchLatestRelease()
 
-        // 2 — Download
+        // 2 — Download to the shared Downloads cache (overwrite previous copy).
+        let cachedExe = PathResolver.downloadsCache
+            .appendingPathComponent("MaximaSetup.exe")
+        try? FileManager.default.removeItem(at: cachedExe)
+
         progress(.init(phase: .downloading, fraction: 0,
                        detail: "Downloading MaximaSetup.exe…"))
         let tempExe = try await DownloadCoordinator.download(
@@ -290,6 +341,7 @@ public actor MaximaService {
         ) { p in
             progress(.init(phase: .downloading, fraction: p.fraction, detail: p.detail))
         }
+        try FileManager.default.moveItem(at: tempExe, to: cachedExe)
 
         // 3 — If Maxima is already installed we're effectively updating;
         //     run the uninstaller first so the new version isn't fighting
@@ -308,7 +360,7 @@ public actor MaximaService {
             at: bottleTemp.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try FileManager.default.copyItem(at: tempExe, to: bottleTemp)
+        try FileManager.default.copyItem(at: cachedExe, to: bottleTemp)
 
         // 4 — Run the NSIS installer silently (/S) inside the bottle
         //     Files are installed before the service-creation step, so even if
@@ -348,6 +400,9 @@ public actor MaximaService {
         progress(.init(phase: .registeringHelper, fraction: -1,
                        detail: "Registering MaximaHelper…"))
         try await registerHelper()
+
+        // Persist the installed version tag so we can detect updates later.
+        UserDefaults.standard.set(tagName, forKey: versionKey)
 
         progress(.init(phase: .done, fraction: 1, detail: "Maxima is ready"))
     }
@@ -437,33 +492,12 @@ public actor MaximaService {
     // games; it fails with "No owned offer found" when the user owns TF2
     // on Steam.
 
-    // MARK: - Private
-
-    private func fetchInstallerURL() async throws -> URL {
-        var request = URLRequest(url: githubReleasesURL)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("Draconis-Launcher", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 20
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw MaximaError.badGitHubResponse(http.statusCode)
-        }
-
-        let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-        guard let asset = release.assets.first(where: { $0.name == "MaximaSetup.exe" }) else {
-            throw MaximaError.noInstallerAsset
-        }
-        guard let url = URL(string: asset.browserDownloadURL) else {
-            throw MaximaError.noInstallerAsset
-        }
-        return url
-    }
 }
 
 // MARK: - GitHub API types
 
 private struct GitHubRelease: Decodable {
+    let tagName: String
     let assets: [Asset]
     struct Asset: Decodable {
         let name: String
@@ -472,5 +506,9 @@ private struct GitHubRelease: Decodable {
             case name
             case browserDownloadURL = "browser_download_url"
         }
+    }
+    enum CodingKeys: String, CodingKey {
+        case tagName = "tag_name"
+        case assets
     }
 }

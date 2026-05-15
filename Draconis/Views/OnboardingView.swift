@@ -33,7 +33,7 @@ struct OnboardingView: View {
             HStack {
                 if page != .modeChoice {
                     Button("Back") {
-                        if page == .autoProgress { env.cancelAutoBottleInstall() }
+                        stopWatching()
                         page = (page == .frontendChoice || page == .manual) ? .modeChoice : .frontendChoice
                     }
                     .buttonStyle(.glass)
@@ -55,12 +55,18 @@ struct OnboardingView: View {
         }
         .padding(28)
         .frame(minWidth: 520)
-        .onDisappear { env.cancelAutoBottleInstall() }
+        .onDisappear {
+            stopWatching()
+        }
+    }
+
+    private func stopWatching() {
+        env.cancelAutoBottleInstall()
     }
 
     private var continueLabel: String {
         switch page {
-        case .autoProgress:
+        case .autoProgress, .manual:
             if case .done = env.autoInstallStage { return "Finish" }
             return "Skip"
         default: return "Continue"
@@ -93,14 +99,17 @@ struct OnboardingView: View {
                     ChoiceCard(
                         icon: "sparkles",
                         title: "Automatic",
-                        detail: "Draconis hands CrossOver the signed Titanfall 2 crosstie and watches every 5 s until the bottle is ready.",
+                        detail: "Draconis hands CrossOver the Titanfall 2 crosstie and watches every 5 s until the bottle is ready.",
                         action: { page = .frontendChoice }
                     )
                     ChoiceCard(
                         icon: "hand.point.up.left.fill",
                         title: "Manual",
-                        detail: "Open CrossOver yourself and follow the install profile. Useful if you're using EA app instead of Steam.",
-                        action: { page = .manual }
+                        detail: "Open CrossOver yourself and follow the install profile. Works with Steam, EA app, or Epic Games.",
+                        action: {
+                            env.startManualBottleWatching()
+                            page = .manual
+                        }
                     )
                 } else {
                     Text("CrossOver not detected. Install it and click Rescan.")
@@ -122,24 +131,47 @@ struct OnboardingView: View {
                 Label("Manual setup", systemImage: "list.number")
                     .stencilLabel()
 
-                StepRow(
-                    number: 1,
-                    title: "Open CrossOver",
-                    body: "Use CrossOver's built-in Titanfall 2 install profile — it picks the right win10_64 template automatically.",
-                    done: env.bottles.contains(where: \.hasTitanfall2)
+                // CrossTie safety note
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundStyle(.yellow.opacity(0.85))
+                        .font(.system(size: 13))
+                    Text("The Titanfall 2 CrossTie may appear as **untrusted** inside CrossOver even though it comes from CrossOver's own database. This is a display issue — the profile is genuine and safe to run.")
+                        .font(TF.body(11))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+
+                // Launcher note
+                Text("The CrossTie selects **Steam** by default, but CrossOver lets you switch to the EA app or Epic Games launcher on the same screen. Pick whichever store you own Titanfall 2 on.")
+                    .font(TF.body(11))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Progress steps — same live polling as auto mode
+                ProgressStepRow(
+                    title: "Bottle created and launcher installed",
+                    detail: "CrossOver creates a win10_64 bottle and installs Steam, EA app, or Epic Games (whichever you chose).",
+                    state: stageState(.creatingBottle)
                 )
-                StepRow(
-                    number: 2,
-                    title: "Pick a frontend inside the bottle",
-                    body: "Steam: sign in and install Titanfall 2 from your library.\nEA app: install the EA app inside the bottle, sign in, and install Titanfall 2 from there.\nEither way Draconis picks it up.",
-                    done: env.bottles.contains(where: \.hasTitanfall2)
+                ProgressStepRow(
+                    title: "Install Titanfall 2",
+                    detail: "Log in to your launcher inside CrossOver and install Titanfall 2. Wait for it to reach 100% before continuing.",
+                    state: stageState(.installingGame)
                 )
-                StepRow(
-                    number: 3,
-                    title: "Set up Maxima",
-                    body: "Once Titanfall 2 is installed, click Set up Maxima from the EA card on the Play tab.",
-                    done: env.maximaInstalled && env.maximaHelperRegistered
+                ProgressStepRow(
+                    title: "Ready to launch",
+                    detail: "Draconis has found Titanfall2.exe inside the bottle.",
+                    state: stageState(.done)
                 )
+
+                if let bottle = env.bottles.first(where: { $0.hasLauncher || $0.hasTitanfall2 }) {
+                    Text("Detected bottle: \(bottle.name)")
+                        .font(TF.body(11))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
 
                 Button {
                     env.openCrossOver()
@@ -166,6 +198,19 @@ struct OnboardingView: View {
                 Text("Where do you own Titanfall 2? Draconis will start the CrossOver install for that store.")
                     .font(TF.body(11))
                     .foregroundStyle(.white.opacity(0.65))
+
+                // CrossTie safety note (shown in auto flow too)
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundStyle(.yellow.opacity(0.85))
+                        .font(.system(size: 13))
+                    Text("The Titanfall 2 CrossTie may appear as **untrusted** inside CrossOver. This is a display issue — the profile is genuine and safe.")
+                        .font(TF.body(11))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(Color.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
 
                 ForEach(BottleInstaller.Frontend.allCases) { f in
                     FrontendRow(
@@ -201,12 +246,12 @@ struct OnboardingView: View {
 
                 ProgressStepRow(
                     title: "CrossOver creates the bottle and installs Steam",
-                    detail: "Draconis polls CrossOver's bottles every 5 seconds, waiting for steam.exe to appear.",
+                    detail: "Draconis polls CrossOver's bottles every 5 seconds, waiting for a launcher (Steam, EA app, or Epic Games) to appear.",
                     state: stageState(.creatingBottle)
                 )
                 ProgressStepRow(
-                    title: "You install Titanfall 2 from Steam",
-                    detail: "When Steam opens inside the bottle, log in and install Titanfall 2. Wait for it to reach 100% before continuing.",
+                    title: "You install Titanfall 2",
+                    detail: "When your launcher opens inside the bottle, log in and install Titanfall 2. Wait for it to reach 100% before continuing.",
                     state: stageState(.installingGame)
                 )
                 ProgressStepRow(
@@ -215,7 +260,7 @@ struct OnboardingView: View {
                     state: stageState(.done)
                 )
 
-                if let bottle = env.bottles.first(where: { $0.hasSteam }) {
+                if let bottle = env.bottles.first(where: { $0.hasLauncher }) {
                     Text("Detected bottle: \(bottle.name)")
                         .font(TF.body(11))
                         .foregroundStyle(.white.opacity(0.55))
@@ -352,47 +397,5 @@ private struct ProgressStepRow: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.white.opacity(0.5))
         }
-    }
-}
-
-private struct StepRow: View {
-    let number: Int
-    let title: String
-    let detail: String
-    let done: Bool
-
-    init(number: Int, title: String, body: String, done: Bool) {
-        self.number = number
-        self.title = title
-        self.detail = body
-        self.done = done
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(done ? Color.green.opacity(0.25) : Color.white.opacity(0.08))
-                    .frame(width: 26, height: 26)
-                if done {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.green)
-                } else {
-                    Text("\(number)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(TF.title(13))
-                Text(detail)
-                    .font(TF.body(11))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
     }
 }

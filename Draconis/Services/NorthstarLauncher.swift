@@ -3,20 +3,20 @@ import Foundation
 /// Launches Titanfall 2 inside a bottle. The launch path is different for
 /// each mode because each game binary handles DRM differently:
 ///
-/// **Vanilla** — run `Titanfall2.exe` directly.
-///   The base binary contains the Steam DRM stub: if Steam isn't running it
-///   self-relaunches via `steam://run/1237970`. If the copy is EA-owned,
-///   the same binary triggers `link2ea://` for EA auth, which the bottle's
-///   maxima-bootstrap handler intercepts. Either way DRM bootstraps itself —
-///   we don't need to know which store the user has.
+/// **Vanilla** — run `NorthstarLauncher.exe -vanilla` (when Northstar is installed),
+///   or `Titanfall2.exe` as a fallback. NorthstarLauncher.exe -vanilla launches
+///   vanilla TF2 cleanly without loading Northstar mods, and avoids auth issues
+///   that arise when Maxima or the EA launcher isn't running.
 ///
-/// **Northstar** — run `steam.exe -applaunch 1237970 -northstar`.
+/// **Northstar** — run `steam.exe -applaunch 1237970 -northstar -noOriginStartup -multiple`.
 ///   NorthstarLauncher.exe hard-codes starting Origin via a Win32 path (not
 ///   `origin2://`), so it hangs forever on "Waiting for Origin..." when
 ///   Origin isn't installed (which is always, on macOS / Wine). The
 ///   supported Northstar entry point is Steam launch options: Steam runs
 ///   Titanfall2.exe with `-northstar`, Northstar's hooks load.
-///   Northstar + EA-only setup is currently unsupported here.
+///   `-noOriginStartup -multiple` are required when using Maxima — without
+///   them Northstar tries to start Origin, which hangs in Wine.
+///   See: https://github.com/AA-EION/Maxima-Draconis#northstar-online-play
 public actor NorthstarLauncher {
     public static let shared = NorthstarLauncher()
 
@@ -49,8 +49,8 @@ public actor NorthstarLauncher {
                        "Install Northstar before launching in Northstar mode."
             case .steamNotFoundForNorthstar:
                 return "Northstar mode launches through Steam launch options " +
-                       "(-northstar). Install Steam in this bottle first, or " +
-                       "use Vanilla mode."
+                       "(-northstar -noOriginStartup -multiple). " +
+                       "Install Steam in this bottle first, or use Vanilla mode."
             }
         }
     }
@@ -90,6 +90,22 @@ public actor NorthstarLauncher {
     private func launchVanilla(
         bottle: WineBottle, tf2Root: String, extraArgs: [String]
     ) async throws -> Process {
+        // Prefer NorthstarLauncher.exe -vanilla: avoids auth issues when
+        // Maxima/EA launcher isn't running, and cleanly loads without mods.
+        let nsExe = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
+        if FileManager.default.fileExists(atPath: nsExe) {
+            let args = ["-vanilla", "-novid"] + extraArgs
+            Log.info("northstar.launch", "NorthstarLauncher.exe -vanilla \(args.joined(separator: " "))")
+            return try await WineBackendManager.shared.launch(
+                executable: nsExe,
+                arguments: args,
+                in: bottle,
+                workingDirectory: tf2Root,
+                wait: false
+            )
+        }
+
+        // Fallback: run Titanfall2.exe directly when Northstar isn't installed.
         let exe = (tf2Root as NSString).appendingPathComponent("Titanfall2.exe")
         guard FileManager.default.fileExists(atPath: exe) else {
             Log.error("northstar.launch", "Titanfall2.exe missing at \(exe)")
@@ -118,10 +134,13 @@ public actor NorthstarLauncher {
             Log.error("northstar.launch", "steam.exe required for Northstar mode")
             throw LaunchError.steamNotFoundForNorthstar
         }
-        // Steam launches Titanfall2.exe with -northstar, Northstar's wsock32
-        // proxy hooks load, mod loader runs. Setup is identical to the Steam
-        // launch option `-northstar` that Northstar's wiki documents.
-        let args = ["-applaunch", tf2SteamAppID, "-novid", "-northstar"] + extraArgs
+        // Required launch flags when using Maxima (per Maxima-Draconis README):
+        //   -noOriginStartup  prevents Northstar from trying to start Origin
+        //                     (which doesn't exist in Wine and would hang forever)
+        //   -multiple         allows multiple game instances / avoids single-
+        //                     instance lock that can conflict with Maxima
+        //   -northstar        tells the game to load NorthstarLauncher hooks
+        let args = ["-applaunch", tf2SteamAppID, "-noOriginStartup", "-multiple", "-northstar", "-novid"] + extraArgs
         Log.info("northstar.launch", "steam.exe \(args.joined(separator: " "))")
         return try await WineBackendManager.shared.launch(
             executable: steamExe,

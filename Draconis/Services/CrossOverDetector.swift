@@ -51,6 +51,7 @@ public actor CrossOverDetector {
 
             let titanfall = Self.locateTitanfall2(in: driveC)
             let northstar = Self.locateNorthstar(in: driveC)
+            let nsVersion = titanfall.flatMap { Self.readNorthstarVersion(in: $0) }
 
             return WineBottle(
                 id: "crossover:" + url.lastPathComponent,
@@ -59,6 +60,9 @@ public actor CrossOverDetector {
                 hasNorthstar: northstar != nil,
                 hasTitanfall2: titanfall != nil,
                 hasSteam: SteamInstaller.steamExePath(in: url) != nil,
+                hasEAApp: Self.locateEAApp(in: driveC) != nil,
+                hasEpicGames: Self.locateEpicGames(in: driveC) != nil,
+                northstarVersion: nsVersion,
                 titanfall2InstallPath: titanfall?.path
             )
         }
@@ -101,6 +105,45 @@ public actor CrossOverDetector {
         guard let tf2 = locateTitanfall2(in: driveC) else { return nil }
         let launcher = tf2.appendingPathComponent("NorthstarLauncher.exe")
         return FileManager.default.fileExists(atPath: launcher.path) ? launcher : nil
+    }
+
+    /// Reads the installed Northstar version from ns_version.txt written by the installer.
+    /// Returns a tag string like "v1.28.0", or nil if the file is absent or unreadable.
+    public nonisolated static func readNorthstarVersion(in tf2Root: URL) -> String? {
+        let versionFile = tf2Root.appendingPathComponent("ns_version.txt")
+        guard let raw = try? String(contentsOf: versionFile, encoding: .utf8) else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// EA App / EA Desktop inside the bottle. Checks both 32-bit and 64-bit Program Files.
+    public nonisolated static func locateEAApp(in driveC: URL) -> URL? {
+        let candidates = [
+            "Program Files/Electronic Arts/EA Desktop/EA Desktop.exe",
+            "Program Files (x86)/Electronic Arts/EA Desktop/EA Desktop.exe",
+            "Program Files/EA/EA Desktop/EA Desktop.exe",
+            "Program Files (x86)/EA/EA Desktop/EA Desktop.exe",
+        ]
+        let fm = FileManager.default
+        for path in candidates {
+            let url = driveC.appendingPathComponent(path)
+            if fm.fileExists(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    /// Epic Games Launcher inside the bottle.
+    public nonisolated static func locateEpicGames(in driveC: URL) -> URL? {
+        let candidates = [
+            "Program Files (x86)/Epic Games/Launcher/Portal/Binaries/Win32/EpicGamesLauncher.exe",
+            "Program Files/Epic Games/Launcher/Portal/Binaries/Win64/EpicGamesLauncher.exe",
+        ]
+        let fm = FileManager.default
+        for path in candidates {
+            let url = driveC.appendingPathComponent(path)
+            if fm.fileExists(atPath: url.path) { return url }
+        }
+        return nil
     }
 
     /// Depth-limited recursive search using FileManager.enumerator with a cap

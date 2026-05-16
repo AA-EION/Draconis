@@ -4,6 +4,15 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.9.2] — 2026-05-16
+
+### Fixed
+- **Northstar was reinstalled on every launch** — `bootstrap()` compared the version Northstar writes into `ns_version.txt` (`1.30.0`) against the GitHub release tag (`v1.30.0`) literally; the strings never matched so the auto-updater downloaded and re-extracted the same release every time Draconis started. Both sides are now normalised (leading `v`/`V` stripped) before comparison, so an up-to-date install is recognised as up-to-date.
+- **Draconis and Northstar updaters ran simultaneously** — when a self-update was offered on launch, `bootstrap()` also fired the Northstar auto-update in parallel, producing two progress bars, two competing downloads, and an unclear "is the app about to relaunch or am I supposed to wait?" state. Northstar's auto-update is now deferred whenever a Draconis update prompt is on screen; it'll run on the next launch (typically right after the self-update relaunch).
+- **Self-updater hung on "Quitting to apply update…"** — `NSApplication.shared.terminate(nil)` was called while the update sheet was still presented, so AppKit's terminate cycle waited indefinitely on the modal. All open windows are now closed before `terminate` is invoked, and an `exit(0)` fallback fires 1.5 s later in case AppKit still stalls. The swap helper (which has been waiting on the parent PID) can then proceed cleanly.
+
+---
+
 ## [0.9.1] — 2026-05-16
 
 ### Fixed

@@ -117,20 +117,49 @@ public final class AppEnvironment: ObservableObject {
         await checkMaximaForUpdate()
         await checkDraconisForUpdate()
 
+        // Defer Northstar's auto-update when a Draconis update is pending.
+        // Running both simultaneously means two progress bars, two downloads
+        // competing for bandwidth, and a confusing "is the app about to quit
+        // or am I supposed to wait?" situation for the user. The Northstar
+        // check will run again the next time Draconis launches, which (if the
+        // user updates) is immediately after the self-update relaunch.
+        if draconisUpdateAvailable != nil {
+            DebugLog.shared.info("app",
+                "Draconis update pending — skipping Northstar auto-update this launch")
+            return
+        }
+
         // Auto-update Northstar when it is already installed and a newer
         // release is available. If Northstar isn't installed yet we leave the
         // Install button enabled so the user triggers it manually.
         if let bottle = selectedBottle, bottle.hasNorthstar,
            let latest = northstarReleases.first {
             let installed = bottle.northstarVersion
-            if installed != latest.tagName {
+            if Self.northstarVersionMatches(installed: installed, releaseTag: latest.tagName) {
+                DebugLog.shared.ok("app", "Northstar is up to date (\(latest.tagName))")
+            } else {
                 DebugLog.shared.info("app",
                     "Northstar update: installed=\(installed ?? "unknown") → latest=\(latest.tagName)")
                 await installLatestNorthstar()
-            } else {
-                DebugLog.shared.ok("app", "Northstar is up to date (\(latest.tagName))")
             }
         }
+    }
+
+    /// Northstar writes the *unprefixed* semver into `ns_version.txt` (e.g.
+    /// `1.30.0`), while GitHub releases are tagged with a `v` prefix (e.g.
+    /// `v1.30.0`). Compare after stripping the prefix from both so the
+    /// auto-updater doesn't re-extract the same release every launch.
+    nonisolated static func northstarVersionMatches(installed: String?, releaseTag: String) -> Bool {
+        guard let installed else { return false }
+        return stripV(installed) == stripV(releaseTag)
+    }
+
+    private nonisolated static func stripV(_ s: String) -> String {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let first = trimmed.first, first == "v" || first == "V" {
+            return String(trimmed.dropFirst())
+        }
+        return trimmed
     }
 
     public func refreshCrossOverState() async {

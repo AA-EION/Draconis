@@ -304,9 +304,25 @@ public actor DraconisUpdater {
 
         // Give the user a beat to see the final message before we vanish.
         try? await Task.sleep(nanoseconds: 600_000_000)
+
         await MainActor.run {
+            // Close every open window so AppKit doesn't sit waiting on a modal
+            // sheet / dialog while `terminate` runs the
+            // applicationShouldTerminate cycle. With the sheet still up
+            // terminate just hangs and the user sees "Quitting…" forever.
+            for window in NSApplication.shared.windows {
+                window.close()
+            }
             NSApplication.shared.terminate(nil)
         }
+
+        // Hard fallback: if the AppKit terminate path stalls (active modal,
+        // background save panel, etc.), exit unconditionally after a beat so
+        // the swap helper can take over. The helper waits on our PID; without
+        // this Draconis can sit "Quitting…" indefinitely.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        Log.warn("draconis.update", "AppKit terminate stalled; forcing exit(0)")
+        exit(0)
     }
 
     // MARK: - DMG mount

@@ -4,6 +4,13 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.8.2] — 2026-05-16
+
+### Added
+- **In-app self-update** — Draconis now checks GitHub Releases on launch and offers to update itself when a newer version is published. The prompt has three options: **Update Now** (downloads the DMG, swaps the bundle, and relaunches), **Remind Me Later** (re-prompts on next launch), and **Skip This Version** (only re-prompts when an even newer release appears). No admin permissions required, no Gatekeeper friction between versions — the new bundle is fetched via `URLSession` so it never receives the `com.apple.quarantine` attribute, and the swap happens via a detached shell helper that survives Draconis quitting (same pattern Sparkle uses). Approved updates work for installs in `/Applications/` and `~/Applications/`; apps on external volumes go to the correct per-volume Trash.
+
+---
+
 ## [0.8.1] — 2026-05-16
 
 ### Added

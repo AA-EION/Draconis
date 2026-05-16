@@ -4,6 +4,21 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.8.0] — 2026-05-16
+
+### Fixed
+- **Maxima info button** — the `ⓘ` button next to the Maxima toggle was a silent no-op; it now opens a popover with a plain-language description of what Maxima does and a link to the project page.
+- **Maxima uninstall refresh** — after uninstalling Maxima, Draconis now reflects the change immediately in the UI without requiring a restart. The uninstall path adds a 1.5 s FS-settle delay, force-removes any leftover install directories the NSIS uninstaller may have missed, clears the persisted version tag, and triggers a full bottle rescan before updating the status pills.
+
+### Added
+- **Uninstall Northstar** — a new **Uninstall NS** button appears in the Play tab next to Launch whenever Northstar is installed. A confirmation dialog is shown before any files are removed. The uninstaller removes `NorthstarLauncher.exe`, `Northstar.dll`, `R2Northstar/` (mods and plugins), `ns_version.txt`, startup arg files, and the Northstar-patched `bin/x64_retail/wsock32.dll`, leaving `Titanfall2.exe` and the base game fully intact.
+
+### Changed
+- **Light theme / Liquid Glass refresh** — the app now enforces light mode with a white backdrop (frosted blur + 78 % white overlay) so text stays legible while preserving the Liquid Glass card aesthetic. Accent colour updated to `#c4e7fb` (soft steel-blue). All hardcoded `.white` foreground tokens replaced with `.primary` / `.primary.opacity()`. Glass card tints changed from invisible `.white.opacity(0.04)` to `.accentColor.opacity(0.18)` for visible depth.
+- **Manual setup wizard** — removed all mentions of "CrossTie" from the manual-install page (CrossTie is an automatic-mode concept). The three progress steps now describe what the user does themselves: create a win10_64 bottle, install a launcher and Titanfall 2, and wait for Draconis to detect the game.
+
+---
+
 ## [0.7.0] — 2026-05-15
 
 ### Added

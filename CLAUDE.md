@@ -73,3 +73,15 @@ If TF2 is owned only on Steam and the EA account isn't linked, Maxima will warn 
 ```
 
 See `BUILD.md` for signing, notarisation, and DMG packaging.
+
+## Release checklist
+
+**Always do these steps in order before tagging a release:**
+
+1. **Bump `MARKETING_VERSION`** in `project.yml` (e.g. `"0.7.0"` → `"0.8.0"`).  
+   This is the single source of truth — `CFBundleShortVersionString` in the built app reads from it.
+2. **Update `CHANGELOG.md`** — add a `## [X.Y.Z] — YYYY-MM-DD` section at the top.
+3. Commit both files: `chore: bump version to vX.Y.Z`.
+4. Merge the release PR (or commit directly to main).
+5. Tag on main: `git tag vX.Y.Z <merge-sha> && git push origin vX.Y.Z`.
+6. Create the GitHub release targeting that tag, pasting the CHANGELOG section as the release notes.

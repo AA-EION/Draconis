@@ -27,7 +27,7 @@ struct StatusPill: View {
                 .stencilLabel(size: 10, color: tone.color.opacity(0.9))
             Text(value)
                 .font(TF.display(18))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)

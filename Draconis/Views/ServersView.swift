@@ -21,7 +21,7 @@ struct ServersView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .glassEffect(.regular.tint(.white.opacity(0.05)), in: .capsule)
+            .glassEffect(.regular.tint(Color.accentColor.opacity(0.22)), in: .capsule)
 
             Button {
                 Task { await env.refreshServers() }
@@ -99,7 +99,7 @@ private struct ServerRow: View {
             }
         }
         .padding(14)
-        .glassEffect(.regular.tint(.white.opacity(0.04)),
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)),
                      in: .rect(cornerRadius: 16))
     }
 }

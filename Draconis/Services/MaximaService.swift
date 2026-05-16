@@ -455,11 +455,46 @@ public actor MaximaService {
             throw MaximaError.installerFailed(code)
         }
 
+        // Give the NSIS uninstaller's wineserver writes a moment to flush to
+        // disk before we remove any leftover files ourselves. Without this
+        // delay isInstalled(in:) can still find maxima-cli.exe immediately
+        // after the installer exits.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+        // Best-effort sweep of install directories the NSIS script may have
+        // left behind (e.g. when wineserver locked a file mid-removal).
+        forceRemoveInstallDirs(in: bottle)
+
+        // Clear the persisted version tag so the UI reflects the uninstalled
+        // state immediately — without this the version check in refreshMaximaState
+        // would report a stale version until the next app launch.
+        UserDefaults.standard.removeObject(forKey: versionKey)
+
         progress(.init(phase: .registeringHelper, fraction: -1,
                        detail: "Removing MaximaHelper handler…"))
         try await unregisterHelper()
 
         progress(.init(phase: .done, fraction: 1, detail: "Maxima uninstalled"))
+    }
+
+    /// Removes the known Maxima install directories from the bottle's drive_c.
+    /// Called after the NSIS uninstaller exits to catch any files the uninstaller
+    /// left behind (locked handles, wineserver latency, etc.).
+    private func forceRemoveInstallDirs(in bottle: WineBottle) {
+        let driveC = PathResolver.driveC(in: bottle.prefixURL)
+        let fm = FileManager.default
+        for dir in possibleInstallDirs {
+            let url = driveC.appendingPathComponent(dir)
+            if fm.fileExists(atPath: url.path) {
+                do {
+                    try fm.removeItem(at: url)
+                    Log.ok("maxima.uninstall", "Removed leftover dir: \(dir)")
+                } catch {
+                    Log.error("maxima.uninstall",
+                              "Could not remove \(dir): \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     /// `wineserver -k` against the bottle's WINEPREFIX kills every wine

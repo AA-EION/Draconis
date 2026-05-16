@@ -287,6 +287,10 @@ public final class AppEnvironment: ObservableObject {
             } else {
                 try await MaximaService.shared.unregisterHelper()
             }
+            // Rescan bottles so WineBottle structs reflect the removed files,
+            // then re-evaluate Maxima state — this guarantees the UI flips to
+            // "not installed" immediately without requiring an app restart.
+            await refreshBottles()
             await refreshMaximaState()
         } catch {
             maximaError = error.localizedDescription
@@ -370,6 +374,22 @@ public final class AppEnvironment: ObservableObject {
             try await SteamInstaller.shared.install(into: bottle)
         } catch {
             lastLaunchError = error.localizedDescription
+        }
+    }
+
+    public func uninstallNorthstar() async {
+        guard let bottle = selectedBottle else { return }
+        updating = true
+        lastUpdateError = nil
+        updateProgress = .init(phase: .extracting, fraction: -1,
+                               detail: "Removing Northstar files…")
+        defer { updating = false; updateProgress = nil }
+        do {
+            try await NorthstarUpdater.shared.uninstall(from: bottle)
+            await refreshBottles()
+        } catch {
+            DebugLog.shared.error("app", error.localizedDescription)
+            lastUpdateError = error.localizedDescription
         }
     }
 

@@ -94,7 +94,7 @@ struct OnboardingView: View {
                 if env.crossOverInstalled {
                     Text("Pick how you'd like to set up the CrossOver bottle. Both routes end with Titanfall 2 installed inside a win10_64 bottle that Draconis can launch.")
                         .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.primary.opacity(0.65))
 
                     ChoiceCard(
                         icon: "sparkles",
@@ -122,7 +122,7 @@ struct OnboardingView: View {
             }
             .padding(18)
         }
-        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 18))
     }
 
     private var manualPage: some View {
@@ -131,34 +131,24 @@ struct OnboardingView: View {
                 Label("Manual setup", systemImage: "list.number")
                     .stencilLabel()
 
-                // CrossTie safety note
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundStyle(.yellow.opacity(0.85))
-                        .font(.system(size: 13))
-                    Text("The Titanfall 2 CrossTie may appear as **untrusted** inside CrossOver even though it comes from CrossOver's own database. This is a display issue — the profile is genuine and safe to run.")
-                        .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .background(Color.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-
-                // Launcher note
-                Text("The CrossTie selects **Steam** by default, but CrossOver lets you switch to the EA app or Epic Games launcher on the same screen. Pick whichever store you own Titanfall 2 on.")
+                Text("In manual mode you drive CrossOver yourself. Use this if you already have a bottle, want a custom install layout, or prefer to set up Titanfall 2 step-by-step.")
                     .font(TF.body(11))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.primary.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
 
-                // Progress steps — same live polling as auto mode
+                Text("Pick whichever store you own Titanfall 2 on (Steam, EA app, or Epic Games) and install the game inside CrossOver. Draconis polls every 5 seconds and will pick up the bottle automatically once Titanfall2.exe exists.")
+                    .font(TF.body(11))
+                    .foregroundStyle(.primary.opacity(0.65))
+                    .fixedSize(horizontal: false, vertical: true)
+
                 ProgressStepRow(
-                    title: "Bottle created and launcher installed",
-                    detail: "CrossOver creates a win10_64 bottle and installs Steam, EA app, or Epic Games (whichever you chose).",
+                    title: "Create a Windows 10 64-bit bottle in CrossOver",
+                    detail: "Open CrossOver → New Bottle. Choose the win10_64 template. Name it whatever you like.",
                     state: stageState(.creatingBottle)
                 )
                 ProgressStepRow(
-                    title: "Install Titanfall 2",
-                    detail: "Log in to your launcher inside CrossOver and install Titanfall 2. Wait for it to reach 100% before continuing.",
+                    title: "Install your launcher and Titanfall 2",
+                    detail: "Inside the bottle, install Steam, the EA app, or Epic Games. Log in, install Titanfall 2, and wait for it to reach 100%.",
                     state: stageState(.installingGame)
                 )
                 ProgressStepRow(
@@ -170,7 +160,7 @@ struct OnboardingView: View {
                 if let bottle = env.bottles.first(where: { $0.hasLauncher || $0.hasTitanfall2 }) {
                     Text("Detected bottle: \(bottle.name)")
                         .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(.primary.opacity(0.55))
                 }
 
                 Button {
@@ -186,7 +176,7 @@ struct OnboardingView: View {
             }
             .padding(18)
         }
-        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 18))
     }
 
     private var frontendChoicePage: some View {
@@ -197,7 +187,7 @@ struct OnboardingView: View {
 
                 Text("Where do you own Titanfall 2? Draconis will start the CrossOver install for that store.")
                     .font(TF.body(11))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.primary.opacity(0.65))
 
                 // CrossTie safety note (shown in auto flow too)
                 HStack(alignment: .top, spacing: 8) {
@@ -206,7 +196,7 @@ struct OnboardingView: View {
                         .font(.system(size: 13))
                     Text("The Titanfall 2 CrossTie may appear as **untrusted** inside CrossOver. This is a display issue — the profile is genuine and safe.")
                         .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(.primary.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(10)
@@ -235,7 +225,7 @@ struct OnboardingView: View {
             }
             .padding(18)
         }
-        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 18))
     }
 
     private var autoProgressPage: some View {
@@ -263,12 +253,12 @@ struct OnboardingView: View {
                 if let bottle = env.bottles.first(where: { $0.hasLauncher }) {
                     Text("Detected bottle: \(bottle.name)")
                         .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(.primary.opacity(0.55))
                 }
             }
             .padding(18)
         }
-        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 18))
     }
 
     // MARK: - Stage helpers
@@ -306,14 +296,14 @@ private struct ChoiceCard: View {
                     Text(title).font(TF.title(13))
                     Text(detail)
                         .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.primary.opacity(0.65))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(.white.opacity(0.4))
+                Image(systemName: "chevron.right").foregroundStyle(.primary.opacity(0.4))
             }
             .padding(12)
-            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.accentColor.opacity(0.20), in: RoundedRectangle(cornerRadius: 12))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -331,14 +321,14 @@ private struct FrontendRow: View {
                 Image(systemName: selected && frontend.available
                       ? "largecircle.fill.circle"
                       : "circle")
-                    .foregroundStyle(frontend.available ? Color.accentColor : Color.white.opacity(0.25))
+                    .foregroundStyle(frontend.available ? Color.accentColor : Color.primary.opacity(0.25))
                 Text(frontend.displayName)
                     .font(TF.title(13))
-                    .foregroundStyle(frontend.available ? .white : .white.opacity(0.35))
+                    .foregroundStyle(frontend.available ? Color.primary : Color.primary.opacity(0.35))
                 if !frontend.available {
                     Text("— coming soon")
                         .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.primary.opacity(0.35))
                 }
                 Spacer()
             }
@@ -367,7 +357,7 @@ private struct ProgressStepRow: View {
                 Text(title).font(TF.title(13))
                 Text(detail)
                     .font(TF.body(11))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.primary.opacity(0.65))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
@@ -379,7 +369,7 @@ private struct ProgressStepRow: View {
         switch state {
         case .done:   return .green.opacity(0.25)
         case .active: return .accentColor.opacity(0.25)
-        case .pending: return .white.opacity(0.08)
+        case .pending: return .primary.opacity(0.08)
         }
     }
 
@@ -395,7 +385,7 @@ private struct ProgressStepRow: View {
         case .pending:
             Image(systemName: "circle.dotted")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.primary.opacity(0.5))
         }
     }
 }

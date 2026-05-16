@@ -27,10 +27,10 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         if let bottle = env.selectedBottle {
                             infoRow(label: "Active bottle", value: bottle.name)
-                            Divider().overlay(.white.opacity(0.07))
+                            Divider().overlay(.primary.opacity(0.10))
                             infoRow(label: "Prefix", value: bottle.prefixURL.lastPathComponent)
                             if let tf2 = bottle.titanfall2InstallPath {
-                                Divider().overlay(.white.opacity(0.07))
+                                Divider().overlay(.primary.opacity(0.10))
                                 infoRow(
                                     label: "Titanfall 2",
                                     value: URL(fileURLWithPath: tf2).lastPathComponent
@@ -60,7 +60,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.glass)
 
-                        Divider().overlay(.white.opacity(0.07))
+                        Divider().overlay(.primary.opacity(0.10))
 
                         Button {
                             NSWorkspace.shared.activateFileViewerSelecting(
@@ -91,7 +91,7 @@ struct SettingsView: View {
                         HStack(spacing: 12) {
                             Label("CrossOver", systemImage: "wineglass.fill")
                                 .font(.callout)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(.primary)
                             Spacer()
                             if env.crossOverInstalled {
                                 Label("Detected", systemImage: "checkmark.circle.fill")
@@ -141,7 +141,7 @@ struct SettingsView: View {
                 GlassEffectContainer {
                     VStack(spacing: 0) {
                         toggleRow(label: "Show console pane in sidebar", isOn: $env.showConsole)
-                        Divider().overlay(.white.opacity(0.07))
+                        Divider().overlay(.primary.opacity(0.10))
                         toggleRow(label: "Verbose logging", isOn: $env.verboseLogging)
                     }
                 }
@@ -155,7 +155,7 @@ struct SettingsView: View {
                     stdout/stderr land in ~/Library/Application Support/Draconis/Logs.
                     """)
                     .font(.callout)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.primary.opacity(0.5))
                     .padding(20)
                 }
                 .glassEffect(.regular, in: .rect(cornerRadius: 16))
@@ -172,7 +172,7 @@ struct SettingsView: View {
 
             Image(systemName: "dragonhead")
                 .font(.system(size: 48))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.primary.opacity(0.9))
                 .symbolRenderingMode(.hierarchical)
 
             VStack(spacing: 6) {
@@ -203,11 +203,11 @@ struct SettingsView: View {
         HStack {
             Text(label)
                 .font(.callout)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.primary.opacity(0.6))
             Spacer()
             Text(value)
                 .font(.callout.weight(.medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -219,7 +219,7 @@ struct SettingsView: View {
         HStack {
             Text(label)
                 .font(.callout)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(.primary.opacity(0.85))
             Spacer()
             Toggle("", isOn: isOn)
                 .toggleStyle(.switch)

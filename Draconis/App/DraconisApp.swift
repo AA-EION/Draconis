@@ -164,7 +164,9 @@ private struct TransparentBackdrop: View {
     var body: some View {
         ZStack {
             VisualEffect(material: .popover, blending: .behindWindow)
-            Color.white.opacity(0.78)
+            // Enough white to keep text legible on the frosted canvas
+            // without fully killing the Liquid Glass translucency.
+            Color.white.opacity(0.55)
         }
     }
 }

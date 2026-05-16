@@ -110,7 +110,7 @@ private struct ConsoleLineView: View {
         HStack(alignment: .top, spacing: 8) {
             Text(timeString)
                 .font(TF.mono(10))
-                .foregroundStyle(.primary.opacity(0.45))
+                .foregroundStyle(.primary.opacity(0.72))
                 .frame(width: 64, alignment: .leading)
             Image(systemName: line.level.symbol)
                 .font(.system(size: 10))
@@ -118,7 +118,7 @@ private struct ConsoleLineView: View {
                 .frame(width: 14)
             Text(line.scope)
                 .font(TF.mono(10))
-                .foregroundStyle(.primary.opacity(0.55))
+                .foregroundStyle(.primary.opacity(0.70))
                 .frame(width: 130, alignment: .leading)
             Text(line.message)
                 .font(TF.mono(11))

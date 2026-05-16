@@ -71,7 +71,7 @@ struct ModsView: View {
                             .buttonStyle(.glass)
                     }
                     .padding(40)
-                    .glassEffect(.regular.tint(.red.opacity(0.10)), in: .rect(cornerRadius: 16))
+                    .glassEffect(.regular.tint(Color.black.opacity(0.05)), in: .rect(cornerRadius: 16))
                 } else if env.modsLoading && filtered.isEmpty {
                     ProgressView("Fetching Thunderstore…")
                         .padding(40)
@@ -150,7 +150,7 @@ private struct ThunderstoreRow: View {
                         Text("DEPRECATED")
                             .font(.caption2.weight(.bold))
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .glassEffect(.regular.tint(.orange.opacity(0.5)), in: .capsule)
+                            .glassEffect(.regular.tint(Color.accentColor.opacity(0.45)), in: .capsule)
                     }
                 }
                 Text(package.latest?.description ?? "")

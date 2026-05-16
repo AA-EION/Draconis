@@ -119,7 +119,7 @@ struct PlayView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(22)
-        .glassEffect(.regular.tint(.orange.opacity(0.08)), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.25)), in: .rect(cornerRadius: 22))
     }
 
     // MARK: - Hero
@@ -139,7 +139,7 @@ struct PlayView: View {
                     systemImage: bottle.backend.symbolName
                 )
                 .font(TF.body(12))
-                .foregroundStyle(.primary.opacity(0.65))
+                .foregroundStyle(.primary.opacity(0.72))
                 .padding(.top, 4)
             }
         }
@@ -213,7 +213,7 @@ struct PlayView: View {
             phase: p.phase.label,
             fraction: p.fraction,
             detail: p.detail,
-            tint: .orange
+            tint: .accentColor
         )
     }
 
@@ -359,7 +359,7 @@ struct PlayView: View {
                 showMaximaInfo.toggle()
             } label: {
                 Image(systemName: "info.circle")
-                    .foregroundStyle(.primary.opacity(0.55))
+                    .foregroundStyle(.primary.opacity(0.70))
             }
             .buttonStyle(.plain)
             .help("About Maxima")
@@ -424,7 +424,7 @@ struct PlayView: View {
                 if env.maximaInstalled && env.maximaHelperRegistered {
                     Text("Maxima is ready. Use the Launch button above to start the game.")
                         .font(TF.body(12))
-                        .foregroundStyle(.primary.opacity(0.65))
+                        .foregroundStyle(.primary.opacity(0.72))
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     if env.maximaUpdateAvailable {
@@ -440,7 +440,7 @@ struct PlayView: View {
                             .padding(.horizontal, 6)
                         }
                         .buttonStyle(.glassProminent)
-                        .tint(.orange)
+                        .tint(.accentColor)
                         .disabled(env.selectedBottle == nil || env.maximaSettingUp)
                     }
 
@@ -471,7 +471,7 @@ struct PlayView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.glassProminent)
-                    .tint(.orange)
+                    .tint(.accentColor)
                     .disabled(
                         env.selectedBottle == nil
                         || env.maximaSettingUp
@@ -497,12 +497,12 @@ struct PlayView: View {
             if !env.maximaInstalled || !env.maximaHelperRegistered {
                 Text(maximaSetupNote)
                     .font(TF.body(11))
-                    .foregroundStyle(.primary.opacity(0.5))
+                    .foregroundStyle(.primary.opacity(0.72))
                     .padding(.horizontal, 18)
                     .padding(.bottom, 14)
             }
         }
-        .glassEffect(.regular.tint(.orange.opacity(0.06)), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.20)), in: .rect(cornerRadius: 22))
     }
 
     private var maximaVersionLabel: String {
@@ -542,7 +542,7 @@ struct PlayView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .glassEffect(.regular.tint(.red.opacity(0.18)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(Color.black.opacity(0.06)), in: .rect(cornerRadius: 14))
     }
 }
 

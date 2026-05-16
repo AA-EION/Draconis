@@ -94,7 +94,7 @@ struct OnboardingView: View {
                 if env.crossOverInstalled {
                     Text("Pick how you'd like to set up the CrossOver bottle. Both routes end with Titanfall 2 installed inside a win10_64 bottle that Draconis can launch.")
                         .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(0.65))
+                        .foregroundStyle(.primary.opacity(0.75))
 
                     ChoiceCard(
                         icon: "sparkles",
@@ -138,7 +138,7 @@ struct OnboardingView: View {
 
                 Text("Pick whichever store you own Titanfall 2 on (Steam, EA app, or Epic Games) and install the game inside CrossOver. Draconis polls every 5 seconds and will pick up the bottle automatically once Titanfall2.exe exists.")
                     .font(TF.body(11))
-                    .foregroundStyle(.primary.opacity(0.65))
+                    .foregroundStyle(.primary.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
 
                 ProgressStepRow(
@@ -160,7 +160,7 @@ struct OnboardingView: View {
                 if let bottle = env.bottles.first(where: { $0.hasLauncher || $0.hasTitanfall2 }) {
                     Text("Detected bottle: \(bottle.name)")
                         .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(0.55))
+                        .foregroundStyle(.primary.opacity(0.70))
                 }
 
                 Button {
@@ -187,12 +187,12 @@ struct OnboardingView: View {
 
                 Text("Where do you own Titanfall 2? Draconis will start the CrossOver install for that store.")
                     .font(TF.body(11))
-                    .foregroundStyle(.primary.opacity(0.65))
+                    .foregroundStyle(.primary.opacity(0.75))
 
                 // CrossTie safety note (shown in auto flow too)
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "lock.shield.fill")
-                        .foregroundStyle(.yellow.opacity(0.85))
+                        .foregroundStyle(Color.accentColor)
                         .font(.system(size: 13))
                     Text("The Titanfall 2 CrossTie may appear as **untrusted** inside CrossOver. This is a display issue — the profile is genuine and safe.")
                         .font(TF.body(11))
@@ -200,7 +200,7 @@ struct OnboardingView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(10)
-                .background(Color.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                .background(Color.accentColor.opacity(0.18), in: RoundedRectangle(cornerRadius: 10))
 
                 ForEach(BottleInstaller.Frontend.allCases) { f in
                     FrontendRow(
@@ -253,7 +253,7 @@ struct OnboardingView: View {
                 if let bottle = env.bottles.first(where: { $0.hasLauncher }) {
                     Text("Detected bottle: \(bottle.name)")
                         .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(0.55))
+                        .foregroundStyle(.primary.opacity(0.70))
                 }
             }
             .padding(18)
@@ -296,11 +296,11 @@ private struct ChoiceCard: View {
                     Text(title).font(TF.title(13))
                     Text(detail)
                         .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(0.65))
+                        .foregroundStyle(.primary.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(.primary.opacity(0.4))
+                Image(systemName: "chevron.right").foregroundStyle(.primary.opacity(0.70))
             }
             .padding(12)
             .background(Color.accentColor.opacity(0.20), in: RoundedRectangle(cornerRadius: 12))
@@ -357,7 +357,7 @@ private struct ProgressStepRow: View {
                 Text(title).font(TF.title(13))
                 Text(detail)
                     .font(TF.body(11))
-                    .foregroundStyle(.primary.opacity(0.65))
+                    .foregroundStyle(.primary.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
@@ -385,7 +385,7 @@ private struct ProgressStepRow: View {
         case .pending:
             Image(systemName: "circle.dotted")
                 .font(.system(size: 12))
-                .foregroundStyle(.primary.opacity(0.5))
+                .foregroundStyle(.primary.opacity(0.75))
         }
     }
 }

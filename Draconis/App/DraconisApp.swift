@@ -142,7 +142,7 @@ struct DraconisCommands: Commands {
 // through the window the way macOS Tahoe's system surfaces do.
 //   • titlebarAppearsTransparent + fullSizeContentView blend the title bar
 //     into the content area.
-//   • NSVisualEffectView with .underWindowBackground material gives the
+//   • NSVisualEffectView with .hudWindow material gives the
 //     deepest, most translucent dark blur in dark mode (less opaque than
 //     .sidebar or .windowBackground).
 //   • A thin black overlay (≤ 0.20 α) adds just enough depth for text

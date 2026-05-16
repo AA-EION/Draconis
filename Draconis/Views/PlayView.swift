@@ -552,7 +552,7 @@ struct PlayView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .glassEffect(.regular.tint(.red.opacity(0.18)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(.red.opacity(DraconisTheme.Card.error)), in: .rect(cornerRadius: 14))
     }
 }
 

@@ -30,9 +30,13 @@ public enum DraconisTheme {
         public static let accent: Double        = 0.10
         /// Subtle accent tint — hero card.
         public static let accentSubtle: Double  = 0.06
-        /// Status-pill semantic tint (coloured by tone).
-        public static let status: Double        = 0.14
-        /// Dark tint for error / console surfaces.
+        /// Active (snow-white) StatusPill tint.
+        public static let pillActive: Double    = 0.92
+        /// Inactive (dark glass) StatusPill tint.
+        public static let pillInactive: Double  = 0.28
+        /// Error / warning card red tint.
+        public static let error: Double         = 0.15
+        /// Dark tint for console surfaces.
         public static let dark: Double          = 0.22
     }
 }

@@ -35,8 +35,8 @@ struct StatusPill: View {
         .glassEffect(
             .regular.tint(
                 active
-                    ? Color.white.opacity(0.92)
-                    : Color.black.opacity(0.28)
+                    ? Color.white.opacity(DraconisTheme.Card.pillActive)
+                    : Color.black.opacity(DraconisTheme.Card.pillInactive)
             ),
             in: .rect(cornerRadius: 16)
         )

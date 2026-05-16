@@ -378,7 +378,7 @@ private struct ProgressStepRow: View {
 
     private var circleFill: Color {
         switch state {
-        case .done:   return .white.opacity(0.92)
+        case .done:   return .white.opacity(DraconisTheme.Card.pillActive)
         case .active: return .accentColor.opacity(0.25)
         case .pending: return .primary.opacity(0.08)
         }

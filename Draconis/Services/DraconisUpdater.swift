@@ -38,6 +38,7 @@ public actor DraconisUpdater {
         case mountFailed(String)
         case appNotFoundOnDMG
         case appNotInApplications(currentPath: String)
+        case trashUnavailable(String)
 
         public var errorDescription: String? {
             switch self {
@@ -47,7 +48,8 @@ public actor DraconisUpdater {
             case .mountFailed(let s):           return "Could not mount DMG: \(s)"
             case .appNotFoundOnDMG:             return "Draconis.app not found inside the downloaded DMG."
             case .appNotInApplications(let p):
-                return "Draconis must be in /Applications to self-update (running from \(p))."
+                return "Draconis must live in an Applications folder to self-update (running from \(p))."
+            case .trashUnavailable(let s):      return "Cannot resolve a Trash folder for the running app: \(s)"
             }
         }
     }
@@ -178,38 +180,73 @@ public actor DraconisUpdater {
         return s
     }
 
-    /// Numeric semver-ish comparison. Splits on `.` and `-`, compares each
-    /// component numerically when both sides parse as Int, lexicographically
-    /// otherwise (so `0.8.2-rc1` < `0.8.2`).
+    /// Semver-aware comparison. Splits each tag at the first `-` into a numeric
+    /// base (`1.0.0`) and an optional pre-release suffix (`rc1`). Bases are
+    /// compared numerically per dot-separated component; when bases are equal,
+    /// a tag *with* a pre-release ranks lower than one without (so `1.0.0` >
+    /// `1.0.0-rc1`, per semver §11). Two pre-releases compare lexicographically.
     static func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        let sep = CharacterSet(charactersIn: ".-")
-        let a = lhs.components(separatedBy: sep)
-        let b = rhs.components(separatedBy: sep)
+        let (lBase, lPre) = splitPrerelease(lhs)
+        let (rBase, rPre) = splitPrerelease(rhs)
+
+        let a = lBase.components(separatedBy: ".")
+        let b = rBase.components(separatedBy: ".")
         for i in 0..<max(a.count, b.count) {
             let lc = i < a.count ? a[i] : "0"
             let rc = i < b.count ? b[i] : "0"
             if let li = Int(lc), let ri = Int(rc) {
                 if li != ri { return li < ri ? .orderedAscending : .orderedDescending }
-            } else {
-                if lc != rc { return lc < rc ? .orderedAscending : .orderedDescending }
+            } else if lc != rc {
+                return lc < rc ? .orderedAscending : .orderedDescending
             }
         }
-        return .orderedSame
+
+        switch (lPre, rPre) {
+        case (nil, nil):            return .orderedSame
+        case (nil, _?):             return .orderedDescending
+        case (_?, nil):             return .orderedAscending
+        case (let l?, let r?):
+            if l == r { return .orderedSame }
+            return l < r ? .orderedAscending : .orderedDescending
+        }
+    }
+
+    private static func splitPrerelease(_ tag: String) -> (base: String, prerelease: String?) {
+        guard let dash = tag.firstIndex(of: "-") else { return (tag, nil) }
+        return (String(tag[..<dash]), String(tag[tag.index(after: dash)...]))
     }
 
     // MARK: - Install
 
     /// Downloads the DMG, mounts it, copies the new app to a staging dir,
     /// writes a detached `/bin/sh` helper that waits for our PID to exit
-    /// before swapping `/Applications/Draconis.app`, then asks AppKit to
-    /// terminate. Helper survives `terminate` because it's setsid-detached.
+    /// before swapping the running bundle, then asks AppKit to terminate.
+    /// Helper survives `terminate` because it's reparented to launchd.
     public func install(
         _ release: Release,
         progress: @escaping ProgressHandler
     ) async throws {
         let currentBundleURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
-        guard currentBundleURL.path.hasPrefix("/Applications/") else {
+        // Accept any `/Applications/` segment — covers both `/Applications/`
+        // and `~/Applications/` (the per-user apps folder), plus apps living
+        // in subfolders of either.
+        guard currentBundleURL.path.contains("/Applications/") else {
             throw UpdateError.appNotInApplications(currentPath: currentBundleURL.path)
+        }
+
+        // Resolve the right Trash for the volume the running app lives on.
+        // On the boot volume that's `~/.Trash`; on external volumes it's
+        // `/Volumes/<name>/.Trashes/<uid>/`. FileManager picks the correct one.
+        let trashDir: URL
+        do {
+            trashDir = try FileManager.default.url(
+                for: .trashDirectory,
+                in: .userDomainMask,
+                appropriateFor: currentBundleURL,
+                create: true
+            )
+        } catch {
+            throw UpdateError.trashUnavailable(error.localizedDescription)
         }
 
         progress(.init(phase: .downloading, fraction: 0,
@@ -227,36 +264,40 @@ public actor DraconisUpdater {
         Log.ok("draconis.update", "Downloaded \(cachedDMG.lastPathComponent)")
 
         progress(.init(phase: .preparing, fraction: -1, detail: "Mounting DMG…"))
-        let mountPoint = try mountDMG(at: cachedDMG)
+        let mountPoint = try await mountDMG(at: cachedDMG)
         Log.ok("draconis.update", "Mounted at \(mountPoint.path)")
 
-        defer {
-            _ = try? runProcess("/usr/bin/hdiutil",
-                                arguments: ["detach", mountPoint.path, "-quiet"])
+        // No defer for detach: the helper script handles it after we quit
+        // (it's idempotent — `hdiutil detach -quiet || true`). For the
+        // error paths below we do an explicit best-effort detach.
+        do {
+            let newAppURL = mountPoint.appendingPathComponent("Draconis.app")
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: newAppURL.path, isDirectory: &isDir),
+                  isDir.boolValue else {
+                throw UpdateError.appNotFoundOnDMG
+            }
+
+            progress(.init(phase: .preparing, fraction: -1,
+                           detail: "Staging new version…"))
+            let staging = PathResolver.downloadsCache.appendingPathComponent(
+                "Draconis-\(release.tagName).staged.app"
+            )
+            try? FileManager.default.removeItem(at: staging)
+            try await ditto(from: newAppURL, to: staging)
+            Log.ok("draconis.update", "Staged at \(staging.path)")
+
+            progress(.init(phase: .swapping, fraction: -1, detail: "Preparing relaunch…"))
+            try launchSwapHelper(
+                stagedApp: staging,
+                installedApp: currentBundleURL,
+                mountPoint: mountPoint,
+                trashDir: trashDir
+            )
+        } catch {
+            _ = try? await detachDMG(at: mountPoint)
+            throw error
         }
-
-        let newAppURL = mountPoint.appendingPathComponent("Draconis.app")
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: newAppURL.path, isDirectory: &isDir),
-              isDir.boolValue else {
-            throw UpdateError.appNotFoundOnDMG
-        }
-
-        progress(.init(phase: .preparing, fraction: -1,
-                       detail: "Staging new version…"))
-        let staging = PathResolver.downloadsCache.appendingPathComponent(
-            "Draconis-\(release.tagName).staged.app"
-        )
-        try? FileManager.default.removeItem(at: staging)
-        try await ditto(from: newAppURL, to: staging)
-        Log.ok("draconis.update", "Staged at \(staging.path)")
-
-        progress(.init(phase: .swapping, fraction: -1, detail: "Preparing relaunch…"))
-        try launchSwapHelper(
-            stagedApp: staging,
-            installedApp: currentBundleURL,
-            mountPoint: mountPoint
-        )
 
         progress(.init(phase: .done, fraction: 1.0, detail: "Quitting to apply update…"))
         Log.ok("draconis.update", "Swap helper launched; quitting Draconis")
@@ -270,12 +311,12 @@ public actor DraconisUpdater {
 
     // MARK: - DMG mount
 
-    private func mountDMG(at dmg: URL) throws -> URL {
-        let result = try runProcess(
-            "/usr/bin/hdiutil",
+    private func mountDMG(at dmg: URL) async throws -> URL {
+        let result = try await ProcessRunner.shared.capture(
+            URL(fileURLWithPath: "/usr/bin/hdiutil"),
             arguments: ["attach", dmg.path, "-nobrowse", "-readonly", "-plist"]
         )
-        guard result.exitCode == 0 else {
+        guard result.ok else {
             throw UpdateError.mountFailed(result.stderr.isEmpty ? result.stdout : result.stderr)
         }
         guard let plistData = result.stdout.data(using: .utf8),
@@ -292,6 +333,13 @@ public actor DraconisUpdater {
             }
         }
         throw UpdateError.mountFailed("no mount-point in hdiutil output")
+    }
+
+    private func detachDMG(at mountPoint: URL) async throws {
+        _ = try await ProcessRunner.shared.capture(
+            URL(fileURLWithPath: "/usr/bin/hdiutil"),
+            arguments: ["detach", mountPoint.path, "-quiet"]
+        )
     }
 
     private func ditto(from src: URL, to dst: URL) async throws {
@@ -318,7 +366,8 @@ public actor DraconisUpdater {
     private func launchSwapHelper(
         stagedApp: URL,
         installedApp: URL,
-        mountPoint: URL
+        mountPoint: URL,
+        trashDir: URL
     ) throws {
         let pid = ProcessInfo.processInfo.processIdentifier
         let scriptURL = PathResolver.downloadsCache
@@ -327,7 +376,6 @@ public actor DraconisUpdater {
             .appendingPathComponent("update.log")
 
         let trashName = "Draconis-\(Int(Date().timeIntervalSince1970)).app"
-        let trashDir = PathResolver.home.appendingPathComponent(".Trash")
 
         let script = """
         #!/bin/sh
@@ -390,31 +438,6 @@ public actor DraconisUpdater {
         proc.standardInput = FileHandle.nullDevice
         try proc.run()
         Log.run("draconis.update", "nohup /bin/sh \(scriptURL.path)")
-    }
-
-    // MARK: - Process helper
-
-    private struct ProcessResult {
-        let exitCode: Int32
-        let stdout: String
-        let stderr: String
-    }
-
-    private func runProcess(_ executable: String, arguments: [String]) throws -> ProcessResult {
-        let proc = Process()
-        let out = Pipe()
-        let err = Pipe()
-        proc.executableURL = URL(fileURLWithPath: executable)
-        proc.arguments = arguments
-        proc.standardOutput = out
-        proc.standardError = err
-        try proc.run()
-        proc.waitUntilExit()
-        let outStr = String(data: out.fileHandleForReading.readDataToEndOfFile(),
-                            encoding: .utf8) ?? ""
-        let errStr = String(data: err.fileHandleForReading.readDataToEndOfFile(),
-                            encoding: .utf8) ?? ""
-        return .init(exitCode: proc.terminationStatus, stdout: outStr, stderr: errStr)
     }
 
     private func shellQuote(_ s: String) -> String {

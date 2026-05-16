@@ -53,19 +53,38 @@ jobs:
             "Draconis-${GITHUB_REF_NAME}.dmg" \
             dmg-staging/
 
+      - name: Extract changelog section for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Pull the lines between the matching `## [X.Y.Z]` heading and the
+          # next `## [` heading. If the section isn't found we fall back to a
+          # blank body so the install instructions still render below.
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag = 1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "warning: no CHANGELOG section found for $VERSION" >&2
+          fi
+          cat >> release-notes.md <<'EOF'
+
+          ---
+
+          ### Installation
+          1. Download `Draconis-${{ github.ref_name }}.dmg` below
+          2. Open the DMG and drag **Draconis.app** to Applications
+          3. Launch and follow the setup wizard
+
+          > **Requires macOS Tahoe (26.0) or later.**
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "Draconis ${{ github.ref_name }}"
-          body: |
-            ## Draconis ${{ github.ref_name }}
-
-            ### Installation
-            1. Download `Draconis-${{ github.ref_name }}.dmg`
-            2. Open the DMG and drag **Draconis.app** to Applications
-            3. Launch and follow the setup wizard
-
-            > **Requires macOS Tahoe (26.0) or later.**
+          body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |

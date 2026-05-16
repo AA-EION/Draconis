@@ -156,7 +156,7 @@ public final class AppEnvironment: ObservableObject {
 
     private nonisolated static func stripV(_ s: String) -> String {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let first = trimmed.first, first == "v" || first == "V" {
+        if trimmed.lowercased().hasPrefix("v") {
             return String(trimmed.dropFirst())
         }
         return trimmed

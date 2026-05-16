@@ -181,6 +181,60 @@ public actor NorthstarUpdater {
         progress?(Progress(phase: .done, fraction: 1.0, detail: "Installed"))
     }
 
+    // MARK: - Uninstall
+
+    /// Removes Northstar files and folders from the Titanfall 2 install directory,
+    /// leaving Titanfall2.exe and the base game intact.
+    ///
+    /// The set of paths is derived from what the Northstar release zip places in
+    /// the TF2 root. Only known Northstar-owned paths are touched; game files are
+    /// never deleted.
+    public func uninstall(from bottle: WineBottle) async throws {
+        let resolvedRoot = bottle.titanfall2InstallPath
+            ?? CrossOverDetector.locateTitanfall2(
+                in: PathResolver.driveC(in: bottle.prefixURL)
+            )?.path
+
+        guard let target = resolvedRoot else {
+            throw UpdateError.bottleMissingTitanfall
+        }
+
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: target)
+
+        let northstarPaths: [String] = [
+            "NorthstarLauncher.exe",
+            "Northstar.dll",
+            "r2_nsmod_loader.dll",
+            "ns_version.txt",
+            "ns_startup_args.txt",
+            "ns_startup_args_dedi.txt",
+            "R2Northstar",
+            "bin/x64_retail/wsock32.dll",
+        ]
+
+        var errors: [String] = []
+        for rel in northstarPaths {
+            let url = root.appendingPathComponent(rel)
+            guard fm.fileExists(atPath: url.path) else { continue }
+            do {
+                try fm.removeItem(at: url)
+                Log.ok("northstar.uninstall", "Removed \(rel)")
+            } catch {
+                Log.error("northstar.uninstall",
+                          "Could not remove \(rel): \(error.localizedDescription)")
+                errors.append(rel)
+            }
+        }
+
+        if !errors.isEmpty {
+            throw UpdateError.extractFailed(
+                "Could not remove: \(errors.joined(separator: ", "))"
+            )
+        }
+        Log.ok("northstar.uninstall", "Northstar removed from \(target)")
+    }
+
     // MARK: -
 
     static func formatBytes(_ n: Int64) -> String {

@@ -9,6 +9,7 @@ struct DraconisApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(environment)
+                .preferredColorScheme(.light)
                 .frame(minWidth: 980, minHeight: 620)
                 .task { await environment.bootstrap() }
                 .background(WindowConfigurator())
@@ -135,14 +136,15 @@ struct DraconisCommands: Commands {
     }
 }
 
-// MARK: - NSWindow transparency
+// MARK: - NSWindow chrome + backdrop
 //
-// We want a frosted/blurred backdrop behind the Liquid Glass surfaces so they
-// have something to refract, instead of letting the raw desktop show through.
-//   • titlebarAppearsTransparent + fullSizeContentView make the title bar
-//     blend into the content area
-//   • An NSVisualEffectView with .windowBackground material fills the ENTIRE
-//     window (titlebar area included) with a consistent dark frosted blur
+// A near-opaque white backdrop with a light frosted blur beneath, so the
+// Liquid Glass cards have a clean canvas to refract while keeping legibility
+// high (the user explicitly preferred legibility over translucency).
+//   • titlebarAppearsTransparent + fullSizeContentView blend the title bar
+//     into the content area.
+//   • NSVisualEffectView (popover material) provides a subtle frosted blur.
+//   • A white overlay above the visual effect mutes the desktop bleed-through.
 
 private struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { NSView() }
@@ -153,20 +155,33 @@ private struct WindowConfigurator: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.hasShadow = true
             window.styleMask.insert(.fullSizeContentView)
+            window.appearance = NSAppearance(named: .aqua)
         }
     }
 }
 
-/// Frosted backdrop covering the entire window — including under the
-/// (transparent) title bar — so there is no bare-desktop strip at the top.
-private struct TransparentBackdrop: NSViewRepresentable {
+private struct TransparentBackdrop: View {
+    var body: some View {
+        ZStack {
+            VisualEffect(material: .popover, blending: .behindWindow)
+            Color.white.opacity(0.78)
+        }
+    }
+}
+
+private struct VisualEffect: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blending: NSVisualEffectView.BlendingMode
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
-        v.material = .windowBackground
-        v.blendingMode = .behindWindow
+        v.material = material
+        v.blendingMode = blending
         v.state = .active
         v.isEmphasized = false
         return v
     }
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) { }
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blending
+    }
 }

@@ -3,6 +3,8 @@ import SwiftUI
 struct PlayView: View {
     @EnvironmentObject private var env: AppEnvironment
     @State private var mode: NorthstarLauncher.LaunchMode = .northstar
+    @State private var showMaximaInfo: Bool = false
+    @State private var confirmNorthstarUninstall: Bool = false
 
     var body: some View {
         ScrollView {
@@ -87,10 +89,10 @@ struct PlayView: View {
         primaryAction: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(TF.title(16)).foregroundStyle(.white)
+            Text(title).font(TF.title(16)).foregroundStyle(.primary)
             Text(body)
                 .font(TF.body(13))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(.primary.opacity(0.75))
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
                 Button(action: primaryAction) {
@@ -127,17 +129,17 @@ struct PlayView: View {
             Text("DRACONIS")
                 .font(TF.hero(48))
                 .tracking(8)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             Text("Titanfall 2 + Northstar launcher for macOS Tahoe.")
                 .font(TF.title(16))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(.primary.opacity(0.78))
             if let bottle = env.selectedBottle {
                 Label(
                     "\(bottle.name) — \(bottle.backend.displayName)",
                     systemImage: bottle.backend.symbolName
                 )
                 .font(TF.body(12))
-                .foregroundStyle(.white.opacity(0.65))
+                .foregroundStyle(.primary.opacity(0.65))
                 .padding(.top, 4)
             }
         }
@@ -228,7 +230,7 @@ struct PlayView: View {
                 Spacer()
                 Text(detail)
                     .font(TF.body(12))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(.primary.opacity(0.75))
             }
             if fraction < 0 {
                 ProgressView().progressViewStyle(.linear)
@@ -286,8 +288,8 @@ struct PlayView: View {
                     || env.updating
                 )
 
-                // Show Install button only when Northstar is not yet installed.
-                // When installed, auto-update runs on launch — no manual trigger needed.
+                // Install button: only when Northstar is absent.
+                // Auto-update runs on each launch when it is already installed.
                 if env.selectedBottle?.hasNorthstar != true {
                     Button {
                         Task { await env.installLatestNorthstar() }
@@ -301,13 +303,42 @@ struct PlayView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.glass)
-                    .disabled(env.selectedBottle == nil || env.updating)
+                    .disabled(env.selectedBottle == nil || env.updating || env.launchInFlight)
+                }
+
+                // Uninstall button: only when Northstar is installed.
+                if env.selectedBottle?.hasNorthstar == true {
+                    Button {
+                        confirmNorthstarUninstall = true
+                    } label: {
+                        Label(
+                            env.updating ? "Removing…" : "Uninstall NS",
+                            systemImage: env.updating ? "hourglass" : "trash"
+                        )
+                        .font(TF.title(14))
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(env.selectedBottle == nil || env.updating || env.launchInFlight)
+                    .confirmationDialog(
+                        "Uninstall Northstar?",
+                        isPresented: $confirmNorthstarUninstall,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Uninstall", role: .destructive) {
+                            Task { await env.uninstallNorthstar() }
+                        }
+                        Button("Cancel", role: .cancel) { }
+                    } message: {
+                        Text("This removes NorthstarLauncher.exe, mods, and plugins from the bottle. Titanfall 2 itself is left intact and can be re-modded at any time.")
+                    }
                 }
             }
             .padding([.horizontal, .bottom], 18)
         }
         .padding(.top, 18)
-        .glassEffect(.regular.tint(.white.opacity(0.04)), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 22))
     }
 
     // MARK: - Maxima toggle card
@@ -325,23 +356,44 @@ struct PlayView: View {
             .toggleStyle(.switch)
 
             Button {
-                // no-op, popover shown via .help or a popover trigger below
+                showMaximaInfo.toggle()
             } label: {
                 Image(systemName: "info.circle")
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.primary.opacity(0.55))
             }
             .buttonStyle(.plain)
-            .help(maximaInfoText)
+            .help("About Maxima")
+            .popover(isPresented: $showMaximaInfo, arrowEdge: .top) {
+                maximaInfoPopover
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
-        .glassEffect(.regular.tint(.orange.opacity(0.04)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(0.10)), in: .rect(cornerRadius: 18))
     }
 
-    private var maximaInfoText: String {
-        "Maxima is an open-source replacement for the EA Desktop Launcher. " +
-        "It runs inside your CrossOver bottle and handles EA authentication for Titanfall 2. " +
-        "This feature is in beta — enable it only if you need EA account authentication."
+    private var maximaInfoPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("About Maxima", systemImage: "gamecontroller.fill")
+                .font(TF.title(14))
+                .foregroundStyle(.primary)
+
+            Text("Maxima is an open-source replacement for the EA Desktop launcher. It runs inside your CrossOver bottle and handles EA authentication so Titanfall 2 can sign in without the full EA app.")
+                .font(TF.body(12))
+                .foregroundStyle(.primary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("This feature is currently in beta. Enable it only if you need EA account authentication — for example, if Titanfall 2 refuses to start without an EA login.")
+                .font(TF.body(12))
+                .foregroundStyle(.primary.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Link("Learn more about Maxima →",
+                 destination: URL(string: "https://github.com/AA-EION/Maxima-Draconis")!)
+                .font(TF.body(12))
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 
     // MARK: - Maxima card
@@ -372,7 +424,7 @@ struct PlayView: View {
                 if env.maximaInstalled && env.maximaHelperRegistered {
                     Text("Maxima is ready. Use the Launch button above to start the game.")
                         .font(TF.body(12))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.primary.opacity(0.65))
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     if env.maximaUpdateAvailable {
@@ -445,7 +497,7 @@ struct PlayView: View {
             if !env.maximaInstalled || !env.maximaHelperRegistered {
                 Text(maximaSetupNote)
                     .font(TF.body(11))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.primary.opacity(0.5))
                     .padding(.horizontal, 18)
                     .padding(.bottom, 14)
             }
@@ -483,7 +535,7 @@ struct PlayView: View {
             Image(systemName: "exclamationmark.octagon.fill")
                 .foregroundStyle(.red)
             Text(msg)
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .font(TF.body(13))
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)

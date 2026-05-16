@@ -22,17 +22,17 @@ public enum DraconisTheme {
     }
 
     public enum Card {
-        /// Strongest accent tint — instruction / warning cards.
-        public static let accentStrong: Double  = 0.25
-        /// Medium accent tint — Maxima card and progress cards.
-        public static let accentMedium: Double  = 0.20
+        /// Strongest accent tint — instruction / setup cards.
+        public static let accentStrong: Double  = 0.18
+        /// Medium accent tint — actions card, Maxima card.
+        public static let accentMedium: Double  = 0.14
         /// Standard accent tint — most glass cards.
-        public static let accent: Double        = 0.18
+        public static let accent: Double        = 0.10
         /// Subtle accent tint — hero card.
-        public static let accentSubtle: Double  = 0.10
+        public static let accentSubtle: Double  = 0.06
         /// Status-pill semantic tint (coloured by tone).
-        public static let status: Double        = 0.08
+        public static let status: Double        = 0.14
         /// Dark tint for error / console surfaces.
-        public static let dark: Double          = 0.06
+        public static let dark: Double          = 0.22
     }
 }

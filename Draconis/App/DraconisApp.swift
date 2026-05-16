@@ -9,7 +9,7 @@ struct DraconisApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(environment)
-                .preferredColorScheme(.light)
+                .preferredColorScheme(.dark)
                 .frame(minWidth: 980, minHeight: 620)
                 .task { await environment.bootstrap() }
                 .background(WindowConfigurator())
@@ -138,13 +138,15 @@ struct DraconisCommands: Commands {
 
 // MARK: - NSWindow chrome + backdrop
 //
-// A near-opaque white backdrop with a light frosted blur beneath, so the
-// Liquid Glass cards have a clean canvas to refract while keeping legibility
-// high (the user explicitly preferred legibility over translucency).
+// Dark Liquid Glass backdrop — heavily translucent so the desktop refracts
+// through the window the way macOS Tahoe's system surfaces do.
 //   • titlebarAppearsTransparent + fullSizeContentView blend the title bar
 //     into the content area.
-//   • NSVisualEffectView (popover material) provides a subtle frosted blur.
-//   • A white overlay above the visual effect mutes the desktop bleed-through.
+//   • NSVisualEffectView with .underWindowBackground material gives the
+//     deepest, most translucent dark blur in dark mode (less opaque than
+//     .sidebar or .windowBackground).
+//   • A thin black overlay (≤ 0.20 α) adds just enough depth for text
+//     contrast without killing the see-through quality.
 
 private struct WindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { NSView() }
@@ -155,7 +157,11 @@ private struct WindowConfigurator: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.hasShadow = true
             window.styleMask.insert(.fullSizeContentView)
-            window.appearance = NSAppearance(named: .aqua)
+            window.appearance = NSAppearance(named: .darkAqua)
+            // Without these the NSVisualEffectView still composites onto an
+            // opaque window background; apps behind never bleed through.
+            window.isOpaque = false
+            window.backgroundColor = .clear
         }
     }
 }
@@ -163,10 +169,12 @@ private struct WindowConfigurator: NSViewRepresentable {
 private struct TransparentBackdrop: View {
     var body: some View {
         ZStack {
-            VisualEffect(material: .popover, blending: .behindWindow)
-            // Enough white to keep text legible on the frosted canvas
-            // without fully killing the Liquid Glass translucency.
-            Color.white.opacity(0.55)
+            // .hudWindow is the most translucent dark material macOS offers —
+            // apps behind the window are visible through the frosted blur.
+            VisualEffect(material: .hudWindow, blending: .behindWindow)
+            // Very thin black veil — just enough to anchor text contrast
+            // without killing the see-through quality.
+            Color.black.opacity(0.08)
         }
     }
 }

@@ -95,7 +95,7 @@ struct ContentView: View {
                         systemName: env.crossOverInstalled
                             ? "checkmark.circle.fill" : "circle.dashed"
                     )
-                    .foregroundStyle(env.crossOverInstalled ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(env.crossOverInstalled ? AnyShapeStyle(.white) : AnyShapeStyle(.tertiary))
                 }
                 if !env.crossOverInstalled {
                     Link(

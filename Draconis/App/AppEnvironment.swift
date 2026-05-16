@@ -342,6 +342,57 @@ public final class AppEnvironment: ObservableObject {
         installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
     }
 
+    /// Install a `.zip` from the user's disk (drag-and-drop in the Mods view).
+    public func installLocalMod(at url: URL) async {
+        guard let bottle = selectedBottle else { return }
+        modsLoadError = nil
+        do {
+            try await ThunderstoreClient.shared.installLocalZip(at: url, into: bottle)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+        } catch {
+            modsLoadError = error.localizedDescription
+            DebugLog.shared.error("thunderstore", error.localizedDescription)
+        }
+    }
+
+    public func setMod(_ mod: InstalledMod, enabled: Bool) {
+        guard let bottle = selectedBottle else { return }
+        do {
+            try ThunderstoreClient.shared.setEnabled(enabled, mod: mod, in: bottle)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+        } catch {
+            DebugLog.shared.error("thunderstore", "Couldn't toggle \(mod.name): \(error.localizedDescription)")
+        }
+    }
+
+    public func uninstallMod(_ mod: InstalledMod) {
+        guard let bottle = selectedBottle else { return }
+        do {
+            try ThunderstoreClient.shared.uninstall(mod)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+        } catch {
+            DebugLog.shared.error("thunderstore", "Couldn't uninstall \(mod.name): \(error.localizedDescription)")
+        }
+    }
+
+    /// Map of installed-mod-name → latest Thunderstore version, used by the
+    /// Installed list to flag mods with available updates.
+    public var modUpdatesAvailable: [String: ThunderstoreVersion] {
+        var byModName: [String: ThunderstoreVersion] = [:]
+        for pkg in thunderstorePackages {
+            guard let latest = pkg.latest else { continue }
+            byModName[pkg.name] = latest
+        }
+        var out: [String: ThunderstoreVersion] = [:]
+        for mod in installedMods {
+            guard let latest = byModName[mod.name] else { continue }
+            if mod.version != latest.versionNumber {
+                out[mod.name] = latest
+            }
+        }
+        return out
+    }
+
     // MARK: - Servers
 
     public func refreshServers() async {

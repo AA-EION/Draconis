@@ -263,6 +263,17 @@ public actor DraconisUpdater {
         try FileManager.default.moveItem(at: tmpDMG, to: cachedDMG)
         Log.ok("draconis.update", "Downloaded \(cachedDMG.lastPathComponent)")
 
+        // Stale Draconis volumes are common in the wild: the user double-
+        // clicked the DMG to install Draconis the first time and never
+        // unmounted it, a previous self-update was killed before it could
+        // detach, or the user has multiple older DMG copies all mounted at
+        // /Volumes/Draconis 1, /Volumes/Draconis 2, …. Force a detach on
+        // anything that looks like ours before we mount the new copy — both
+        // to free up the /Volumes/Draconis name and to keep Finder's sidebar
+        // tidy when the user comes back after the relaunch.
+        progress(.init(phase: .preparing, fraction: -1, detail: "Detaching old Draconis volumes…"))
+        await detachStaleDraconisVolumes()
+
         progress(.init(phase: .preparing, fraction: -1, detail: "Mounting DMG…"))
         let mountPoint = try await mountDMG(at: cachedDMG)
         Log.ok("draconis.update", "Mounted at \(mountPoint.path)")
@@ -304,9 +315,30 @@ public actor DraconisUpdater {
 
         // Give the user a beat to see the final message before we vanish.
         try? await Task.sleep(nanoseconds: 600_000_000)
+
         await MainActor.run {
+            // Close every open window so AppKit doesn't sit waiting on a modal
+            // sheet / dialog while `terminate` runs the
+            // applicationShouldTerminate cycle. With the sheet still up
+            // terminate just hangs and the user sees "Quitting…" forever.
+            // Explicitly end attached sheets first — `close()` on a parent
+            // window with a presented sheet is a no-op until the sheet ends.
+            for window in NSApplication.shared.windows {
+                if let sheet = window.attachedSheet {
+                    window.endSheet(sheet)
+                }
+                window.close()
+            }
             NSApplication.shared.terminate(nil)
         }
+
+        // Hard fallback: if the AppKit terminate path stalls (active modal,
+        // background save panel, etc.), exit unconditionally after a beat so
+        // the swap helper can take over. The helper waits on our PID; without
+        // this Draconis can sit "Quitting…" indefinitely.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        Log.warn("draconis.update", "AppKit terminate stalled; forcing exit(0)")
+        exit(0)
     }
 
     // MARK: - DMG mount
@@ -340,6 +372,46 @@ public actor DraconisUpdater {
             URL(fileURLWithPath: "/usr/bin/hdiutil"),
             arguments: ["detach", mountPoint.path, "-quiet"]
         )
+    }
+
+    /// Detach every mounted volume that looks like a Draconis DMG. Iterates
+    /// `hdiutil info -plist`, picks any image whose mount-point starts with
+    /// `/Volumes/Draconis`, and runs `hdiutil detach` on each. Errors per
+    /// volume are logged but never thrown — this is best-effort housekeeping
+    /// to keep the next `hdiutil attach` from landing on `Draconis 1`,
+    /// `Draconis 2`, …
+    private func detachStaleDraconisVolumes() async {
+        let info = try? await ProcessRunner.shared.capture(
+            URL(fileURLWithPath: "/usr/bin/hdiutil"),
+            arguments: ["info", "-plist"]
+        )
+        guard let info, info.ok,
+              let data = info.stdout.data(using: .utf8),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: data, options: [], format: nil
+              ) as? [String: Any],
+              let images = plist["images"] as? [[String: Any]]
+        else { return }
+
+        var seenMountPoints: Set<String> = []
+        for image in images {
+            guard let entities = image["system-entities"] as? [[String: Any]] else { continue }
+            for entity in entities {
+                guard let mp = entity["mount-point"] as? String,
+                      !mp.isEmpty,
+                      mp.hasPrefix("/Volumes/Draconis"),
+                      seenMountPoints.insert(mp).inserted
+                else { continue }
+                Log.info("draconis.update", "Detaching stale volume: \(mp)")
+                let res = try? await ProcessRunner.shared.capture(
+                    URL(fileURLWithPath: "/usr/bin/hdiutil"),
+                    arguments: ["detach", mp, "-force", "-quiet"]
+                )
+                if res?.ok != true {
+                    Log.warn("draconis.update", "Could not detach \(mp); continuing")
+                }
+            }
+        }
     }
 
     private func ditto(from src: URL, to dst: URL) async throws {

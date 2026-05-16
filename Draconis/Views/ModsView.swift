@@ -41,7 +41,7 @@ struct ModsView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .glassEffect(.regular.tint(Color.accentColor.opacity(0.22)), in: .capsule)
+            .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentMedium)), in: .capsule)
 
             Button {
                 Task { await env.refreshThunderstore() }
@@ -71,7 +71,7 @@ struct ModsView: View {
                             .buttonStyle(.glass)
                     }
                     .padding(40)
-                    .glassEffect(.regular.tint(.red.opacity(0.10)), in: .rect(cornerRadius: 16))
+                    .glassEffect(.regular.tint(Color.black.opacity(0.05)), in: .rect(cornerRadius: 16))
                 } else if env.modsLoading && filtered.isEmpty {
                     ProgressView("Fetching Thunderstore…")
                         .padding(40)
@@ -150,7 +150,7 @@ private struct ThunderstoreRow: View {
                         Text("DEPRECATED")
                             .font(.caption2.weight(.bold))
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .glassEffect(.regular.tint(.orange.opacity(0.5)), in: .capsule)
+                            .glassEffect(.regular.tint(Color.accentColor.opacity(0.45)), in: .capsule)
                     }
                 }
                 Text(package.latest?.description ?? "")
@@ -162,7 +162,7 @@ private struct ThunderstoreRow: View {
                         Text(cat)
                             .font(.caption2)
                             .padding(.horizontal, 8).padding(.vertical, 2)
-                            .glassEffect(.regular.tint(Color.accentColor.opacity(0.22)), in: .capsule)
+                            .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentMedium)), in: .capsule)
                     }
                 }
             }
@@ -173,7 +173,7 @@ private struct ThunderstoreRow: View {
             .disabled(package.latest == nil)
         }
         .padding(14)
-        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
     }
 }
 
@@ -206,6 +206,6 @@ private struct InstalledModRow: View {
             .buttonStyle(.glass)
         }
         .padding(14)
-        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 14))
     }
 }

@@ -4,6 +4,20 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.8.1] — 2026-05-16
+
+### Added
+- **`DraconisTheme` style guide** — new `Components/DraconisTheme.swift` centralises all opacity constants into two public namespaces (`DraconisTheme.Text` and `DraconisTheme.Card`). All views and `TitanfallTypography` now reference these named constants instead of inline magic numbers, making future theme adjustments a single-file change.
+- **Orbitron font bundled** — `Orbitron-Black.ttf`, `Orbitron-Bold.ttf`, and `Orbitron-VariableFont_wght.ttf` are now shipped inside the app bundle (`Resources/Fonts/`). `ATSApplicationFontsPath` in `Info.plist` registers them automatically at launch; `TF.hero()` and `TF.display()` resolve to Orbitron without code changes.
+
+### Changed
+- **Accent colour corrected** — `AccentColor.colorset` colour-space changed from `display-p3` to `srgb` so `#c4e7fb` renders exactly as specified (neutral near-white with a very light blue-gray tint).
+- **Liquid Glass translucency** — white backdrop overlay reduced from `0.78 → 0.55` opacity; more of the frosted window-behind blur is now visible.
+- **Marble palette** — removed all orange, red, and yellow tints from glass card backgrounds; replaced with neutral `accentColor` or low-opacity black tints. Maxima action buttons switch from `.orange` to `.accentColor`. Error icon/text colours remain red (semantic), but card surfaces are neutral.
+- **Contrast** — `StencilLabel` default opacity raised `0.78 → 0.88`. All `.primary.opacity()` values below `0.65` raised ~10–15 pp across the codebase.
+
+---
+
 ## [0.8.0] — 2026-05-16
 
 ### Fixed

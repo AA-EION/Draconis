@@ -155,7 +155,7 @@ struct SettingsView: View {
                     stdout/stderr land in ~/Library/Application Support/Draconis/Logs.
                     """)
                     .font(.callout)
-                    .foregroundStyle(.primary.opacity(0.5))
+                    .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
                     .padding(20)
                 }
                 .glassEffect(.regular, in: .rect(cornerRadius: 16))

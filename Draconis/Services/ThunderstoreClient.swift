@@ -1,8 +1,17 @@
 import Foundation
 
 /// Talks to https://northstar.thunderstore.io/api/v1/package/ to list mods.
-/// Also handles install/uninstall against a given bottle's R2Northstar/mods
-/// directory.
+/// Also handles install/uninstall against a given bottle's R2Northstar tree.
+///
+/// **Install layout — uses `R2Northstar/packages/<full_name>/`** (the modern
+/// Northstar layout, documented at docs.northstar.tf/Wiki/using-northstar/packages).
+/// Each Thunderstore zip is extracted as-is into its own package folder, so
+/// `manifest.json`, `mods/`, and `plugins/` keep their original positions.
+/// Northstar recursively scans packages/ for `mods/*/mod.json` and `plugins/*.dll`.
+///
+/// Older mods that pre-date `packages/` may still be loose in
+/// `R2Northstar/mods/<ModName>/`. The listing logic reads *both* roots so the
+/// user sees everything Northstar actually loads.
 ///
 /// Thunderstore returns ISO 8601 dates *with fractional seconds*
 /// (e.g. `2020-08-08T15:25:35.555000Z`). Swift's stock `.iso8601` decoder does
@@ -34,7 +43,7 @@ public actor ThunderstoreClient {
             switch self {
             case .badResponse(let c):       return "Thunderstore returned HTTP \(c)."
             case .decodingFailed(let s):    return "Couldn't parse Thunderstore data: \(s)"
-            case .modsDirectoryMissing:     return "R2Northstar/mods folder is missing in that bottle."
+            case .modsDirectoryMissing:     return "Titanfall 2 isn't installed in this bottle, so there's nowhere to put mods."
             case .extractFailed(let s):     return "Couldn't extract the mod: \(s)"
             case .downloadFailed(let s):    return "Couldn't download the mod: \(s)"
             }
@@ -87,91 +96,332 @@ public actor ThunderstoreClient {
         return decoder
     }
 
+    // MARK: - Path helpers
+
+    /// `R2Northstar/mods/` inside a bottle, or nil if Titanfall 2 isn't installed.
+    private nonisolated static func modsRoot(in bottle: WineBottle) -> URL? {
+        guard let tf2 = bottle.titanfall2InstallPath else { return nil }
+        return URL(fileURLWithPath: tf2)
+            .appendingPathComponent("R2Northstar", isDirectory: true)
+            .appendingPathComponent("mods", isDirectory: true)
+    }
+
+    /// `R2Northstar/packages/` inside a bottle, or nil if Titanfall 2 isn't installed.
+    private nonisolated static func packagesRoot(in bottle: WineBottle) -> URL? {
+        guard let tf2 = bottle.titanfall2InstallPath else { return nil }
+        return URL(fileURLWithPath: tf2)
+            .appendingPathComponent("R2Northstar", isDirectory: true)
+            .appendingPathComponent("packages", isDirectory: true)
+    }
+
+    /// `R2Northstar/enabledmods.json` — Northstar's source of truth for which
+    /// mods are loaded. A simple `{ "Mod.Name": true|false }` map.
+    private nonisolated static func enabledModsFile(in bottle: WineBottle) -> URL? {
+        guard let tf2 = bottle.titanfall2InstallPath else { return nil }
+        return URL(fileURLWithPath: tf2)
+            .appendingPathComponent("R2Northstar", isDirectory: true)
+            .appendingPathComponent("enabledmods.json")
+    }
+
     // MARK: - Installed mods (nonisolated — pure FileManager reads)
 
+    /// Read every mod Northstar would load in this bottle: the legacy
+    /// `R2Northstar/mods/<ModName>/` layout *and* the modern
+    /// `R2Northstar/packages/<full_name>/mods/<ModName>/` layout.
     public nonisolated func installedMods(in bottle: WineBottle) -> [InstalledMod] {
-        guard let tf2 = bottle.titanfall2InstallPath else { return [] }
-        let modsRoot = (tf2 as NSString)
-            .appendingPathComponent("R2Northstar/mods")
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(atPath: modsRoot) else {
-            return []
-        }
+        let enabled = readEnabledMods(in: bottle)
+        var results: [InstalledMod] = []
 
-        return entries.compactMap { name -> InstalledMod? in
-            let folder = (modsRoot as NSString).appendingPathComponent(name)
-            let manifestPath = (folder as NSString)
-                .appendingPathComponent("mod.json")
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: manifestPath))
-            else { return nil }
-
-            struct ModManifest: Decodable {
-                let Name: String?
-                let Version: String?
+        // Legacy: R2Northstar/mods/<ModName>/
+        if let modsRoot = Self.modsRoot(in: bottle) {
+            for url in subdirectories(of: modsRoot) {
+                guard let mod = Self.readMod(at: url, enabledMap: enabled, packageID: nil) else { continue }
+                results.append(mod)
             }
-            let manifest = (try? JSONDecoder().decode(ModManifest.self, from: data))
-            return InstalledMod(
-                id: name,
-                name: manifest?.Name ?? name,
-                version: manifest?.Version ?? "—",
-                enabled: !name.hasPrefix("."),
-                folderURL: URL(fileURLWithPath: folder)
-            )
         }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        // Modern: R2Northstar/packages/<full_name>/mods/<ModName>/
+        if let packagesRoot = Self.packagesRoot(in: bottle) {
+            for pkg in subdirectories(of: packagesRoot) {
+                let modsDir = pkg.appendingPathComponent("mods", isDirectory: true)
+                let packageID = pkg.lastPathComponent
+                guard FileManager.default.fileExists(atPath: modsDir.path) else { continue }
+                for url in subdirectories(of: modsDir) {
+                    guard let mod = Self.readMod(at: url, enabledMap: enabled, packageID: packageID) else { continue }
+                    results.append(mod)
+                }
+            }
+        }
+
+        return results.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    private nonisolated func subdirectories(of root: URL) -> [URL] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return entries.filter {
+            (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        }
+    }
+
+    private nonisolated static func readMod(
+        at folder: URL,
+        enabledMap: [String: Bool],
+        packageID: String?
+    ) -> InstalledMod? {
+        let name = folder.lastPathComponent
+        let manifestPath = folder.appendingPathComponent("mod.json")
+        guard let data = try? Data(contentsOf: manifestPath) else { return nil }
+
+        struct ModManifest: Decodable {
+            let Name: String?
+            let Version: String?
+        }
+        let manifest = try? JSONDecoder().decode(ModManifest.self, from: data)
+        let modName = manifest?.Name ?? name
+
+        // Enabled status:
+        //   1. enabledmods.json wins if it has an entry for this Name
+        //   2. otherwise, dot-prefix folder is treated as disabled (legacy)
+        //   3. default: enabled
+        let isEnabled: Bool
+        if let explicit = enabledMap[modName] {
+            isEnabled = explicit
+        } else {
+            isEnabled = !name.hasPrefix(".")
+        }
+
+        return InstalledMod(
+            id: packageID.map { "\($0)/\(name)" } ?? name,
+            name: modName,
+            version: manifest?.Version ?? "—",
+            enabled: isEnabled,
+            folderURL: folder,
+            thunderstoreID: packageID
+        )
+    }
+
+    /// Read `R2Northstar/enabledmods.json` — silent fallback to empty if missing/corrupt.
+    private nonisolated func readEnabledMods(in bottle: WineBottle) -> [String: Bool] {
+        guard let file = Self.enabledModsFile(in: bottle),
+              let data = try? Data(contentsOf: file),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [:] }
+
+        var out: [String: Bool] = [:]
+        for (k, v) in raw {
+            if let b = v as? Bool { out[k] = b }
+            else if let n = v as? NSNumber { out[k] = n.boolValue }
+        }
+        return out
     }
 
     // MARK: - Install / extract
 
+    /// Install a Thunderstore version into the bottle.
+    ///
+    /// New layout: extract the zip wholesale into
+    /// `R2Northstar/packages/<full_name>/`. This preserves the Thunderstore
+    /// package's internal structure (`mods/`, `plugins/`, `manifest.json`,
+    /// `icon.png`, `README.md`) exactly as Northstar expects.
+    ///
+    /// If `resolveDependencies` is true, recursively install any dependencies
+    /// the manifest declares (skipping ones already installed and Northstar
+    /// itself, which is managed separately).
     public func install(
-        _ version: ThunderstoreVersion, into bottle: WineBottle
+        _ version: ThunderstoreVersion,
+        into bottle: WineBottle,
+        resolveDependencies: Bool = true,
+        installedPackages: Set<String> = []
     ) async throws {
-        guard let tf2 = bottle.titanfall2InstallPath else {
+        guard let packagesRoot = Self.packagesRoot(in: bottle) else {
             throw ThunderstoreError.modsDirectoryMissing
         }
-        let modsRoot = (tf2 as NSString)
-            .appendingPathComponent("R2Northstar/mods")
         try FileManager.default.createDirectory(
-            atPath: modsRoot, withIntermediateDirectories: true
+            at: packagesRoot, withIntermediateDirectories: true
         )
 
-        let tmp = PathResolver.downloadsCache.appendingPathComponent(
+        let destination = packagesRoot.appendingPathComponent(version.fullName, isDirectory: true)
+        let tmpZip = PathResolver.downloadsCache.appendingPathComponent(
             "\(version.fullName).zip"
         )
+
         Log.info("thunderstore.install", "Downloading \(version.fullName)")
         do {
             let (downloadedURL, _) = try await session.download(from: version.downloadURL)
-            try? FileManager.default.removeItem(at: tmp)
-            try FileManager.default.moveItem(at: downloadedURL, to: tmp)
+            try? FileManager.default.removeItem(at: tmpZip)
+            try FileManager.default.moveItem(at: downloadedURL, to: tmpZip)
         } catch {
             throw ThunderstoreError.downloadFailed(error.localizedDescription)
         }
 
-        Log.run("thunderstore.install", "ditto -x -k \(tmp.path) \(modsRoot)")
+        // Wipe any prior copy of this package (any version) before extracting,
+        // so updates don't leave stale files behind.
+        Self.removeExistingVersions(of: version, in: packagesRoot)
+        try? FileManager.default.removeItem(at: destination)
+
+        Log.run("thunderstore.install", "ditto -x -k \(tmpZip.path) \(destination.path)")
         let result = try await ProcessRunner.shared.capture(
             URL(fileURLWithPath: "/usr/bin/ditto"),
-            arguments: ["-x", "-k", tmp.path, modsRoot]
+            arguments: ["-x", "-k", tmpZip.path, destination.path]
         )
         if !result.ok {
             throw ThunderstoreError.extractFailed(result.stderr)
         }
-        Log.ok("thunderstore.install", "Installed \(version.fullName)")
+        Log.ok("thunderstore.install", "Installed \(version.fullName) → packages/")
+
+        // Recursively install declared dependencies.
+        if resolveDependencies, !version.dependencies.isEmpty {
+            var seen = installedPackages
+            seen.insert(version.fullName)
+            try await installDependencies(
+                version.dependencies, into: bottle, alreadyInstalled: seen
+            )
+        }
     }
 
-    public nonisolated func setEnabled(_ enabled: Bool, mod: InstalledMod) throws {
-        let parent = mod.folderURL.deletingLastPathComponent()
-        let current = mod.folderURL.lastPathComponent
-        let target = enabled
-            ? (current.hasPrefix(".") ? String(current.dropFirst()) : current)
-            : (current.hasPrefix(".") ? current : "." + current)
-        if current == target { return }
-        try FileManager.default.moveItem(
-            at: mod.folderURL,
-            to: parent.appendingPathComponent(target)
+    /// Remove any older `<package_basename>-x.y.z/` folders so we don't leave
+    /// duplicate copies that Northstar would double-load.
+    private nonisolated static func removeExistingVersions(
+        of version: ThunderstoreVersion, in packagesRoot: URL
+    ) {
+        // `full_name` is "<author>-<modname>-<version>". Strip the trailing
+        // version to get the package's stable prefix.
+        let parts = version.fullName.split(separator: "-")
+        guard parts.count >= 2 else { return }
+        let prefix = parts.dropLast().joined(separator: "-") + "-"
+
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(atPath: packagesRoot.path) else { return }
+        for entry in entries where entry.hasPrefix(prefix) {
+            let url = packagesRoot.appendingPathComponent(entry)
+            try? fm.removeItem(at: url)
+            Log.info("thunderstore.install", "Removed older version: \(entry)")
+        }
+    }
+
+    /// Resolve `Author-ModName-x.y.z` dependency strings against the live
+    /// Thunderstore listing and install each one. Northstar.Northstar itself
+    /// is skipped — that's installed via the Northstar updater, not the mod
+    /// installer.
+    private func installDependencies(
+        _ depStrings: [String],
+        into bottle: WineBottle,
+        alreadyInstalled: Set<String>
+    ) async throws {
+        let packages = (try? await listPackages()) ?? []
+        let byOwnerName: [String: ThunderstorePackage] = Dictionary(
+            uniqueKeysWithValues: packages.map { ("\($0.owner)-\($0.name)", $0) }
         )
+
+        var seen = alreadyInstalled
+        for dep in depStrings {
+            // dep looks like "Author-ModName-1.2.3"
+            let parts = dep.split(separator: "-")
+            guard parts.count >= 2 else { continue }
+            let key = parts.dropLast().joined(separator: "-")
+
+            if key == "northstar-Northstar" { continue }
+            if seen.contains(dep) { continue }
+            seen.insert(dep)
+
+            guard let pkg = byOwnerName[key], let latest = pkg.latest else {
+                Log.warn("thunderstore.install", "Dependency not found on Thunderstore: \(dep)")
+                continue
+            }
+            Log.info("thunderstore.install", "Installing dependency: \(latest.fullName)")
+            try await install(
+                latest, into: bottle, resolveDependencies: true, installedPackages: seen
+            )
+        }
     }
 
+    // MARK: - Local zip install (drag & drop)
+
+    /// Install a `.zip` from the user's disk. Used by drag-and-drop. The zip is
+    /// expected to follow the Thunderstore layout: top-level `manifest.json`
+    /// plus `mods/` (and optionally `plugins/`). The package folder is named
+    /// after `manifest.name + manifest.version_number` when readable.
+    public func installLocalZip(at zipURL: URL, into bottle: WineBottle) async throws {
+        guard let packagesRoot = Self.packagesRoot(in: bottle) else {
+            throw ThunderstoreError.modsDirectoryMissing
+        }
+        try FileManager.default.createDirectory(
+            at: packagesRoot, withIntermediateDirectories: true
+        )
+
+        // Peek the manifest to derive a stable folder name without doing a
+        // full pre-extract. ditto can extract to a name regardless; we just
+        // need a reasonable label. Fall back to the zip's basename.
+        let fallbackName = zipURL.deletingPathExtension().lastPathComponent
+        let destination = packagesRoot.appendingPathComponent(fallbackName, isDirectory: true)
+
+        try? FileManager.default.removeItem(at: destination)
+        let result = try await ProcessRunner.shared.capture(
+            URL(fileURLWithPath: "/usr/bin/ditto"),
+            arguments: ["-x", "-k", zipURL.path, destination.path]
+        )
+        if !result.ok {
+            throw ThunderstoreError.extractFailed(result.stderr)
+        }
+        Log.ok("thunderstore.install", "Installed local zip → packages/\(fallbackName)")
+    }
+
+    // MARK: - Enable / disable / uninstall
+
+    /// Toggle a mod's enabled state by writing to `R2Northstar/enabledmods.json`
+    /// (Northstar's standard file). We never rename folders any more — that was
+    /// a holdover that fought with the in-game mods menu.
+    public nonisolated func setEnabled(_ enabled: Bool, mod: InstalledMod, in bottle: WineBottle) throws {
+        guard let file = Self.enabledModsFile(in: bottle) else { return }
+
+        try FileManager.default.createDirectory(
+            at: file.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        var map: [String: Any] = [:]
+        if let data = try? Data(contentsOf: file),
+           let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            map = raw
+        }
+        map[mod.name] = enabled
+
+        let data = try JSONSerialization.data(
+            withJSONObject: map, options: [.prettyPrinted, .sortedKeys]
+        )
+        try data.write(to: file, options: .atomic)
+
+        // Heal legacy dot-prefixed folders left over from earlier Draconis builds.
+        let current = mod.folderURL.lastPathComponent
+        if current.hasPrefix(".") {
+            let parent = mod.folderURL.deletingLastPathComponent()
+            let healed = parent.appendingPathComponent(String(current.dropFirst()))
+            try? FileManager.default.moveItem(at: mod.folderURL, to: healed)
+        }
+    }
+
+    /// Remove a mod. If it came from a package folder, remove the whole
+    /// package (since `R2Northstar/packages/<full_name>/` is atomic — its
+    /// `mods/`, `plugins/`, and manifest are co-installed). Otherwise just
+    /// remove the loose folder under `R2Northstar/mods/`.
     public nonisolated func uninstall(_ mod: InstalledMod) throws {
-        try FileManager.default.removeItem(at: mod.folderURL)
+        if let packageID = mod.thunderstoreID {
+            // mod.folderURL is .../packages/<full_name>/mods/<ModName>/.
+            // Walk back up to the package root.
+            var url = mod.folderURL
+            while url.lastPathComponent != packageID && url.pathComponents.count > 1 {
+                url = url.deletingLastPathComponent()
+            }
+            try FileManager.default.removeItem(at: url)
+        } else {
+            try FileManager.default.removeItem(at: mod.folderURL)
+        }
     }
 }

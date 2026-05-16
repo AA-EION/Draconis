@@ -214,10 +214,11 @@ struct ModsView: View {
                     }
                     .padding(40)
                 } else {
+                    let updates = env.modUpdatesAvailable
                     ForEach(env.installedMods) { mod in
                         InstalledModRow(
                             mod: mod,
-                            update: env.modUpdatesAvailable[mod.name]
+                            update: updates[mod.name]
                         )
                     }
                 }

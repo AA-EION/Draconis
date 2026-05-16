@@ -238,7 +238,8 @@ public actor ThunderstoreClient {
         _ version: ThunderstoreVersion,
         into bottle: WineBottle,
         resolveDependencies: Bool = true,
-        installedPackages: Set<String> = []
+        installedPackages: Set<String> = [],
+        packageCache: [ThunderstorePackage]? = nil
     ) async throws {
         guard let packagesRoot = Self.packagesRoot(in: bottle) else {
             throw ThunderstoreError.modsDirectoryMissing
@@ -276,12 +277,23 @@ public actor ThunderstoreClient {
         }
         Log.ok("thunderstore.install", "Installed \(version.fullName) → packages/")
 
-        // Recursively install declared dependencies.
+        // Recursively install declared dependencies. Fetch the Thunderstore
+        // package list at most once and pass it down the recursion so a deep
+        // dependency tree doesn't trigger multiple multi-MB downloads.
         if resolveDependencies, !version.dependencies.isEmpty {
             var seen = installedPackages
             seen.insert(version.fullName)
+            let packages: [ThunderstorePackage]
+            if let cached = packageCache {
+                packages = cached
+            } else {
+                packages = (try? await listPackages()) ?? []
+            }
             try await installDependencies(
-                version.dependencies, into: bottle, alreadyInstalled: seen
+                version.dependencies,
+                into: bottle,
+                alreadyInstalled: seen,
+                packageCache: packages
             )
         }
     }
@@ -313,11 +325,11 @@ public actor ThunderstoreClient {
     private func installDependencies(
         _ depStrings: [String],
         into bottle: WineBottle,
-        alreadyInstalled: Set<String>
+        alreadyInstalled: Set<String>,
+        packageCache: [ThunderstorePackage]
     ) async throws {
-        let packages = (try? await listPackages()) ?? []
         let byOwnerName: [String: ThunderstorePackage] = Dictionary(
-            uniqueKeysWithValues: packages.map { ("\($0.owner)-\($0.name)", $0) }
+            uniqueKeysWithValues: packageCache.map { ("\($0.owner)-\($0.name)", $0) }
         )
 
         var seen = alreadyInstalled
@@ -337,7 +349,11 @@ public actor ThunderstoreClient {
             }
             Log.info("thunderstore.install", "Installing dependency: \(latest.fullName)")
             try await install(
-                latest, into: bottle, resolveDependencies: true, installedPackages: seen
+                latest,
+                into: bottle,
+                resolveDependencies: true,
+                installedPackages: seen,
+                packageCache: packageCache
             )
         }
     }
@@ -347,7 +363,8 @@ public actor ThunderstoreClient {
     /// Install a `.zip` from the user's disk. Used by drag-and-drop. The zip is
     /// expected to follow the Thunderstore layout: top-level `manifest.json`
     /// plus `mods/` (and optionally `plugins/`). The package folder is named
-    /// after `manifest.name + manifest.version_number` when readable.
+    /// after `manifest.name + manifest.version_number` when readable, falling
+    /// back to the zip's basename when the manifest can't be parsed.
     public func installLocalZip(at zipURL: URL, into bottle: WineBottle) async throws {
         guard let packagesRoot = Self.packagesRoot(in: bottle) else {
             throw ThunderstoreError.modsDirectoryMissing
@@ -356,11 +373,9 @@ public actor ThunderstoreClient {
             at: packagesRoot, withIntermediateDirectories: true
         )
 
-        // Peek the manifest to derive a stable folder name without doing a
-        // full pre-extract. ditto can extract to a name regardless; we just
-        // need a reasonable label. Fall back to the zip's basename.
         let fallbackName = zipURL.deletingPathExtension().lastPathComponent
-        let destination = packagesRoot.appendingPathComponent(fallbackName, isDirectory: true)
+        let folderName = (try? await peekManifestFolderName(in: zipURL)) ?? fallbackName
+        let destination = packagesRoot.appendingPathComponent(folderName, isDirectory: true)
 
         try? FileManager.default.removeItem(at: destination)
         let result = try await ProcessRunner.shared.capture(
@@ -370,7 +385,32 @@ public actor ThunderstoreClient {
         if !result.ok {
             throw ThunderstoreError.extractFailed(result.stderr)
         }
-        Log.ok("thunderstore.install", "Installed local zip → packages/\(fallbackName)")
+        Log.ok("thunderstore.install", "Installed local zip → packages/\(folderName)")
+    }
+
+    /// Stream `manifest.json` out of a zip via `unzip -p` and derive a
+    /// `<Name>-<VersionNumber>` folder label. Returns nil when the zip has no
+    /// manifest or the fields are missing — the caller falls back to the zip
+    /// basename.
+    private func peekManifestFolderName(in zipURL: URL) async throws -> String? {
+        let result = try await ProcessRunner.shared.capture(
+            URL(fileURLWithPath: "/usr/bin/unzip"),
+            arguments: ["-p", zipURL.path, "manifest.json"]
+        )
+        guard result.ok, let data = result.stdout.data(using: .utf8) else { return nil }
+
+        struct Manifest: Decodable {
+            let name: String?
+            let version_number: String?
+        }
+        guard let m = try? JSONDecoder().decode(Manifest.self, from: data),
+              let name = m.name, !name.isEmpty
+        else { return nil }
+
+        if let v = m.version_number, !v.isEmpty {
+            return "\(name)-\(v)"
+        }
+        return name
     }
 
     // MARK: - Enable / disable / uninstall

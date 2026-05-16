@@ -62,7 +62,7 @@ public enum TF {
 /// View modifier: wide tracking + small caps look that reads as "Titanfall HUD".
 public struct StencilLabel: ViewModifier {
     var size: CGFloat = 11
-    var color: Color = .primary.opacity(0.88)
+    var color: Color = .primary.opacity(DraconisTheme.Text.stencil)
 
     public func body(content: Content) -> some View {
         content
@@ -74,7 +74,7 @@ public struct StencilLabel: ViewModifier {
 }
 
 public extension View {
-    func stencilLabel(size: CGFloat = 11, color: Color = .primary.opacity(0.88)) -> some View {
+    func stencilLabel(size: CGFloat = 11, color: Color = .primary.opacity(DraconisTheme.Text.stencil)) -> some View {
         modifier(StencilLabel(size: size, color: color))
     }
 }

@@ -92,7 +92,7 @@ struct PlayView: View {
             Text(title).font(TF.title(16)).foregroundStyle(.primary)
             Text(body)
                 .font(TF.body(13))
-                .foregroundStyle(.primary.opacity(0.75))
+                .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
                 Button(action: primaryAction) {
@@ -119,7 +119,7 @@ struct PlayView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(22)
-        .glassEffect(.regular.tint(Color.accentColor.opacity(0.25)), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentStrong)), in: .rect(cornerRadius: 22))
     }
 
     // MARK: - Hero
@@ -146,7 +146,7 @@ struct PlayView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(28)
         .glassEffect(
-            .regular.tint(Color.accentColor.opacity(0.10)).interactive(),
+            .regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentSubtle)).interactive(),
             in: .rect(cornerRadius: 26)
         )
     }
@@ -230,7 +230,7 @@ struct PlayView: View {
                 Spacer()
                 Text(detail)
                     .font(TF.body(12))
-                    .foregroundStyle(.primary.opacity(0.75))
+                    .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
             }
             if fraction < 0 {
                 ProgressView().progressViewStyle(.linear)
@@ -338,7 +338,7 @@ struct PlayView: View {
             .padding([.horizontal, .bottom], 18)
         }
         .padding(.top, 18)
-        .glassEffect(.regular.tint(Color.accentColor.opacity(0.18)), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 22))
     }
 
     // MARK: - Maxima toggle card
@@ -369,7 +369,7 @@ struct PlayView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
-        .glassEffect(.regular.tint(Color.accentColor.opacity(0.10)), in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentSubtle)), in: .rect(cornerRadius: 18))
     }
 
     private var maximaInfoPopover: some View {
@@ -385,7 +385,7 @@ struct PlayView: View {
 
             Text("This feature is currently in beta. Enable it only if you need EA account authentication — for example, if Titanfall 2 refuses to start without an EA login.")
                 .font(TF.body(12))
-                .foregroundStyle(.primary.opacity(0.75))
+                .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
                 .fixedSize(horizontal: false, vertical: true)
 
             Link("Learn more about Maxima →",
@@ -502,7 +502,7 @@ struct PlayView: View {
                     .padding(.bottom, 14)
             }
         }
-        .glassEffect(.regular.tint(Color.accentColor.opacity(0.20)), in: .rect(cornerRadius: 22))
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentMedium)), in: .rect(cornerRadius: 22))
     }
 
     private var maximaVersionLabel: String {
@@ -542,7 +542,7 @@ struct PlayView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .glassEffect(.regular.tint(Color.black.opacity(0.06)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(Color.black.opacity(DraconisTheme.Card.dark)), in: .rect(cornerRadius: 14))
     }
 }
 

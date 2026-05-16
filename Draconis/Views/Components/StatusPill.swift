@@ -32,7 +32,7 @@ struct StatusPill: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .glassEffect(
-            .regular.tint(tone.color.opacity(0.08)),
+            .regular.tint(tone.color.opacity(DraconisTheme.Card.status)),
             in: .rect(cornerRadius: 16)
         )
     }

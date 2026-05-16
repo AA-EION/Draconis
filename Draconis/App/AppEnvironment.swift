@@ -65,6 +65,12 @@ public final class AppEnvironment: ObservableObject {
         didSet { UserDefaults.standard.set(maximaEnabled, forKey: "maximaEnabled") }
     }
 
+    // Draconis self-update
+    @Published public var draconisUpdateAvailable: DraconisUpdater.Release?
+    @Published public var draconisUpdating: Bool = false
+    @Published public var draconisUpdateProgress: DraconisUpdater.Progress?
+    @Published public var draconisUpdateError: String?
+
     public var selectedBottle: WineBottle? {
         bottles.first { $0.id == selectedBottleID }
     }
@@ -109,6 +115,7 @@ public final class AppEnvironment: ObservableObject {
         try? await refreshNorthstarReleases()
         await refreshMaximaState()
         await checkMaximaForUpdate()
+        await checkDraconisForUpdate()
 
         // Auto-update Northstar when it is already installed and a newer
         // release is available. If Northstar isn't installed yet we leave the
@@ -390,6 +397,44 @@ public final class AppEnvironment: ObservableObject {
             DebugLog.shared.error("app", error.localizedDescription)
             lastUpdateError = error.localizedDescription
         }
+    }
+
+    // MARK: - Draconis self-update
+
+    public func checkDraconisForUpdate() async {
+        draconisUpdateAvailable = await DraconisUpdater.shared.availableUpdate()
+    }
+
+    public func installDraconisUpdate() async {
+        guard let release = draconisUpdateAvailable, !draconisUpdating else { return }
+        draconisUpdating = true
+        draconisUpdateError = nil
+        draconisUpdateProgress = nil
+        defer {
+            draconisUpdating = false
+            draconisUpdateProgress = nil
+        }
+        do {
+            try await DraconisUpdater.shared.install(release) { @Sendable p in
+                Task { @MainActor in self.draconisUpdateProgress = p }
+            }
+        } catch {
+            draconisUpdateError = error.localizedDescription
+            DebugLog.shared.error("draconis.update", error.localizedDescription)
+        }
+    }
+
+    /// Dismiss the prompt for *this session only* — next launch will check again.
+    public func skipDraconisUpdateOnce() {
+        draconisUpdateAvailable = nil
+    }
+
+    /// Persistently skip the offered tag — only re-prompt when an even newer
+    /// release appears.
+    public func skipDraconisUpdateForever() {
+        guard let tag = draconisUpdateAvailable?.tagName else { return }
+        DraconisUpdater.shared.setSkipped(tag)
+        draconisUpdateAvailable = nil
     }
 
     public func installLatestNorthstar() async {

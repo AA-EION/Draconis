@@ -125,25 +125,35 @@ struct PlayView: View {
     // MARK: - Hero
 
     private var heroCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("DRACONIS")
-                .font(TF.hero(48))
-                .tracking(8)
-                .foregroundStyle(.primary)
-            Text("Titanfall 2 + Northstar launcher for macOS Tahoe.")
-                .font(TF.title(16))
-                .foregroundStyle(.primary.opacity(0.78))
-            if let bottle = env.selectedBottle {
-                Label(
-                    "\(bottle.name) — \(bottle.backend.displayName)",
-                    systemImage: bottle.backend.symbolName
-                )
-                .font(TF.body(12))
-                .foregroundStyle(.primary.opacity(0.72))
-                .padding(.top, 4)
+        HStack(alignment: .center, spacing: 18) {
+            Image("DraconisLogo")
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 96, height: 96)
+                .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                .accessibilityLabel("Draconis logo")
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("DRACONIS")
+                    .font(TF.hero(48))
+                    .tracking(8)
+                    .foregroundStyle(.primary)
+                Text("Titanfall 2 + Northstar launcher for macOS Tahoe.")
+                    .font(TF.title(16))
+                    .foregroundStyle(.primary.opacity(0.78))
+                if let bottle = env.selectedBottle {
+                    Label(
+                        "\(bottle.name) — \(bottle.backend.displayName)",
+                        systemImage: bottle.backend.symbolName
+                    )
+                    .font(TF.body(12))
+                    .foregroundStyle(.primary.opacity(0.72))
+                    .padding(.top, 4)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(28)
         .glassEffect(
             .regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentSubtle)).interactive(),
@@ -160,21 +170,21 @@ struct PlayView: View {
                 value: env.selectedBottle?.hasTitanfall2 == true ? "Detected" : "Missing",
                 symbol: env.selectedBottle?.hasTitanfall2 == true
                     ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
-                tone: env.selectedBottle?.hasTitanfall2 == true ? .green : .orange
+                active: env.selectedBottle?.hasTitanfall2 == true
             )
             StatusPill(
                 label: "Launcher",
                 value: launcherStatusValue,
                 symbol: env.selectedBottle?.hasLauncher == true
                     ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
-                tone: env.selectedBottle?.hasLauncher == true ? .green : .orange
+                active: env.selectedBottle?.hasLauncher == true
             )
             StatusPill(
                 label: "Northstar",
                 value: northstarStatusValue,
                 symbol: env.selectedBottle?.hasNorthstar == true
                     ? "bolt.shield.fill" : "questionmark.diamond.fill",
-                tone: env.selectedBottle?.hasNorthstar == true ? .green : .orange
+                active: env.selectedBottle?.hasNorthstar == true
             )
         }
     }
@@ -348,9 +358,9 @@ struct PlayView: View {
             Toggle(isOn: $env.maximaEnabled) {
                 HStack(spacing: 8) {
                     Image(systemName: "gamecontroller.fill")
-                        .foregroundStyle(.orange.opacity(0.85))
+                        .foregroundStyle(Color.white.opacity(0.85))
                     Text("EA LAUNCHER (MAXIMA)")
-                        .stencilLabel(color: .orange.opacity(0.85))
+                        .stencilLabel(color: Color.white.opacity(0.85))
                 }
             }
             .toggleStyle(.switch)
@@ -407,14 +417,14 @@ struct PlayView: View {
                     value: env.maximaHelperRegistered ? "Registered" : "Not registered",
                     symbol: env.maximaHelperRegistered
                         ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
-                    tone: env.maximaHelperRegistered ? .green : .orange
+                    active: env.maximaHelperRegistered
                 )
                 StatusPill(
                     label: "Maxima",
                     value: maximaVersionLabel,
                     symbol: env.maximaInstalled
                         ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
-                    tone: env.maximaInstalled ? .green : .orange
+                    active: env.maximaInstalled
                 )
             }
             .padding(.horizontal, 18)
@@ -542,7 +552,7 @@ struct PlayView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .glassEffect(.regular.tint(Color.black.opacity(DraconisTheme.Card.dark)), in: .rect(cornerRadius: 14))
+        .glassEffect(.regular.tint(.red.opacity(0.18)), in: .rect(cornerRadius: 14))
     }
 }
 

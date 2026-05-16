@@ -96,7 +96,7 @@ struct SettingsView: View {
                             if env.crossOverInstalled {
                                 Label("Detected", systemImage: "checkmark.circle.fill")
                                     .font(.caption.weight(.medium))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(.white)
                             } else {
                                 Link(
                                     "Buy / install",

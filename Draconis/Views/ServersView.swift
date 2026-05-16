@@ -72,7 +72,7 @@ private struct ServerRow: View {
                     if server.hasPassword {
                         Image(systemName: "lock.fill")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.white.opacity(0.65))
                     }
                 }
                 if !server.description.isEmpty {

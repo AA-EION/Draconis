@@ -71,7 +71,7 @@ struct ModsView: View {
                             .buttonStyle(.glass)
                     }
                     .padding(40)
-                    .glassEffect(.regular.tint(Color.black.opacity(0.05)), in: .rect(cornerRadius: 16))
+                    .glassEffect(.regular.tint(.red.opacity(0.12)), in: .rect(cornerRadius: 16))
                 } else if env.modsLoading && filtered.isEmpty {
                     ProgressView("Fetching Thunderstore…")
                         .padding(40)

@@ -114,7 +114,7 @@ struct OnboardingView: View {
                 } else {
                     Text("CrossOver not detected. Install it and click Rescan.")
                         .font(.callout)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.white.opacity(0.85))
                     Link("Download CrossOver →",
                          destination: URL(string: "https://www.codeweavers.com/crossover")!)
                         .font(TF.body(12))
@@ -287,26 +287,37 @@ private struct ChoiceCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(TF.title(13))
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.22))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(TF.title(14))
+                        .foregroundStyle(.white)
                     Text(detail)
                         .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                        .foregroundStyle(.white.opacity(DraconisTheme.Text.tertiary))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(.primary.opacity(0.70))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.55))
             }
-            .padding(12)
-            .background(Color.accentColor.opacity(DraconisTheme.Card.accentMedium), in: RoundedRectangle(cornerRadius: 12))
+            .padding(14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .glassEffect(
+            .regular.tint(Color.accentColor.opacity(0.20)).interactive(),
+            in: .rect(cornerRadius: 14)
+        )
     }
 }
 
@@ -367,7 +378,7 @@ private struct ProgressStepRow: View {
 
     private var circleFill: Color {
         switch state {
-        case .done:   return .green.opacity(0.25)
+        case .done:   return .white.opacity(0.92)
         case .active: return .accentColor.opacity(0.25)
         case .pending: return .primary.opacity(0.08)
         }
@@ -379,7 +390,7 @@ private struct ProgressStepRow: View {
         case .done:
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.green)
+                .foregroundStyle(.black)
         case .active:
             ProgressView().controlSize(.small)
         case .pending:

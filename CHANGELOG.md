@@ -4,6 +4,26 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.9.1] — 2026-05-16
+
+### Fixed
+- **Thunderstore mod install — folder layout** — installing a Thunderstore mod used to extract the entire zip into `R2Northstar/mods/`, producing a nested `mods/mods/<ModFolder>/mod.json` Northstar never loaded, leaving `manifest.json` / `icon.png` / `README.md` as litter in the mods root, and dropping `plugins/` entirely. Mods are now extracted to `R2Northstar/packages/<Author-ModName-version>/` — the modern layout documented at [docs.northstar.tf](https://docs.northstar.tf/Wiki/using-northstar/packages/) and used by FlightCore / thermite / r2modman. The full Thunderstore structure (`mods/`, `plugins/`, `manifest.json`) is preserved inside each package folder so Northstar's recursive mod loader picks everything up.
+- **Mod enable/disable** — the toggle now writes `R2Northstar/enabledmods.json` (Northstar's standard file) instead of renaming folders with a `.` prefix. Stale dot-prefixed folders from earlier builds are healed on the next toggle.
+- **Stale package versions on update** — older `<Author-ModName>-x.y.z/` folders are removed before a new version is extracted, so Northstar can't accidentally load two copies of the same mod at once.
+- **Installed-mod listing** — Draconis reads both the legacy `R2Northstar/mods/<ModName>/` and the modern `R2Northstar/packages/<full_name>/mods/<ModName>/` layouts so everything Northstar actually loads is visible in the Installed tab.
+
+### Added
+- **Mod dependencies resolved automatically** — when installing a Thunderstore mod, declared `manifest.dependencies` are fetched from the live Thunderstore listing and installed too (skipping Northstar itself and anything already in the bottle). The package list is fetched once and reused for the whole recursion, so a deep dependency tree doesn't trigger multiple multi-MB downloads.
+- **Drag-and-drop local mod install** — drop a `.zip` from Finder anywhere on the Mods view to install it. `manifest.json` is peeked out of the zip with `unzip -p` so the package folder is named `<name>-<version_number>` (falling back to the zip basename when no manifest is present).
+- **Browse sort + filters** — sort by top-rated / most-downloaded / recently updated / name, filter by category, and persisted toggles for *Hide deprecated* and *Hide NSFW*.
+- **Installed-mod QoL** — `UPDATE` badge with one-click update when a newer Thunderstore version is available, `PACKAGE` badge for mods that came from a Thunderstore package folder, *Reveal in Finder* + *Uninstall* in a context menu and the row's `⋯` menu, and a *Page* link that opens the mod's Thunderstore listing from each browse row.
+- **Per-row install spinner** — installing one mod no longer blocks the Install buttons for every other row in the list.
+
+### Changed
+- `ThunderstoreClient.uninstall(_:)` removes the whole `R2Northstar/packages/<full_name>/` directory when the mod came from a package (since `mods/`, `plugins/`, and the manifest are co-installed), and only removes the inner folder for legacy `R2Northstar/mods/<ModName>/` installs.
+
+---
+
 ## [0.9.0] — 2026-05-16
 
 ### Added

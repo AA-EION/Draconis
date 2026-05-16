@@ -303,7 +303,7 @@ struct PlayView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.glass)
-                    .disabled(env.selectedBottle == nil || env.updating)
+                    .disabled(env.selectedBottle == nil || env.updating || env.launchInFlight)
                 }
 
                 // Uninstall button: only when Northstar is installed.

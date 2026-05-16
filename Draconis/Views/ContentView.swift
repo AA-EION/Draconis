@@ -43,6 +43,10 @@ struct ContentView: View {
                 .environmentObject(env)
                 .frame(minWidth: 580, minHeight: 480)
         }
+        .sheet(item: $env.draconisUpdateAvailable) { release in
+            DraconisUpdateSheet(release: release)
+                .environmentObject(env)
+        }
         .navigationTitle("Draconis")
     }
 

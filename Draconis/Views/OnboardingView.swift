@@ -99,7 +99,7 @@ struct OnboardingView: View {
                     ChoiceCard(
                         icon: "sparkles",
                         title: "Automatic",
-                        detail: "Draconis hands CrossOver the Titanfall 2 crosstie and watches every 5 s until the bottle is ready.",
+                        detail: "Draconis creates a fresh win10_64 bottle, then walks you through installing your launcher of choice and Titanfall 2 inside it.",
                         action: { page = .frontendChoice }
                     )
                     ChoiceCard(

@@ -1,15 +1,14 @@
 import Foundation
 import AppKit
 
-/// Drives the automated Titanfall 2 bottle creation flow.
+/// Polls CrossOver's bottles directory and reports progress through the
+/// Titanfall 2 setup stages.
 ///
-/// Strategy: ship CrossOver's signed Titanfall2.tie next to the app and hand
-/// it off to CrossOver via NSWorkspace. CrossOver then walks the user through
-/// its own install profile (win10_64 template, predependencies, Steam install).
-///
-/// Draconis only watches: it polls CrossOver's bottles directory every few
-/// seconds until a bottle appears that contains steam.exe — at which point the
-/// game-install step is up to the user.
+/// Strategy changed in the wizard rewrite: bottle creation is no longer
+/// handed off to a CrossTie file (which forced Steam to be the launcher).
+/// `WineBottleCreator` creates the bottle programmatically via `cxbottle
+/// --create`, then this class watches the bottle's contents to drive the
+/// next step (install launcher, install game, done).
 @MainActor
 public final class BottleInstaller {
     public static let shared = BottleInstaller()
@@ -38,31 +37,6 @@ public final class BottleInstaller {
     }
 
     private var pollTask: Task<Void, Never>?
-
-    /// Open the bundled crosstie with CrossOver. Returns false if the resource
-    /// is missing or LaunchServices refuses.
-    @discardableResult
-    public func openTitanfall2Crosstie() -> Bool {
-        guard let tie = Bundle.main.url(
-            forResource: "Titanfall2", withExtension: "tie"
-        ) else {
-            DebugLog.shared.error("bottle.auto", "Titanfall2.tie not bundled")
-            return false
-        }
-        DebugLog.shared.info("bottle.auto", "Opening crosstie \(tie.lastPathComponent) with CrossOver")
-        let cfg = NSWorkspace.OpenConfiguration()
-        cfg.activates = true
-        NSWorkspace.shared.open(
-            [tie],
-            withApplicationAt: PathResolver.crossOverApp,
-            configuration: cfg
-        ) { _, error in
-            if let error {
-                DebugLog.shared.error("bottle.auto", "open .tie failed: \(error.localizedDescription)")
-            }
-        }
-        return true
-    }
 
     /// Start polling every `interval` seconds. `onStage` fires on the main
     /// actor whenever the detected stage advances. Cancel the returned task

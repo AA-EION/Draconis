@@ -193,15 +193,31 @@ public final class AppEnvironment: ObservableObject {
 
     // MARK: - Auto bottle install
 
-    /// Hand the bundled Titanfall2.tie off to CrossOver and start polling
-    /// CrossOver's bottle directory every 5 s. UI observes `autoInstallStage`.
+    /// Create a fresh "Titanfall 2" bottle via `cxbottle --create`, then
+    /// start polling CrossOver's bottle directory every 5 s for progress
+    /// updates as the user installs their chosen launcher and the game
+    /// inside it. UI observes `autoInstallStage`.
+    ///
+    /// Replaces the previous CrossTie-based flow (which forced Steam by
+    /// default and gave the user no choice). The wizard now drives each
+    /// step explicitly:
+    ///   1. Bottle creation (this method handles).
+    ///   2. Launcher install (Steam / EA Desktop / Maxima) — user-driven
+    ///      via the wizard's source picker; not all paths are wired up
+    ///      yet in this PR.
+    ///   3. Game install — user-driven through whichever launcher was
+    ///      chosen.
     public func startAutoBottleInstall(frontend: BottleInstaller.Frontend) {
         guard frontend == .steam else {
             DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) frontend not implemented yet")
             return
         }
         autoInstallStage = .waitingForBottle
-        _ = BottleInstaller.shared.openTitanfall2Crosstie()
+        // Kick off bottle creation off-thread. The polling watcher is
+        // started in parallel so the UI shows live progress (it will
+        // initially report `.waitingForBottle` until the new directory
+        // appears, then transition through the launcher / game stages
+        // as the user installs Steam and Titanfall 2).
         BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
             guard let self else { return }
             self.autoInstallStage = stage
@@ -211,6 +227,24 @@ public final class AppEnvironment: ObservableObject {
             }
             if case .done(let id) = stage {
                 self.selectedBottleID = id
+            }
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await WineBottleCreator.shared.createBottle(
+                    name: "Titanfall 2",
+                    description: "Titanfall 2 / Northstar — created by Draconis"
+                )
+            } catch WineBottleCreator.CreatorError.bottleAlreadyExists(let name) {
+                // Reusing an existing bottle is fine — the watcher will
+                // pick up whatever state it's in. Log so the user can
+                // tell from the debug pane.
+                DebugLog.shared.info("bottle.auto", "Reusing existing bottle \"\(name)\"")
+            } catch {
+                DebugLog.shared.error("bottle.auto", "Bottle creation failed: \(error.localizedDescription)")
+                self.autoInstallStage = nil
+                BottleInstaller.shared.stopWatching()
             }
         }
     }

@@ -11,24 +11,37 @@ Draconis is a native macOS launcher for **Titanfall 2 + Northstar** built with S
 - `PathResolver` — all filesystem paths. Downloads go to `PathResolver.downloadsCache` (`~/Library/Application Support/Draconis/Downloads/`).
 - `DownloadCoordinator` — wraps `URLSessionDownloadDelegate` for streamed progress. Reports `fraction = -1` when `Content-Length` is absent.
 - Launches go through `WineBackendManager.shared.launch(...)` → `cxstart --bottle <name> [--wait] <exe> [args]`.
+- Bottle creation goes through `WineBottleCreator.shared.createBottle(...)` → `cxbottle --create --template win10_64 --bottle <name>`. The previous CrossTie-based flow (bundled `Titanfall2.tie`) was dropped because it forcibly installed Steam, which leads to the Steam-CEG corruption documented below.
 
 ## Launch modes (NorthstarLauncher.swift)
 
-| Mode | Command | Notes |
-|------|---------|-------|
-| Northstar | `steam.exe -applaunch 1237970 -noOriginStartup -multiple -northstar -novid` | `-noOriginStartup -multiple` required by Maxima; prevents Origin hang in Wine |
-| Vanilla (NS installed) | `NorthstarLauncher.exe -vanilla -novid` | Avoids auth issues when Maxima/EA aren't running |
-| Vanilla (NS absent) | `Titanfall2.exe -novid` | Fallback when Northstar not installed |
+Maxima is preferred whenever it's installed in the bottle (`bottle.hasMaxima == true`). When Maxima is absent the launcher falls back to the direct-exe paths it used before.
+
+| Mode | Command | When |
+|------|---------|------|
+| **Maxima route** (preferred) | `maxima-cli launch Origin.OFR.50.0001456 [--game-args -northstar]` | Bottle has `maxima-cli.exe`. Handles EA auth internally; no Steam-applaunch needed. |
+| Vanilla (NS installed, no Maxima) | `NorthstarLauncher.exe -vanilla -novid` | Avoids auth issues when Maxima/EA aren't running |
+| Vanilla (NS absent, no Maxima) | `Titanfall2.exe -novid` | Bare-metal fallback |
+| Northstar (no Maxima) | `steam.exe -applaunch 1237970 -noOriginStartup -multiple -northstar -novid` | Steam path, requires Steam + EA Desktop in bottle |
 
 ## Maxima integration (MaximaService.swift)
 
-- Maxima is **opt-in beta** — gated behind `env.maximaEnabled` (UserDefaults `"maximaEnabled"`).
+- Maxima is **opt-in** — gated behind `env.maximaEnabled` (UserDefaults `"maximaEnabled"`). Not installed by default.
 - Installer saved to `PathResolver.downloadsCache/MaximaSetup.exe` (overwritten each install).
 - Installed version tracked in UserDefaults key `"maximaInstalledVersion"` using the GitHub release tag.
 - `isUpdateAvailable()` compares local tag vs remote. Shows **Update** button; does **not** auto-update.
 - `setupMaxima()` skips download if `maxima-cli.exe` already in bottle (re-registers helper only).
-- `updateMaxima()` always downloads — used by the Update button.
 - `installedVersion` is `nonisolated` (reads UserDefaults only) so it can be called without `await`.
+
+### Maxima CLI surface (added in the wizard rewrite)
+
+| Method | Wraps | Used for |
+|---|---|---|
+| `listGames(in:)` | `cxstart --bottle … --wait maxima-cli list-games --json` | Pre-flight detection: is TF2 in the user's EA library, where is it installed? Throws `.notLoggedIn` if OAuth hasn't been completed. |
+| `applyCegFix(in:gamePath:)` | `cxstart --bottle … --wait maxima-cli install titanfall-2 --path … --replace-files "Titanfall2.exe,Titanfall2_trial.exe" --only-listed-files` | Surgical CEG fix on a Steam install. ~3 MB download. |
+| `launchGame(in:northstar:)` | `cxstart --bottle … maxima-cli launch Origin.OFR.50.0001456 [--game-args -northstar]` | Hot-path launch when Maxima knows about TF2. Used by `NorthstarLauncher` when `bottle.hasMaxima`. |
+
+All three pipe output to the per-bottle log file (`PathResolver.bottleLogFile(for:)`) so the user can debug failures.
 
 ## Northstar version detection
 
@@ -38,25 +51,45 @@ Draconis is a native macOS launcher for **Titanfall 2 + Northstar** built with S
 
 ## Bottle / launcher detection
 
-- `WineBottle` has `hasSteam`, `hasEAApp`, `hasEpicGames`, `hasLauncher` (= any of the three).
-- Northstar launch button requires `hasSteam` specifically (goes through `steam.exe`).
-- `BottleInstaller.detectStage()` uses `hasLauncher` so EA/Epic manual installs advance onboarding steps.
+- `WineBottle` has `hasSteam`, `hasEAApp`, `hasEpicGames`, `hasMaxima`, `hasLauncher` (= any of Steam/EA/Epic).
+- The Maxima route in `NorthstarLauncher.launch` checks `hasMaxima` first and routes through `maxima-cli launch` when present; everything else is fallback.
+- `BottleInstaller.detectStage()` uses `hasLauncher` so EA/Steam manual installs advance onboarding steps.
+
+## Onboarding sources
+
+`BottleInstaller.Frontend`:
+
+- `.steam` — `SteamInstaller.install(into:)` downloads `SteamSetup.exe` and runs it silently. User installs TF2 through Steam afterward. **Heads up:** Steam-installed TF2 hits CEG corruption on macOS/CrossOver; apply the Maxima fix afterward.
+- `.ea` — `EAInstaller.install(into:silent:)` downloads EA's installer (`EAappInstaller.exe`). EA app handles `link2ea://` natively; simplest path on macOS.
+- `.maxima` — bottle is created but no launcher installed by the wizard. User runs `MaximaService.setupMaxima` from Settings and then `maxima-cli install titanfall-2` inside the bottle. Requires the game to be in the user's EA library.
+- `.epic` — documented, marked `.available = false` (Coming soon).
+
+## CEG fix
+
+The dialog component lives in `Draconis/Views/Components/CegFixDialog.swift`. Triggered when a Steam install is detected alongside Maxima in the same bottle, it offers two options:
+
+1. **Apply Maxima fix** — calls `env.applyCegFix(in:gamePath:)` → `MaximaService.applyCegFix(...)` → `maxima-cli install --replace-files "Titanfall2.exe,Titanfall2_trial.exe" --only-listed-files`. ~3 MB download, replaces the CEG-signed launcher binaries with EA originals. Preserves Northstar files, save games, the rest of the install.
+2. **Leave in place** — closes the dialog. The user can re-open it later from Settings if they hit "File corruption" in-game.
+
+Full root-cause analysis and empirical validation: see Maxima-Draconis CLAUDE.md → "Engine Error: File corruption detected — Update 2026-05-19 (CEG fix confirmed end-to-end)".
 
 ## Pending work / known issues
 
 ### Performance — bottle scan I/O (raised in PR #8 code review)
-`CrossOverDetector.bottles()` now calls `locateTitanfall2` (potentially slow recursive search) **plus** `readNorthstarVersion` (one `Data(contentsOf:)`) for every bottle on every refresh. For users with many bottles this can block the actor for several seconds. Consider:
-- Caching `northstarVersion` per-bottle keyed by bottle ID in a Dictionary, invalidated only when the bottle's `mtime` changes.
-- Or reading `ns_version.txt` lazily when a bottle is selected rather than during the full scan.
+`CrossOverDetector.bottles()` calls `locateTitanfall2` (potentially slow recursive search) **plus** `readNorthstarVersion` (one `Data(contentsOf:)`) **plus** the new `locateMaximaCli` for every bottle on every refresh. For users with many bottles this can block the actor for several seconds. Consider caching `northstarVersion` / `hasMaxima` per-bottle keyed by bottle ID, invalidated only when the bottle's `mtime` changes.
 
-### EA app / Epic auto-install (onboarding)
-`BottleInstaller.Frontend.available` is `true` only for `.steam`. EA app and Epic frontends are greyed out in automatic onboarding. Implementation would require a different CrossTie or a manual drive to install the launcher without Steam.
+### Wizard UX still rough
+The wizard wires up the new launchers but the screen flow itself is the same multi-step state machine as before. Pending:
+- `.waitingForLauncher(bottleID)` stage between `.waitingForBottle` and `.waitingForTitanfall` so the UI can distinguish "no bottle yet" from "bottle exists, install your launcher".
+- "Run game once" confirmation step before offering Maxima install for Steam/Epic paths (currently the user has to know to do this themselves).
+- EA-library warning when picking the Maxima source — surface the requirement up front instead of letting `maxima-cli install` fail later.
+- Triggering the CEG dialog automatically when relevant (right now it's available but not auto-shown).
 
 ### Offline Maxima mode
 Maxima supports offline play after a first successful online launch (license files in `C:/ProgramData/Maxima/Licenses/`, valid ~2 weeks). Not yet exposed in the Draconis UI.
 
-### Maxima Steam-only accounts
-If TF2 is owned only on Steam and the EA account isn't linked, Maxima will warn and attempt a passthrough. Documented in README. No action needed from Draconis side.
+### Epic Games path
+`BottleInstaller.Frontend.epic` is intentionally `.available = false`. Epic delivers TF2 with EA Desktop bundled the same way Steam does, so the path is likely identical to Steam-with-CEG-fix, but it hasn't been validated by anyone with an Epic copy.
 
 ## Code conventions
 

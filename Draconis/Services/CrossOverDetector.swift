@@ -62,6 +62,7 @@ public actor CrossOverDetector {
                 hasSteam: SteamInstaller.steamExePath(in: url) != nil,
                 hasEAApp: Self.locateEAApp(in: driveC) != nil,
                 hasEpicGames: Self.locateEpicGames(in: driveC) != nil,
+                hasMaxima: Self.locateMaximaCli(in: driveC) != nil,
                 northstarVersion: nsVersion,
                 titanfall2InstallPath: titanfall?.path
             )
@@ -137,6 +138,23 @@ public actor CrossOverDetector {
         let candidates = [
             "Program Files (x86)/Epic Games/Launcher/Portal/Binaries/Win32/EpicGamesLauncher.exe",
             "Program Files/Epic Games/Launcher/Portal/Binaries/Win64/EpicGamesLauncher.exe",
+        ]
+        let fm = FileManager.default
+        for path in candidates {
+            let url = driveC.appendingPathComponent(path)
+            if fm.fileExists(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    /// `maxima-cli.exe` inside the bottle. The installer drops it under
+    /// `C:\Program Files\Maxima\` on Wine — note `Program Files`, not
+    /// `Program Files (x86)`, because the installer is built as the
+    /// shared (non-x86) variant for win10_64 prefixes.
+    public nonisolated static func locateMaximaCli(in driveC: URL) -> URL? {
+        let candidates = [
+            "Program Files/Maxima/maxima-cli.exe",
+            "Program Files (x86)/Maxima/maxima-cli.exe",
         ]
         let fm = FileManager.default
         for path in candidates {

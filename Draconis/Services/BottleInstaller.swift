@@ -14,16 +14,39 @@ public final class BottleInstaller {
     public static let shared = BottleInstaller()
 
     public enum Frontend: String, CaseIterable, Identifiable, Sendable {
-        case steam, ea, epic
+        case steam, ea, maxima, epic
         public var id: String { rawValue }
         public var displayName: String {
             switch self {
-            case .steam: return "Steam"
-            case .ea:    return "EA app"
-            case .epic:  return "Epic Games"
+            case .steam:  return "Steam"
+            case .ea:     return "EA app"
+            case .maxima: return "Maxima (direct download)"
+            case .epic:   return "Epic Games"
             }
         }
-        public var available: Bool { self == .steam }
+
+        /// True when this path is fully implemented end-to-end. Epic is
+        /// off until someone with an Epic copy of TF2 tests the flow.
+        public var available: Bool {
+            switch self {
+            case .steam, .ea, .maxima: return true
+            case .epic:                return false
+            }
+        }
+
+        /// One-line summary shown next to the option in the picker.
+        public var summary: String {
+            switch self {
+            case .steam:
+                return "Steam delivers the game. EA Desktop installs automatically on first launch and handles auth. Steam-installed binaries are CEG-signed — apply the Maxima fix afterward if you hit \"File corruption\" on macOS/CrossOver."
+            case .ea:
+                return "EA app delivers the game and handles auth natively. Simplest path on macOS/CrossOver."
+            case .maxima:
+                return "Maxima downloads the game directly from EA's servers without Steam or EA Desktop. Requires the game to be in your EA library (purchased on EA, or Steam/Epic linked + synced at least once)."
+            case .epic:
+                return "Coming soon — Epic's TF2 install hasn't been validated through this wizard yet."
+            }
+        }
     }
 
     public enum Stage: Equatable, Sendable {

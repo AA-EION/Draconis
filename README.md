@@ -59,11 +59,13 @@ Then launch normally.
 
 - **One-click launch** of Northstar or vanilla Titanfall 2 from any detected CrossOver bottle
 - **Guided onboarding** with two routes for first-time setup:
-  - **Automatic** — Draconis hands CrossOver the Titanfall 2 crosstie and polls every 5 s until the bottle is ready
-  - **Manual** — open CrossOver yourself and follow its install profile (Steam, EA app, or Epic Games inside the bottle)
+  - **Automatic** — Draconis creates a fresh `win10_64` bottle via `cxbottle --create`, then installs the launcher you pick (Steam, EA app, or Maxima)
+  - **Manual** — open CrossOver yourself and install whichever launcher you prefer; Draconis polls and advances the onboarding as each piece appears
+- **Launcher choice** — Steam, EA app, or **Maxima direct download** (no Steam/EA needed). Epic Games is documented but not yet wired up
+- **Steam-CEG fix** — Steam-installed binaries are signed with per-user CEG DRM that breaks under Wine. Draconis can replace just `Titanfall2.exe` + `Titanfall2_trial.exe` with the EA originals via Maxima (~3 MB download, save games and Northstar mods preserved). See [CEG fix](#steam-ceg-fix) below
+- **Maxima-aware launch path** — when Maxima is installed in the bottle, Draconis routes launches through `maxima-cli launch` so EA auth is handled cleanly; falls back to direct exe launch otherwise
 - **Live bottle location** — reads CrossOver's `BottleDir` preference from `~/Library/Preferences/com.codeweavers.CrossOver.plist`, so a custom bottles folder is picked up automatically
-- **Northstar auto-updater** — checks for a new release on every launch and updates automatically when Northstar is already installed. If Northstar isn't installed yet, an Install button is shown instead
-- **Maxima integration** (optional, beta) — installs [Maxima-Draconis](https://github.com/AA-EION/Maxima-Draconis) and registers MaximaHelper so Northstar can bypass the EA Desktop authentication requirement. Enable it from the EA Launcher toggle on the Play tab
+- **Northstar auto-updater** — checks for a new release on every launch and updates automatically when Northstar is already installed
 - **Thunderstore mod browser** with install / enable / disable / uninstall support
 - **Server browser** backed by the Northstar masterserver
 - **Liquid Glass UI** — uses macOS Tahoe's native `.glassEffect()` rather than faking blur with `.ultraThinMaterial`
@@ -72,37 +74,58 @@ Then launch normally.
 
 - macOS Tahoe (26) or later
 - [CrossOver](https://www.codeweavers.com/crossover) installed at `/Applications/CrossOver.app`
-- A legal copy of Titanfall 2 (Steam works end-to-end today; EA app + Epic are *coming soon* in the auto installer)
-
-## CrossTie security note
-
-The bundled `Titanfall2.tie` install profile may be shown as **untrusted** or **unverified** inside CrossOver, even though it comes directly from CrossOver's own database. This is a display issue — the profile is genuine and safe to run. Draconis includes this `.tie` file verbatim from CrossOver; if you are ever uncertain you can verify by opening CrossOver → Install a Windows Application → search "Titanfall 2" and comparing the profile.
+- A legal copy of Titanfall 2:
+  - Steam — works end-to-end (apply the Maxima CEG fix once after install)
+  - EA app — works end-to-end
+  - Direct via Maxima — requires the game to be in your EA library (purchased on EA, or Steam/Epic linked + synced at least once)
+  - Epic Games — install path documented, not yet validated through the wizard
 
 ## Onboarding flow
 
 On first launch (or when no Titanfall 2 bottle is detected) Draconis opens an onboarding sheet:
 
 1. **Pick a mode** — Automatic or Manual.
-2. **Automatic** → pick a frontend (Steam available today; EA app and Epic are greyed out) → click *Start install*. Draconis opens the bundled `Titanfall2.tie` with CrossOver and polls `BottleDir` every 5 s. Three stages are shown:
-   - Bottle is being created and launcher is installing
-   - Launcher is ready — log in and install Titanfall 2, wait for 100%
-   - Titanfall 2 detected — ready to launch
-3. **Manual** → Draconis begins polling for the bottle as you work in CrossOver. The CrossTie picks Steam by default, but you can switch to the EA app or Epic Games on the same CrossOver screen. Live progress steps update as each piece appears.
-4. **Set up Maxima** (optional) from the EA Launcher toggle on the Play tab once Titanfall 2 is installed.
+2. **Automatic** → pick a launcher (Steam / EA app / Maxima; Epic is *coming soon*) → click *Start install*. Draconis:
+   - Runs `cxbottle --create --template win10_64 --bottle "Titanfall 2"` to create the prefix
+   - Downloads + runs the chosen launcher's installer inside the bottle (Steam: `SteamSetup.exe`; EA: `EAappInstaller.exe`; Maxima: `MaximaSetup.exe` plus host-side helper registration)
+   - Polls the bottle directory every 5 s and advances the wizard as each component appears
+3. **Manual** → Draconis begins polling the bottle as you work in CrossOver yourself. Use whichever installer you prefer; live progress steps update as each piece appears.
+4. **Install Titanfall 2** through the launcher you chose. For Steam and EA app this is the launcher's own UI. For Maxima it's the Maxima UI or `maxima-cli install titanfall-2 --path <abs_dir>` from a cmd window inside the bottle.
+5. **Run the game once** if you installed via Steam or EA app. The first launch triggers EA Desktop's built-in installation alongside the game and lets it settle. Doing this before installing Maxima prevents EA's auto-setup from overwriting Maxima's protocol registrations.
+6. **(Optional) Install Maxima** for EA auth without depending on EA Desktop being open. Required if you want to use the **CEG fix** on a Steam install.
+
+## Steam CEG fix
+
+Steam ships Titanfall 2's `Titanfall2.exe` and `Titanfall2_trial.exe` signed with per-user **CEG** (Custom Executable Generation) DRM. On macOS/CrossOver the runtime validation routes through Wine's `ntdll-Junction_Points` patch and fails, surfacing in-game as:
+
+> *Engine Error: File corruption detected*
+
+Nothing's actually corrupted — the DRM just can't verify itself under Wine. (Same reason [NorthstarProton](https://github.com/R2NorthstarTools/NorthstarProton) disables that Wine patch on Linux / Steam Deck.) CEG only touches those two binaries; every other file in the Steam install matches the EA original.
+
+**The fix.** When Draconis detects a Steam install + Maxima installed in the same bottle, it offers an **Apply Maxima fix** dialog that runs:
+
+```
+maxima-cli install titanfall-2 \
+  --path "<steam_install>" \
+  --replace-files "Titanfall2.exe,Titanfall2_trial.exe" \
+  --only-listed-files
+```
+
+That replaces just the two CEG-signed binaries with the EA originals — ~3 MB download, under a minute. Your Steam library entry, save games, Northstar files, and the rest of the ~30 GB install are untouched. After the fix, launches proceed cleanly through the full EA auth flow.
+
+This requires [Maxima-Draconis v0.11.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.11.0) or later inside the bottle.
 
 ## Maxima (EA authentication, optional)
 
 [Maxima-Draconis](https://github.com/AA-EION/Maxima-Draconis) is an open-source replacement for EA Desktop that runs inside the CrossOver bottle. It handles EA's authentication handshake so Northstar can launch without the EA app being installed.
 
-**This feature is in beta.** Enable it with the **EA Launcher (Maxima)** toggle on the Play tab.
-
 When Maxima is enabled:
-- **Set up Maxima** downloads `MaximaSetup.exe` from the latest Maxima-Draconis release, installs it silently inside the bottle, and registers `MaximaHelper.app` as the macOS handler for `qrc://` OAuth redirects.
-- The installed version is tracked. When a newer release is available an **Update Maxima** button appears — Maxima does not auto-update (unlike Northstar).
-- Launches use `steam.exe -applaunch 1237970 -northstar -noOriginStartup -multiple` so Northstar doesn't try to start Origin (which doesn't exist in Wine).
-- Vanilla mode uses `NorthstarLauncher.exe -vanilla` instead of `Titanfall2.exe` directly, which avoids auth issues when Maxima or the EA launcher isn't running.
+- **Set up Maxima** downloads `MaximaSetup.exe` from the latest Maxima-Draconis release, installs it inside the bottle, and registers `MaximaHelper.app` as the macOS handler for `qrc://` OAuth redirects.
+- The installed version is tracked. When a newer release is available an **Update Maxima** button appears.
+- Launches automatically route through `maxima-cli launch Origin.OFR.50.0001456` when Maxima is detected in the bottle. Northstar mode appends `--game-args -northstar`. No Steam-applaunch needed.
+- The CEG fix described above is available whenever a Steam install is detected alongside Maxima.
 
-**Known limitation:** if your Titanfall 2 EA license isn't linked to your EA account (Steam-only), Maxima will warn and attempt a passthrough. Linking accounts at [ea.com](https://www.ea.com) resolves this permanently.
+**Known limitation:** if your Titanfall 2 EA license isn't linked to your EA account (Steam-only owners), Maxima can't see the game in your library — it'll surface a "no owned offer found" error. Linking accounts at [ea.com](https://www.ea.com) resolves this permanently.
 
 ## How CrossOver detection works
 
@@ -150,12 +173,13 @@ Draconis/
 ├── Models/         WineBackend, NorthstarInstall, Mod, Server
 ├── Services/       CrossOverDetector, WineBackendManager, NorthstarLauncher,
 │                   NorthstarUpdater, ThunderstoreClient, ServerBrowserClient,
-│                   SteamInstaller, BottleInstaller, MaximaService,
-│                   ProcessRunner, DownloadCoordinator, PathResolver, DebugLog
+│                   SteamInstaller, EAInstaller, WineBottleCreator,
+│                   BottleInstaller, MaximaService, ProcessRunner,
+│                   DownloadCoordinator, PathResolver, DebugLog
 ├── Views/          ContentView, PlayView, ModsView, ServersView,
 │                   SettingsView, OnboardingView, ConsoleView, Components/
 └── Resources/      Info.plist, Draconis.entitlements, Assets.xcassets,
-                    Draconis.icon, Titanfall2.tie
+                    Draconis.icon
 ```
 
 ## Contributors

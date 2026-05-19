@@ -57,6 +57,17 @@ public final class AppEnvironment: ObservableObject {
     @Published public var maximaSettingUp: Bool = false
     @Published public var maximaProgress: MaximaService.Progress?
     @Published public var maximaError: String?
+
+    /// Cached result of the most recent `maxima-cli list-games --json`
+    /// run. `nil` when never fetched; an empty array means Maxima
+    /// responded but the user's EA library has no recognised games.
+    @Published public var maximaLibrary: [MaximaService.OwnedGame]?
+    @Published public var maximaLibraryError: String?
+
+    /// True while a CEG-fix run is in flight. UI hides the button and
+    /// shows a spinner while this is `true`.
+    @Published public var cegFixRunning: Bool = false
+    @Published public var cegFixError: String?
     @Published public var maximaUpdateAvailable: Bool = false
     @Published public var maximaInstalledVersion: String?
 
@@ -208,7 +219,7 @@ public final class AppEnvironment: ObservableObject {
     ///   3. Game install — user-driven through whichever launcher was
     ///      chosen.
     public func startAutoBottleInstall(frontend: BottleInstaller.Frontend) {
-        guard frontend == .steam else {
+        guard frontend.available else {
             DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) frontend not implemented yet")
             return
         }
@@ -217,7 +228,7 @@ public final class AppEnvironment: ObservableObject {
         // started in parallel so the UI shows live progress (it will
         // initially report `.waitingForBottle` until the new directory
         // appears, then transition through the launcher / game stages
-        // as the user installs Steam and Titanfall 2).
+        // as the user installs the chosen launcher and Titanfall 2).
         BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
             guard let self else { return }
             self.autoInstallStage = stage
@@ -231,20 +242,67 @@ public final class AppEnvironment: ObservableObject {
         }
         Task { [weak self] in
             guard let self else { return }
+            // 1. Create the bottle if it doesn't already exist.
+            let bottleName = "Titanfall 2"
             do {
                 try await WineBottleCreator.shared.createBottle(
-                    name: "Titanfall 2",
-                    description: "Titanfall 2 / Northstar — created by Draconis"
+                    name: bottleName,
+                    description: "Titanfall 2 / Northstar — created by Draconis (\(frontend.displayName))"
                 )
             } catch WineBottleCreator.CreatorError.bottleAlreadyExists(let name) {
-                // Reusing an existing bottle is fine — the watcher will
-                // pick up whatever state it's in. Log so the user can
-                // tell from the debug pane.
                 DebugLog.shared.info("bottle.auto", "Reusing existing bottle \"\(name)\"")
             } catch {
                 DebugLog.shared.error("bottle.auto", "Bottle creation failed: \(error.localizedDescription)")
-                self.autoInstallStage = nil
-                BottleInstaller.shared.stopWatching()
+                await MainActor.run {
+                    self.autoInstallStage = nil
+                    BottleInstaller.shared.stopWatching()
+                }
+                return
+            }
+
+            // 2. Find the bottle we just created (or are reusing) so we
+            //    can pass it to the launcher installer.
+            await self.refreshBottles()
+            guard let bottle = await MainActor.run(body: {
+                self.bottles.first(where: { $0.name == bottleName })
+            }) else {
+                DebugLog.shared.error("bottle.auto", "Couldn't locate \"\(bottleName)\" after creation")
+                return
+            }
+
+            // 3. Install the launcher the user chose. Each path runs the
+            //    relevant installer (synchronous from the user's POV —
+            //    they'll watch progress in the per-bottle log pane).
+            //    `.maxima` doesn't need its own launcher install here;
+            //    the wizard flow expects the user to click "Install
+            //    Maxima" via the Settings / Maxima section after the
+            //    bottle exists.
+            do {
+                switch frontend {
+                case .steam:
+                    if !(await SteamInstaller.shared.isSteamInstalled(in: bottle)) {
+                        try await SteamInstaller.shared.install(into: bottle)
+                    } else {
+                        DebugLog.shared.info("bottle.auto", "Steam already installed in bottle, skipping")
+                    }
+                case .ea:
+                    if !(await EAInstaller.shared.isEAInstalled(in: bottle)) {
+                        try await EAInstaller.shared.install(into: bottle, silent: false)
+                    } else {
+                        DebugLog.shared.info("bottle.auto", "EA Desktop already installed in bottle, skipping")
+                    }
+                case .maxima:
+                    // Maxima route: user installs Maxima from the Settings
+                    // pane (existing flow via `MaximaService.setupMaxima`),
+                    // then uses `maxima-cli install` to download the game.
+                    // No launcher to install at this step.
+                    DebugLog.shared.info("bottle.auto", "Maxima route — bottle ready, user installs Maxima next")
+                case .epic:
+                    DebugLog.shared.warn("bottle.auto", "Epic Games path not implemented yet")
+                }
+                await self.refreshBottles()
+            } catch {
+                DebugLog.shared.error("bottle.auto", "Launcher install failed: \(error.localizedDescription)")
             }
         }
     }
@@ -252,6 +310,72 @@ public final class AppEnvironment: ObservableObject {
     public func cancelAutoBottleInstall() {
         BottleInstaller.shared.stopWatching()
         autoInstallStage = nil
+    }
+
+    // MARK: - Maxima CLI integration
+
+    /// Refresh `maximaLibrary` by running `maxima-cli list-games --json`
+    /// in the given bottle. Caller is typically a Settings / Maxima
+    /// section "Refresh library" button. The CLI requires the user to
+    /// have completed OAuth at least once — surface `.notLoggedIn`
+    /// errors clearly so the user knows what to do.
+    public func loadMaximaLibrary(in bottle: WineBottle) {
+        Task { [weak self] in
+            guard let self else { return }
+            await MainActor.run { self.maximaLibraryError = nil }
+            do {
+                let games = try await MaximaService.shared.listGames(in: bottle)
+                await MainActor.run { self.maximaLibrary = games }
+            } catch let error as MaximaService.CliError {
+                DebugLog.shared.error("maxima.cli", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaLibrary = []
+                    self.maximaLibraryError = error.localizedDescription
+                }
+            } catch {
+                DebugLog.shared.error("maxima.cli", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaLibrary = []
+                    self.maximaLibraryError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Apply the Steam-CEG fix to a Titanfall 2 install: surgical
+    /// replacement of `Titanfall2.exe` + `Titanfall2_trial.exe` with
+    /// the EA originals via `maxima-cli install --replace-files
+    /// --only-listed-files`. ~3 MB download, <60 s on a normal
+    /// connection.
+    ///
+    /// `gamePath` must point at the TF2 install root (e.g.
+    /// `C:\Program Files (x86)\Steam\steamapps\common\Titanfall2`).
+    /// Caller is responsible for confirming the user actually wants
+    /// to apply this — the dialog component handles that.
+    public func applyCegFix(in bottle: WineBottle, gamePath: String) {
+        guard !cegFixRunning else { return }
+        cegFixRunning = true
+        cegFixError = nil
+        Task { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.cegFixRunning = false
+                }
+            }
+            guard let self else { return }
+            do {
+                try await MaximaService.shared.applyCegFix(
+                    in: bottle,
+                    gamePath: gamePath
+                )
+                await self.refreshBottles()
+            } catch {
+                DebugLog.shared.error("maxima.ceg", error.localizedDescription)
+                await MainActor.run {
+                    self.cegFixError = error.localizedDescription
+                }
+            }
+        }
     }
 
     // MARK: - Auto bottle install

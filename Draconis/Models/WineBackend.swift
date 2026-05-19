@@ -42,6 +42,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     public var hasSteam: Bool
     public var hasEAApp: Bool
     public var hasEpicGames: Bool
+    public var hasMaxima: Bool                 // C:\Program Files\Maxima\maxima-cli.exe present
     public var northstarVersion: String?       // e.g. "v1.28.0", from ns_version.txt
     public var titanfall2InstallPath: String?  // POSIX path to TF2 root inside drive_c
 
@@ -58,6 +59,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         hasSteam: Bool = false,
         hasEAApp: Bool = false,
         hasEpicGames: Bool = false,
+        hasMaxima: Bool = false,
         northstarVersion: String? = nil,
         titanfall2InstallPath: String? = nil
     ) {
@@ -70,6 +72,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         self.hasSteam = hasSteam
         self.hasEAApp = hasEAApp
         self.hasEpicGames = hasEpicGames
+        self.hasMaxima = hasMaxima
         self.northstarVersion = northstarVersion
         self.titanfall2InstallPath = titanfall2InstallPath
     }

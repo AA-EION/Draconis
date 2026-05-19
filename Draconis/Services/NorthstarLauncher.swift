@@ -75,6 +75,19 @@ public actor NorthstarLauncher {
             throw LaunchError.titanfallNotFound
         }
 
+        // Prefer maxima-cli when Maxima is installed in the bottle —
+        // it handles EA auth itself and bypasses the Steam-applaunch /
+        // Origin-DRM-hang dance Wine struggles with. Falls back to the
+        // direct exe paths below when Maxima isn't there (EA-only and
+        // pure-Steam setups still work via the existing flow).
+        if bottle.hasMaxima {
+            Log.info("northstar.launch", "Maxima present in bottle, routing through maxima-cli")
+            return try await MaximaService.shared.launchGame(
+                in: bottle,
+                northstar: mode == .northstar
+            )
+        }
+
         switch mode {
         case .vanilla:
             return try await launchVanilla(

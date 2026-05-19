@@ -547,3 +547,222 @@ private struct GitHubRelease: Decodable {
         case assets
     }
 }
+
+// MARK: - CLI invocations (driven via cxstart inside the bottle)
+
+extension MaximaService {
+
+    /// One row in the `maxima-cli list-games --json` output. Fields named
+    /// to match the JSON document Maxima emits — see Maxima-Draconis CLAUDE.md
+    /// "Mode::ListGames" section for the full schema.
+    public struct OwnedGame: Codable, Sendable, Identifiable {
+        public let slug: String
+        public let name: String
+        public let offerId: String
+        public let contentId: String
+        public let displayName: String
+        public let installed: Bool
+        public let installPath: String?
+        public let version: String?
+        public let hasCloudSave: Bool
+
+        public var id: String { offerId }
+
+        private enum CodingKeys: String, CodingKey {
+            case slug, name, installed, version
+            case offerId = "offer_id"
+            case contentId = "content_id"
+            case displayName = "display_name"
+            case installPath = "install_path"
+            case hasCloudSave = "has_cloud_save"
+        }
+    }
+
+    public enum CliError: Error, LocalizedError {
+        case notInstalled
+        case cxstartMissing
+        case cliFailed(exitCode: Int32, stderr: String)
+        case invalidOutput(String)
+        case notLoggedIn
+
+        public var errorDescription: String? {
+            switch self {
+            case .notInstalled:
+                return "Maxima isn't installed in this bottle."
+            case .cxstartMissing:
+                return "CrossOver's cxstart binary not found."
+            case .cliFailed(let code, let stderr):
+                let trimmed = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                let tail = trimmed.isEmpty ? "" : ": \(trimmed)"
+                return "maxima-cli exited with code \(code)\(tail)"
+            case .invalidOutput(let detail):
+                return "maxima-cli output couldn't be parsed: \(detail)"
+            case .notLoggedIn:
+                return "Maxima isn't logged in to an EA account yet. Run `maxima-cli` interactively inside the bottle once to complete the OAuth flow."
+            }
+        }
+    }
+
+    /// Run `maxima-cli list-games --json` inside the bottle, parse the
+    /// JSON array, return what Maxima reports about the user's EA library.
+    /// Requires the user to have completed OAuth at least once — Draconis
+    /// is intentionally non-interactive here. If maxima-cli emits no
+    /// `[` (the JSON array start) it's almost certainly because login
+    /// failed; surface that as `.notLoggedIn`.
+    public func listGames(in bottle: WineBottle) async throws -> [OwnedGame] {
+        guard let cliPath = maximaCliPath(in: bottle) else {
+            throw CliError.notInstalled
+        }
+        guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+            throw CliError.cxstartMissing
+        }
+
+        let process = Process()
+        process.executableURL = cxstart
+        process.arguments = [
+            "--bottle", bottle.name,
+            "--wait",
+            cliPath,
+            "list-games",
+            "--json",
+        ]
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        Log.run("maxima.cli", "cxstart --bottle \(bottle.name) --wait \(cliPath) list-games --json")
+
+        try await Task.detached(priority: .userInitiated) {
+            try process.run()
+            process.waitUntilExit()
+        }.value
+
+        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        if process.terminationStatus != 0 {
+            let stderr = String(
+                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            throw CliError.cliFailed(exitCode: process.terminationStatus, stderr: stderr)
+        }
+
+        // cxstart sometimes echoes a launch banner before the program's
+        // own stdout. The JSON document always starts with `[`, so trim
+        // anything before it.
+        guard let bracket = stdoutData.firstIndex(of: UInt8(ascii: "[")) else {
+            let text = String(data: stdoutData, encoding: .utf8) ?? "<binary>"
+            // No bracket usually means OAuth wasn't completed and the
+            // login flow printed an interactive prompt that never got
+            // resolved — surface that as a distinct, actionable error.
+            if text.contains("Login failed") || text.contains("paste") || text.isEmpty {
+                throw CliError.notLoggedIn
+            }
+            throw CliError.invalidOutput(text)
+        }
+        let jsonData = stdoutData[bracket...]
+
+        do {
+            return try JSONDecoder().decode([OwnedGame].self, from: jsonData)
+        } catch {
+            throw CliError.invalidOutput("JSON decode failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Apply the Steam-CEG fix to a Titanfall 2 install: replace the two
+    /// CEG-signed launcher binaries (`Titanfall2.exe` and
+    /// `Titanfall2_trial.exe`) with the EA originals via Maxima's
+    /// `install --replace-files … --only-listed-files` flow. ~3 MB
+    /// download, leaves everything else in the install untouched
+    /// (Northstar files, save games, bin/, Core/).
+    ///
+    /// `gamePath` is the install root as Wine sees it — e.g.
+    /// `C:\Program Files (x86)\Steam\steamapps\common\Titanfall2`.
+    /// Caller is responsible for passing a valid TF2 directory.
+    public func applyCegFix(
+        in bottle: WineBottle,
+        gamePath: String
+    ) async throws {
+        guard let cliPath = maximaCliPath(in: bottle) else {
+            throw CliError.notInstalled
+        }
+        guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+            throw CliError.cxstartMissing
+        }
+
+        let process = Process()
+        process.executableURL = cxstart
+        process.arguments = [
+            "--bottle", bottle.name,
+            "--wait",
+            cliPath,
+            "install",
+            "titanfall-2",
+            "--path", gamePath,
+            "--replace-files", "Titanfall2.exe,Titanfall2_trial.exe",
+            "--only-listed-files",
+        ]
+
+        Log.run("maxima.ceg", "Applying CEG fix to \(gamePath) in bottle \(bottle.name)")
+
+        // Pipe output to the per-bottle log file so the user can read
+        // exactly what maxima-cli reported if something goes wrong.
+        let logURL = PathResolver.bottleLogFile(for: bottle)
+        try? FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        try logHandle.seekToEnd()
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+
+        try await Task.detached(priority: .userInitiated) {
+            try process.run()
+            process.waitUntilExit()
+        }.value
+
+        try? logHandle.close()
+
+        if process.terminationStatus != 0 {
+            throw CliError.cliFailed(
+                exitCode: process.terminationStatus,
+                stderr: "see \(logURL.path) for details"
+            )
+        }
+
+        Log.ok("maxima.ceg", "CEG fix applied successfully")
+    }
+
+    /// Run `maxima-cli launch <offer> [--game-args -northstar]` inside the
+    /// bottle. Used by the launch decision tree when Maxima is present —
+    /// maxima-cli handles EA auth + bootstrap spawn internally, so we
+    /// don't need Steam's `applaunch` or the `-noOriginStartup` flag
+    /// dance.
+    ///
+    /// Returns the detached `Process` so the caller can either
+    /// `waitUntilExit` or fire-and-forget (typically the latter — games
+    /// are GUI apps and we want App Nap to leave them alone).
+    @discardableResult
+    public func launchGame(
+        in bottle: WineBottle,
+        northstar: Bool
+    ) async throws -> Process {
+        guard let cliPath = maximaCliPath(in: bottle) else {
+            throw CliError.notInstalled
+        }
+
+        var args = ["launch", "Origin.OFR.50.0001456"]
+        if northstar {
+            args.append(contentsOf: ["--game-args", "-northstar"])
+        }
+
+        Log.info("maxima.launch", "maxima-cli \(args.joined(separator: " "))")
+
+        return try await WineBackendManager.shared.launch(
+            executable: cliPath,
+            arguments: args,
+            in: bottle,
+            workingDirectory: nil,
+            wait: false
+        )
+    }
+}

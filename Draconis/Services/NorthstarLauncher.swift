@@ -134,17 +134,42 @@ public actor NorthstarLauncher {
             // No Maxima — direct cxstart. This requires EA Desktop to
             // be in the bottle to handle link2ea:// auth requests TF2
             // (or NorthstarLauncher) emits during startup.
+            //
+            // Must go through CleanSpawn (not WineBackendManager.launch)
+            // for the same reason game launches via maxima-cli do:
+            // Foundation.Process from a .app freezes the Wine chain.
+            // See CleanSpawn.swift's doc-comment for the full reasoning.
             guard bottle.hasEAApp else {
                 throw LaunchError.eaAuthBackboneMissing
             }
-            Log.info("northstar.launch", "Direct cxstart \(targetExe) \(targetArgs.joined(separator: " "))")
-            return try await WineBackendManager.shared.launch(
-                executable: targetExe,
-                arguments: targetArgs,
-                in: bottle,
-                workingDirectory: tf2Root,
-                wait: false
+            guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+                throw LaunchError.titanfallNotFound
+            }
+            let logURL = PathResolver.bottleLogFile(for: bottle)
+            try? FileManager.default.createDirectory(
+                at: logURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
             )
+            if !FileManager.default.fileExists(atPath: logURL.path) {
+                FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            }
+            let cxstartArgs = ["--bottle", bottle.name, targetExe] + targetArgs
+            Log.info(
+                "northstar.launch",
+                "CleanSpawn.spawn cxstart=\(cxstart.path) args=\(cxstartArgs.joined(separator: " "))"
+            )
+            let pid = try CleanSpawn.spawn(
+                executable: cxstart.path,
+                arguments: cxstartArgs,
+                stdinPath: "/dev/null",
+                stdoutPath: logURL.path
+            )
+            Log.info("northstar.launch", "cxstart spawned pid=\(pid)")
+            // No Foundation.Process handle (CleanSpawn returns pid_t only).
+            // AppEnvironment.pollUntilGameExits tracks lifetime via
+            // `pgrep Titanfall2.exe`, so the stub Process here is
+            // intentionally unattached.
+            return Process()
         }
     }
 }

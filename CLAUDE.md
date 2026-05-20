@@ -284,7 +284,7 @@ Confirmed working states:
 If you're picking this up cold:
 
 1. Read this section top to bottom.
-2. Check `git status` on `feat/wine-bottle-creator` in `/Users/eion/Code/Draconis` — many uncommitted changes.
+2. Check `git status` on `feat/wine-bottle-creator` in this repo — many uncommitted changes.
 3. The first thing to do is fix the four signature mismatches in `MaximaService.applyRole` (see "In-flight work #1").
 4. Then add the three missing AppEnvironment hooks (see "In-flight work #2").
 5. Then reorder the Frontend enum (#3).

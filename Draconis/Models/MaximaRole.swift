@@ -82,15 +82,22 @@ public enum MaximaRole: String, Codable, Hashable, Sendable, CaseIterable {
         "draconis.maximaRole." + id
     }
 
-    /// Read the persisted role for a bottle. Defaults to `.none` for
-    /// bottles we've never seen. Caller should use `BottleInstaller`
-    /// detection + `MaximaService.isInstalled` for the truth about
-    /// what's physically in the bottle; this is the user's stated
-    /// intent.
-    public static func load(forBottle id: String) -> MaximaRole {
+    /// Read the persisted role for a bottle, falling back to `fallback`
+    /// when no choice has been recorded yet. Caller should use
+    /// `BottleInstaller` detection + `MaximaService.isInstalled` for
+    /// the truth about what's physically in the bottle; this is the
+    /// user's stated intent.
+    ///
+    /// The `fallback` parameter exists so `WineBottle.maximaRole` can
+    /// preserve pre-wizard behavior for users whose bottles already
+    /// have Maxima installed: rather than defaulting to `.none` (which
+    /// would route launches through the no-Maxima path and fail without
+    /// EA Desktop), `WineBottle` passes `.authOnly` as the fallback so
+    /// existing Maxima setups keep launching through maxima-cli.
+    public static func load(forBottle id: String, fallback: MaximaRole = .none) -> MaximaRole {
         guard let raw = UserDefaults.standard.string(forKey: defaultsKey(forBottle: id)),
               let role = MaximaRole(rawValue: raw)
-        else { return .none }
+        else { return fallback }
         return role
     }
 

@@ -54,7 +54,16 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     /// right command. Independent from `hasMaxima` — the user can have
     /// Maxima physically installed but choose `.none` (use a different
     /// launcher for this bottle).
-    public var maximaRole: MaximaRole { MaximaRole.load(forBottle: id) }
+    ///
+    /// **Backward-compat fallback:** when no role is persisted yet and
+    /// Maxima IS physically installed in the bottle, default to
+    /// `.authOnly` so pre-wizard users keep launching through
+    /// maxima-cli (their previous behavior). Without this fallback,
+    /// existing Maxima-installed bottles would suddenly route to the
+    /// `.none` path and fail without EA Desktop.
+    public var maximaRole: MaximaRole {
+        MaximaRole.load(forBottle: id, fallback: hasMaxima ? .authOnly : .none)
+    }
 
     public init(
         id: String,

@@ -49,6 +49,13 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     /// True when any game-store launcher (Steam, EA App, or Epic Games) is present.
     public var hasLauncher: Bool { hasSteam || hasEAApp || hasEpicGames }
 
+    /// User's stated role for Maxima in this bottle. Read-only computed
+    /// from `UserDefaults`; the launch path reads this to pick the
+    /// right command. Independent from `hasMaxima` — the user can have
+    /// Maxima physically installed but choose `.none` (use a different
+    /// launcher for this bottle).
+    public var maximaRole: MaximaRole { MaximaRole.load(forBottle: id) }
+
     public init(
         id: String,
         name: String,

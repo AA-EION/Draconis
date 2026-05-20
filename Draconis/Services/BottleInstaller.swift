@@ -14,7 +14,11 @@ public final class BottleInstaller {
     public static let shared = BottleInstaller()
 
     public enum Frontend: String, CaseIterable, Identifiable, Sendable {
-        case steam, ea, maxima, epic
+        // Declaration order is the order the picker renders. Maxima
+        // first (most reliable on macOS/CrossOver, no CEG ever), then
+        // EA app (no CEG), then Steam (CEG fix needed), then Epic
+        // (coming soon).
+        case maxima, ea, steam, epic
         public var id: String { rawValue }
         public var displayName: String {
             switch self {

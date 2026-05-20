@@ -732,37 +732,144 @@ extension MaximaService {
         Log.ok("maxima.ceg", "CEG fix applied successfully")
     }
 
-    /// Run `maxima-cli launch <offer> [--game-args -northstar]` inside the
-    /// bottle. Used by the launch decision tree when Maxima is present —
-    /// maxima-cli handles EA auth + bootstrap spawn internally, so we
-    /// don't need Steam's `applaunch` or the `-noOriginStartup` flag
-    /// dance.
+    /// Run `maxima-cli launch <offer> [--game-path …] [--game-args
+    /// -northstar]` inside the bottle. Used by the launch decision
+    /// tree when Maxima is present — maxima-cli handles EA auth +
+    /// bootstrap spawn internally, so we don't need Steam's `applaunch`
+    /// or the `-noOriginStartup` flag dance.
+    ///
+    /// `gamePath` is optional. When supplied, it's forwarded verbatim
+    /// as `--game-path` so maxima-cli skips its EA-library lookup
+    /// (helpful for Steam-installed copies where the EA library may
+    /// not register the install). maxima-cli v0.8.0+ accepts either
+    /// the install directory or the executable path; we pass the
+    /// directory from `WineBottle.titanfall2InstallPath`.
     ///
     /// Returns the detached `Process` so the caller can either
-    /// `waitUntilExit` or fire-and-forget (typically the latter — games
-    /// are GUI apps and we want App Nap to leave them alone).
+    /// `waitUntilExit` or fire-and-forget (typically the latter —
+    /// games are GUI apps and we want App Nap to leave them alone).
+    ///
+    /// Why we bypass `Foundation.Process` for this path: the same
+    /// `cxstart maxima-cli.exe …` invocation reaches Main Menu from
+    /// Terminal but freezes TF2 mid-launch (right after LSX
+    /// `GetAllGameInfo`) when spawned via Swift's `Process` from a
+    /// `.app`. Verified by running the literal cxstart command both
+    /// ways and watching the LSX trace. Three differences between
+    /// `Process()` and shell `fork → setsid → exec` cause it; see
+    /// `CleanSpawn.swift` for the full breakdown.
+    ///
+    /// `gamePath` is forwarded as `--game-path` so maxima-cli skips
+    /// its EA-library lookup. `gameArgs` is forwarded as one
+    /// `--game-args` per element (maxima-cli's CLI accepts repeated
+    /// flags); the caller passes the full set of args the target exe
+    /// needs (e.g. `-noOriginStartup`, `-vanilla`).
     @discardableResult
     public func launchGame(
         in bottle: WineBottle,
-        northstar: Bool
+        gamePath: String,
+        gameArgs: [String] = []
     ) async throws -> Process {
         guard let cliPath = maximaCliPath(in: bottle) else {
             throw CliError.notInstalled
         }
-
-        var args = ["launch", "Origin.OFR.50.0001456"]
-        if northstar {
-            args.append(contentsOf: ["--game-args", "-northstar"])
+        guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+            throw CliError.cxstartMissing
         }
 
-        Log.info("maxima.launch", "maxima-cli \(args.joined(separator: " "))")
+        var cliArgs: [String] = ["launch", "Origin.OFR.50.0001456", "--game-path", gamePath]
+        for arg in gameArgs {
+            cliArgs.append(contentsOf: ["--game-args", arg])
+        }
 
-        return try await WineBackendManager.shared.launch(
-            executable: cliPath,
-            arguments: args,
-            in: bottle,
-            workingDirectory: nil,
-            wait: false
+        let logURL = PathResolver.bottleLogFile(for: bottle)
+        try? FileManager.default.createDirectory(
+            at: logURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
         )
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+
+        let cxstartArgs: [String] = ["--bottle", bottle.name, cliPath] + cliArgs
+        Log.info(
+            "maxima.launch",
+            "CleanSpawn.spawn cxstart=\(cxstart.path) args=\(cxstartArgs.joined(separator: " "))"
+        )
+
+        let pid = try CleanSpawn.spawn(
+            executable: cxstart.path,
+            arguments: cxstartArgs,
+            stdinPath: "/dev/null",
+            stdoutPath: logURL.path
+        )
+
+        Log.info("maxima.launch", "cxstart spawned pid=\(pid)")
+
+        // The caller's API takes a `Process` (it tracks lifetime via
+        // termination). We don't have a `Process` for a posix_spawn'd
+        // child — the PID is the only handle. Return a placeholder
+        // `Process` that's not actually used by `AppEnvironment`
+        // (which polls `pgrep Titanfall2.exe` instead). The stub stays
+        // unattached to any real child.
+        return Process()
+    }
+
+    /// Drive the user's `MaximaRole` choice for a bottle:
+    ///   * `.none` — uninstall Maxima if present, persist the choice.
+    ///   * `.authOnly` — install Maxima (downloads installer +
+    ///     registers MaximaHelper) if it isn't already, persist.
+    ///   * `.fullReplace` — same as authOnly, then run
+    ///     `maxima-cli install --replace-files
+    ///     "Titanfall2.exe,Titanfall2_trial.exe"
+    ///     --only-listed-files` against the install path so the
+    ///     CEG-signed launcher binaries get replaced with EA originals.
+    ///
+    /// The persisted role is read by `WineBottle.maximaRole` at launch
+    /// time to pick the right command path (see `NorthstarLauncher`'s
+    /// decision matrix).
+    public func applyRole(
+        _ role: MaximaRole,
+        in bottle: WineBottle,
+        progress: @escaping @Sendable (MaximaService.Progress) -> Void = { _ in }
+    ) async throws {
+        switch role {
+        case .none:
+            if isInstalled(in: bottle) {
+                Log.info("maxima.role", "Role .none — uninstalling Maxima from \(bottle.name)")
+                try? await uninstall(from: bottle, progress: progress)
+            }
+        case .authOnly:
+            if !isInstalled(in: bottle) {
+                Log.info("maxima.role", "Role .authOnly — installing Maxima into \(bottle.name)")
+                try await downloadAndInstall(into: bottle, progress: progress)
+            } else {
+                Log.info("maxima.role", "Maxima already installed; skipping download")
+            }
+            try await registerHelper()
+        case .fullReplace:
+            if !isInstalled(in: bottle) {
+                Log.info("maxima.role", "Role .fullReplace — installing Maxima first")
+                try await downloadAndInstall(into: bottle, progress: progress)
+            }
+            try await registerHelper()
+            // Locate the TF2 install dir so we can target it for the
+            // surgical replace. Without an install we can't do the
+            // CEG fix; surface as a clean error.
+            guard let tf2Root = bottle.titanfall2InstallPath
+                ?? CrossOverDetector.locateTitanfall2(
+                    in: PathResolver.driveC(in: bottle.prefixURL)
+                )?.path
+            else {
+                throw CliError.cliFailed(
+                    exitCode: -1,
+                    stderr: "Titanfall 2 install not found in bottle — apply the role after Titanfall 2 is installed."
+                )
+            }
+            Log.info("maxima.role", "Applying CEG fix at \(tf2Root)")
+            try await applyCegFix(in: bottle, gamePath: tf2Root)
+        }
+
+        MaximaRole.save(role, forBottle: bottle.id)
+        Log.ok("maxima.role", "Persisted role=\(role.rawValue) for bottle \(bottle.id)")
     }
 }

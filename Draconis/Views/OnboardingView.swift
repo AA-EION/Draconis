@@ -8,14 +8,15 @@ struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
 
     private enum Page {
-        case modeChoice
-        case manual
-        case frontendChoice
-        case autoProgress
+        case preflight     // CrossOver check / intro
+        case sourceChoice  // pick install source (Maxima / EA / Steam / Epic)
+        case progress      // installing bottle + launcher + game
+        case maximaRole    // optional sub-step for Steam / EA → MaximaRole picker
     }
 
-    @State private var page: Page = .modeChoice
-    @State private var frontend: BottleInstaller.Frontend = .steam
+    @State private var page: Page = .preflight
+    @State private var selectedSource: BottleInstaller.Frontend = .maxima
+    @State private var selectedRole: MaximaRole = .fullReplace
 
     var body: some View {
         VStack(spacing: 18) {
@@ -31,10 +32,10 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
 
             HStack {
-                if page != .modeChoice {
+                if page != .preflight {
                     Button("Back") {
                         stopWatching()
-                        page = (page == .frontendChoice || page == .manual) ? .modeChoice : .frontendChoice
+                        page = previousPage(from: page)
                     }
                     .buttonStyle(.glass)
                 }
@@ -64,9 +65,18 @@ struct OnboardingView: View {
         env.cancelAutoBottleInstall()
     }
 
+    private func previousPage(from p: Page) -> Page {
+        switch p {
+        case .preflight:    return .preflight
+        case .sourceChoice: return .preflight
+        case .progress:     return .sourceChoice
+        case .maximaRole:   return .progress
+        }
+    }
+
     private var continueLabel: String {
         switch page {
-        case .autoProgress, .manual:
+        case .progress, .maximaRole:
             if case .done = env.autoInstallStage { return "Finish" }
             return "Skip"
         default: return "Continue"
@@ -78,39 +88,35 @@ struct OnboardingView: View {
     @ViewBuilder
     private var content: some View {
         switch page {
-        case .modeChoice:     modeChoicePage
-        case .manual:         manualPage
-        case .frontendChoice: frontendChoicePage
-        case .autoProgress:   autoProgressPage
+        case .preflight:    preflightPage
+        case .sourceChoice: sourceChoicePage
+        case .progress:     progressPage
+        case .maximaRole:   maximaRolePage
         }
     }
 
-    private var modeChoicePage: some View {
+    private var preflightPage: some View {
         GlassEffectContainer {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Create the Titanfall 2 bottle", systemImage: "wineglass.fill")
+                Label("Set up Titanfall 2 in a CrossOver bottle", systemImage: "wineglass.fill")
                     .stencilLabel()
 
                 if env.crossOverInstalled {
-                    Text("Pick how you'd like to set up the CrossOver bottle. Both routes end with Titanfall 2 installed inside a win10_64 bottle that Draconis can launch.")
+                    Text("Draconis creates a fresh win10_64 bottle, installs the launcher you pick, and walks you through getting Titanfall 2 installed inside it.")
                         .font(TF.body(11))
                         .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    ChoiceCard(
-                        icon: "sparkles",
-                        title: "Automatic",
-                        detail: "Draconis creates a fresh win10_64 bottle, then walks you through installing your launcher of choice and Titanfall 2 inside it.",
-                        action: { page = .frontendChoice }
-                    )
-                    ChoiceCard(
-                        icon: "hand.point.up.left.fill",
-                        title: "Manual",
-                        detail: "Open CrossOver yourself and follow the install profile. Works with Steam, EA app, or Epic Games.",
-                        action: {
-                            env.startManualBottleWatching()
-                            page = .manual
-                        }
-                    )
+                    Button {
+                        page = .sourceChoice
+                    } label: {
+                        Label("Choose install source", systemImage: "arrow.right.circle.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(.accentColor)
+                    .padding(.top, 4)
                 } else {
                     Text("CrossOver not detected. Install it and click Rescan.")
                         .font(.callout)
@@ -125,35 +131,70 @@ struct OnboardingView: View {
         .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
     }
 
-    private var manualPage: some View {
+    private var sourceChoicePage: some View {
         GlassEffectContainer {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Manual setup", systemImage: "list.number")
+            VStack(alignment: .leading, spacing: 14) {
+                Label("Where should the game come from?", systemImage: "shippingbox.fill")
                     .stencilLabel()
 
-                Text("In manual mode you drive CrossOver yourself. Use this if you already have a bottle, want a custom install layout, or prefer to set up Titanfall 2 step-by-step.")
+                Text("Each option drives a different chain of installers. Steam-installed Titanfall 2 binaries are signed with Steam CEG DRM that doesn't always run cleanly under Wine; pick Maxima or EA app if you want the smoothest path on macOS.")
                     .font(TF.body(11))
                     .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("Pick whichever store you own Titanfall 2 on (Steam, EA app, or Epic Games) and install the game inside CrossOver. Draconis polls every 5 seconds and will pick up the bottle automatically once Titanfall2.exe exists.")
-                    .font(TF.body(11))
-                    .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
-                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(BottleInstaller.Frontend.allCases) { f in
+                    FrontendRow(
+                        frontend: f,
+                        selected: selectedSource == f,
+                        onTap: { selectedSource = f }
+                    )
+                }
+
+                if !selectedSource.summary.isEmpty {
+                    Text(selectedSource.summary)
+                        .font(TF.body(11))
+                        .foregroundStyle(.primary.opacity(0.75))
+                        .padding(10)
+                        .background(Color.accentColor.opacity(DraconisTheme.Card.accent), in: RoundedRectangle(cornerRadius: 10))
+                }
+
+                Button {
+                    env.startAutoBottleInstall(frontend: selectedSource)
+                    page = .progress
+                } label: {
+                    Label("Start install", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(.accentColor)
+                .disabled(!selectedSource.available)
+                .padding(.top, 4)
+            }
+            .padding(18)
+        }
+        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
+    }
+
+    private var progressPage: some View {
+        GlassEffectContainer {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("Installing", systemImage: "gearshape.2.fill")
+                    .stencilLabel()
 
                 ProgressStepRow(
-                    title: "Create a Windows 10 64-bit bottle in CrossOver",
-                    detail: "Open CrossOver → New Bottle. Choose the win10_64 template. Name it whatever you like.",
+                    title: "Create the bottle",
+                    detail: "Draconis runs `cxbottle --create --template win10_64 --bottle \"Titanfall 2\"` to seed a fresh Wine prefix.",
                     state: stageState(.creatingBottle)
                 )
                 ProgressStepRow(
-                    title: "Install your launcher and Titanfall 2",
-                    detail: "Inside the bottle, install Steam, the EA app, or Epic Games. Log in, install Titanfall 2, and wait for it to reach 100%.",
+                    title: stepTwoTitle,
+                    detail: stepTwoDetail,
                     state: stageState(.installingGame)
                 )
                 ProgressStepRow(
                     title: "Ready to launch",
-                    detail: "Draconis has found Titanfall2.exe inside the bottle.",
+                    detail: "Draconis has detected Titanfall 2 inside the bottle.",
                     state: stageState(.done)
                 )
 
@@ -163,97 +204,74 @@ struct OnboardingView: View {
                         .foregroundStyle(.primary.opacity(0.70))
                 }
 
-                Button {
-                    env.openCrossOver()
-                } label: {
-                    Label("Open CrossOver", systemImage: "wineglass.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                if shouldOfferMaximaRoleStep, case .done = env.autoInstallStage {
+                    Button {
+                        page = .maximaRole
+                    } label: {
+                        Label("Next: choose Maxima role", systemImage: "arrow.right.circle.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(.accentColor)
+                    .padding(.top, 4)
                 }
-                .buttonStyle(.glassProminent)
-                .tint(.accentColor)
-                .padding(.top, 4)
             }
             .padding(18)
         }
         .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
     }
 
-    private var frontendChoicePage: some View {
+    /// Sub-picker shown only when the user installed via EA app or Steam.
+    /// Lets them decide whether to layer Maxima on top of that install:
+    /// none (use the launcher's native auth), authOnly (replace the
+    /// link2ea handler with Maxima but leave binaries alone), or
+    /// fullReplace (also overwrite the CEG-signed launcher binaries with
+    /// the EA originals — Steam only).
+    private var maximaRolePage: some View {
         GlassEffectContainer {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Choose installer frontend", systemImage: "shippingbox.fill")
+                Label("How should Maxima help?", systemImage: "key.fill")
                     .stencilLabel()
 
-                Text("Where do you own Titanfall 2? Draconis will start the CrossOver install for that store.")
+                Text("You installed Titanfall 2 via \(selectedSource.displayName). Maxima can sit alongside it as the EA-auth handler, or stay out of the picture entirely.")
                     .font(TF.body(11))
                     .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                    .fixedSize(horizontal: false, vertical: true)
 
-                // CrossTie safety note (shown in auto flow too)
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "lock.shield.fill")
-                        .foregroundStyle(Color.accentColor)
-                        .font(.system(size: 13))
-                    Text("The Titanfall 2 CrossTie may appear as **untrusted** inside CrossOver. This is a display issue — the profile is genuine and safe.")
-                        .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .background(Color.accentColor.opacity(DraconisTheme.Card.accent), in: RoundedRectangle(cornerRadius: 10))
-
-                ForEach(BottleInstaller.Frontend.allCases) { f in
-                    FrontendRow(
-                        frontend: f,
-                        selected: frontend == f,
-                        onTap: { frontend = f }
+                ForEach(availableRoles, id: \.self) { role in
+                    RoleRow(
+                        role: role,
+                        source: selectedSource,
+                        selected: selectedRole == role,
+                        onTap: { selectedRole = role }
                     )
                 }
 
                 Button {
-                    env.startAutoBottleInstall(frontend: frontend)
-                    page = .autoProgress
+                    let role = selectedRole
+                    Task {
+                        if let bottle = env.selectedBottle ?? env.bottles.first(where: { $0.hasTitanfall2 }) {
+                            await env.applyMaximaRole(role, in: bottle)
+                        }
+                    }
                 } label: {
-                    Label("Start install", systemImage: "play.fill")
+                    Label(env.applyingMaximaRole ? "Applying…" : "Apply",
+                          systemImage: env.applyingMaximaRole ? "hourglass" : "checkmark.circle.fill")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.glassProminent)
                 .tint(.accentColor)
-                .disabled(!frontend.available)
+                .disabled(env.applyingMaximaRole)
                 .padding(.top, 4)
-            }
-            .padding(18)
-        }
-        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
-    }
 
-    private var autoProgressPage: some View {
-        GlassEffectContainer {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("Installing", systemImage: "gearshape.2.fill")
-                    .stencilLabel()
-
-                ProgressStepRow(
-                    title: "CrossOver creates the bottle and installs Steam",
-                    detail: "Draconis polls CrossOver's bottles every 5 seconds, waiting for a launcher (Steam, EA app, or Epic Games) to appear.",
-                    state: stageState(.creatingBottle)
-                )
-                ProgressStepRow(
-                    title: "You install Titanfall 2",
-                    detail: "When your launcher opens inside the bottle, log in and install Titanfall 2. Wait for it to reach 100% before continuing.",
-                    state: stageState(.installingGame)
-                )
-                ProgressStepRow(
-                    title: "Ready to launch",
-                    detail: "Draconis has found Titanfall2.exe inside the bottle.",
-                    state: stageState(.done)
-                )
-
-                if let bottle = env.bottles.first(where: { $0.hasLauncher }) {
-                    Text("Detected bottle: \(bottle.name)")
-                        .font(TF.body(11))
-                        .foregroundStyle(.primary.opacity(0.70))
+                if let err = env.maximaRoleError {
+                    Text(err)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .padding(8)
+                        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
                 }
             }
             .padding(18)
@@ -261,7 +279,45 @@ struct OnboardingView: View {
         .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
     }
 
-    // MARK: - Stage helpers
+    // MARK: - Helpers
+
+    /// Steam can have the CEG fix applied; EA can't (no CEG binaries).
+    /// Maxima-installed games already are the EA originals — Maxima is
+    /// the launcher, no role picker needed (handled by skipping this
+    /// page entirely).
+    private var availableRoles: [MaximaRole] {
+        switch selectedSource {
+        case .steam: return [.fullReplace, .authOnly, .none]
+        case .ea:    return [.authOnly, .none]
+        default:     return []
+        }
+    }
+
+    private var shouldOfferMaximaRoleStep: Bool {
+        selectedSource == .steam || selectedSource == .ea
+    }
+
+    private var stepTwoTitle: String {
+        switch selectedSource {
+        case .steam:  return "Install Steam, then Titanfall 2"
+        case .ea:     return "Install EA app, then Titanfall 2"
+        case .maxima: return "Maxima downloads Titanfall 2"
+        case .epic:   return "Install Epic Games Launcher, then Titanfall 2"
+        }
+    }
+
+    private var stepTwoDetail: String {
+        switch selectedSource {
+        case .steam:
+            return "Steam downloads inside the bottle. Log into Steam, install Titanfall 2, and wait for it to reach 100%. Then run the game once so Steam's bundled EA setup completes before continuing."
+        case .ea:
+            return "EA app downloads inside the bottle. Log in, install Titanfall 2, run the game once so EA Desktop's auto-setup finishes, then continue."
+        case .maxima:
+            return "Maxima downloads Titanfall 2 directly from EA's servers — no Steam, no EA Desktop. Requires the game to be in your EA library (purchased directly from EA, or Steam/Epic linked + synced at least once)."
+        case .epic:
+            return "Epic Games path is documented but not yet wired up in the wizard. Install Epic + Titanfall 2 manually for now."
+        }
+    }
 
     private func stageState(_ step: AutoStep) -> StepState {
         switch (env.autoInstallStage, step) {
@@ -278,48 +334,6 @@ struct OnboardingView: View {
 }
 
 // MARK: - Subviews
-
-private struct ChoiceCard: View {
-    let icon: String
-    let title: String
-    let detail: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(alignment: .top, spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.22))
-                        .frame(width: 36, height: 36)
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(TF.title(14))
-                        .foregroundStyle(.white)
-                    Text(detail)
-                        .font(TF.body(11))
-                        .foregroundStyle(.white.opacity(DraconisTheme.Text.tertiary))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-            .padding(14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .glassEffect(
-            .regular.tint(Color.accentColor.opacity(0.20)).interactive(),
-            in: .rect(cornerRadius: 14)
-        )
-    }
-}
 
 private struct FrontendRow: View {
     let frontend: BottleInstaller.Frontend
@@ -348,6 +362,44 @@ private struct FrontendRow: View {
         }
         .buttonStyle(.plain)
         .disabled(!frontend.available)
+    }
+}
+
+private struct RoleRow: View {
+    let role: MaximaRole
+    let source: BottleInstaller.Frontend
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(role.displayName).font(.body.weight(.semibold))
+                        if role == .fullReplace {
+                            Text("Recommended")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    Text(role.detail(for: source))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

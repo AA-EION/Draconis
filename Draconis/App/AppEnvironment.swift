@@ -221,7 +221,10 @@ public final class AppEnvironment: ObservableObject {
     ///      yet in this PR.
     ///   3. Game install — user-driven through whichever launcher was
     ///      chosen.
-    public func startAutoBottleInstall(frontend: BottleInstaller.Frontend) {
+    public func startAutoBottleInstall(
+        frontend: BottleInstaller.Frontend,
+        bottleName: String? = nil
+    ) {
         guard frontend.available else {
             DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) frontend not implemented yet")
             return
@@ -246,7 +249,11 @@ public final class AppEnvironment: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             // 1. Create the bottle if it doesn't already exist.
-            let bottleName = "Titanfall 2"
+            //    Caller may pass a custom name (used by the wizard's
+            //    "Create new bottle" branch when an existing bottle
+            //    already owns "Titanfall 2" — auto-suffixed there to
+            //    avoid the `bottleAlreadyExists` no-op path).
+            let bottleName = bottleName ?? "Titanfall 2"
             do {
                 try await WineBottleCreator.shared.createBottle(
                     name: bottleName,
@@ -313,6 +320,33 @@ public final class AppEnvironment: ObservableObject {
     public func cancelAutoBottleInstall() {
         BottleInstaller.shared.stopWatching()
         autoInstallStage = nil
+    }
+
+    /// Attach the wizard's progress watcher to an existing bottle the
+    /// user picked from the bottle-choice page. Same `BottleInstaller`
+    /// poller as `startAutoBottleInstall`, but skips bottle creation +
+    /// launcher install (the bottle already owns whichever launcher is
+    /// in it; the watcher will just report whichever stage matches
+    /// what's already present and advance as the user installs the
+    /// rest manually inside the existing launcher).
+    public func resumeAutoWatching(forBottle bottle: WineBottle) {
+        selectedBottleID = bottle.id
+        autoInstallStage = bottle.hasTitanfall2
+            ? .done(bottleID: bottle.id)
+            : (bottle.hasLauncher
+                ? .waitingForTitanfall(bottleID: bottle.id)
+                : .waitingForBottle)
+        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
+            guard let self else { return }
+            self.autoInstallStage = stage
+            Task { await self.refreshBottles() }
+            if case .waitingForTitanfall(let id) = stage {
+                self.selectedBottleID = id
+            }
+            if case .done(let id) = stage {
+                self.selectedBottleID = id
+            }
+        }
     }
 
     // MARK: - Maxima CLI integration

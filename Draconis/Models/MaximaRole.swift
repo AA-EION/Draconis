@@ -105,4 +105,12 @@ public enum MaximaRole: String, Codable, Hashable, Sendable, CaseIterable {
     public static func save(_ role: MaximaRole, forBottle id: String) {
         UserDefaults.standard.set(role.rawValue, forKey: defaultsKey(forBottle: id))
     }
+
+    /// Was a role explicitly saved for this bottle, or are we falling
+    /// back? Used by the wizard to decide whether to show the role
+    /// picker for an existing bottle — if the user already made the
+    /// choice, don't ask again.
+    public static func isExplicitlySet(forBottle id: String) -> Bool {
+        UserDefaults.standard.string(forKey: defaultsKey(forBottle: id)) != nil
+    }
 }

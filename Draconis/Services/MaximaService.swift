@@ -821,16 +821,29 @@ extension MaximaService {
     }
 
     /// Launch Maxima's graphical UI (`maxima.exe`) interactively
-    /// inside the bottle. Used by the onboarding wizard's Maxima
-    /// route so the user can do OAuth login + pick + install
-    /// Titanfall 2 from their EA library — steps that require a
-    /// human in the loop and can't be scripted from Draconis (qrc://
-    /// callback, browser handoff, library browsing).
+    /// inside the bottle, **driving an auto-install** of the given
+    /// game slug via the `--install` / `--install-path` flags shipped
+    /// in Maxima-Draconis v0.12.0.
     ///
-    /// Goes through `CleanSpawn` for the same reason `launchGame`
-    /// does — `Foundation.Process` from a `.app` context freezes the
-    /// Wine chain. See `CleanSpawn.swift` for the full rationale.
-    public func launchMaximaUI(in bottle: WineBottle) async throws {
+    /// Behavior on the Maxima side:
+    ///   * Login screen if the user isn't logged in yet (qrc:// flow,
+    ///     same as a normal interactive launch).
+    ///   * Auto-navigates to the Downloads view and queues an install
+    ///     of `slug` at `installPath` as soon as login lands.
+    ///   * Writes `<installPath>/FInstall.txt` (`INSTALL_MARKER_FILENAME`)
+    ///     when `ContentManager` confirms the download finished. Draconis
+    ///     polls for that file to know when to gracefully close the UI.
+    ///
+    /// Returns the spawned process's `pid_t` so the caller can
+    /// `signalProcessQuit(pid:)` once the marker appears. We go
+    /// through `CleanSpawn` for the same reason `launchGame` does —
+    /// `Foundation.Process` from a `.app` context freezes the Wine
+    /// chain.
+    public func installGameViaUI(
+        in bottle: WineBottle,
+        slug: String,
+        installPath: String
+    ) async throws -> pid_t {
         guard let uiPath = maximaUiPath(in: bottle) else {
             throw CliError.notInstalled
         }
@@ -847,9 +860,14 @@ extension MaximaService {
             FileManager.default.createFile(atPath: logURL.path, contents: nil)
         }
 
-        let cxstartArgs: [String] = ["--bottle", bottle.name, uiPath]
+        let cxstartArgs: [String] = [
+            "--bottle", bottle.name,
+            uiPath,
+            "--install", slug,
+            "--install-path", installPath,
+        ]
         Log.info(
-            "maxima.ui",
+            "maxima.ui.install",
             "CleanSpawn.spawn cxstart=\(cxstart.path) args=\(cxstartArgs.joined(separator: " "))"
         )
 
@@ -859,7 +877,82 @@ extension MaximaService {
             stdinPath: "/dev/null",
             stdoutPath: logURL.path
         )
-        Log.info("maxima.ui", "maxima.exe spawned pid=\(pid)")
+        Log.info("maxima.ui.install", "maxima.exe --install spawned pid=\(pid)")
+        return pid
+    }
+
+    /// Default Windows install path Draconis hands to
+    /// `maxima.exe --install` for Titanfall 2. Matches the path EA's
+    /// own installer uses, which is also what the wizard's Steam-EA
+    /// auto-install routes land on, so a later "fix this Steam copy"
+    /// flow doesn't have to special-case Maxima vs Steam installs.
+    public static let defaultTitanfall2WindowsPath: String =
+        #"C:\Program Files (x86)\Origin Games\Titanfall2"#
+
+    /// Translate a Windows install path (the one Draconis passed to
+    /// `maxima.exe --install --install-path X`) into the host-side
+    /// POSIX URL of `<X>/FInstall.txt` inside the bottle's filesystem.
+    ///
+    /// Strips a leading drive letter (e.g. `C:\`) and rewrites `\` →
+    /// `/`, then anchors at the bottle's `drive_c`. Used by the
+    /// onboarding watcher to poll for the marker that
+    /// `ContentManager` writes when the install is truly complete
+    /// (`FInstall.txt`, see `INSTALL_MARKER_FILENAME` in maxima-lib).
+    public func installCompletionMarkerURL(
+        in bottle: WineBottle,
+        installPath windowsPath: String
+    ) -> URL {
+        // 1. Drop the drive letter prefix if present (e.g. `C:`).
+        var rest = windowsPath
+        if let colonIdx = rest.firstIndex(of: ":") {
+            // Skip `C:` plus any backslashes/slashes that follow.
+            rest = String(rest[rest.index(after: colonIdx)...])
+        }
+        // 2. Normalize separators.
+        let posixTail = rest.replacingOccurrences(of: "\\", with: "/")
+        let driveC = PathResolver.driveC(in: bottle.prefixURL)
+        return driveC
+            .appendingPathComponent(posixTail, isDirectory: true)
+            .appendingPathComponent("FInstall.txt", isDirectory: false)
+    }
+
+    /// True when the FInstall.txt marker (written by
+    /// `ContentManager::update` after `is_done()`) is present at the
+    /// expected location. Wraps `installCompletionMarkerURL` +
+    /// `FileManager.fileExists`.
+    public func didInstallComplete(
+        in bottle: WineBottle,
+        installPath: String
+    ) -> Bool {
+        let marker = installCompletionMarkerURL(in: bottle, installPath: installPath)
+        return FileManager.default.fileExists(atPath: marker.path)
+    }
+
+    /// Best-effort graceful shutdown of a process we spawned via
+    /// `CleanSpawn`. Sends SIGTERM first, polls for ~5s, then escalates
+    /// to SIGKILL. Used by the wizard once `FInstall.txt` appears: at
+    /// that point Maxima has fulfilled its job, but its event loop
+    /// would otherwise keep running forever (UI sticks open). We don't
+    /// want the user to have to alt-F4 it.
+    public func signalProcessQuit(pid: pid_t) async {
+        // `kill(pid, 0)` is a no-op probe — returns 0 if the process
+        // is alive (and we have permission), -1 otherwise. Use it to
+        // tell when SIGTERM has been honored vs. when we need SIGKILL.
+        Log.info("maxima.ui.quit", "Sending SIGTERM to pid=\(pid)")
+        if Darwin.kill(pid, SIGTERM) != 0 {
+            // Already dead or not ours. Nothing to do.
+            return
+        }
+        // Poll up to 5 seconds for the process to exit.
+        for _ in 0..<10 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if Darwin.kill(pid, 0) != 0 {
+                Log.info("maxima.ui.quit", "pid=\(pid) exited cleanly after SIGTERM")
+                return
+            }
+        }
+        Log.warn("maxima.ui.quit", "pid=\(pid) didn't exit after 5s; escalating to SIGKILL")
+        _ = Darwin.kill(pid, SIGKILL)
     }
 
     /// Drive the user's `MaximaRole` choice for a bottle:

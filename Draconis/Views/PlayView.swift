@@ -40,14 +40,12 @@ struct PlayView: View {
 
     private var noBottleCard: some View {
         instructionsCard(
-            title: "Set up a Titanfall 2 bottle in CrossOver",
+            title: "Set up a Titanfall 2 bottle",
             body: [
-                "1. Open CrossOver.",
-                "2. Click Install a Windows Application.",
-                "3. Search for \"Titanfall 2\" — the profile picks the win10_64 template and installs Steam automatically.",
-                "   Note: the CrossTie may appear untrusted in CrossOver — it is genuine and safe.",
-                "4. Once the bottle exists, sign in and install Titanfall 2.",
-                "5. Come back to Draconis and hit Rescan.",
+                "1. Open Draconis's Onboarding (Settings → Reset Onboarding, then relaunch).",
+                "2. Pick how you want to install Titanfall 2 — Maxima (direct), EA app, Steam, or Epic (coming soon).",
+                "3. Draconis creates the win10_64 bottle via cxbottle and walks you through installing the launcher and the game step by step.",
+                "4. When the game is detected, Draconis takes over launching it.",
             ].joined(separator: "\n"),
             primaryActionTitle: env.crossOverInstalled ? "Open CrossOver" : "Get CrossOver…",
             primaryActionDisabled: false,

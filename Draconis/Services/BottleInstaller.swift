@@ -1,30 +1,56 @@
 import Foundation
 import AppKit
 
-/// Drives the automated Titanfall 2 bottle creation flow.
+/// Polls CrossOver's bottles directory and reports progress through the
+/// Titanfall 2 setup stages.
 ///
-/// Strategy: ship CrossOver's signed Titanfall2.tie next to the app and hand
-/// it off to CrossOver via NSWorkspace. CrossOver then walks the user through
-/// its own install profile (win10_64 template, predependencies, Steam install).
-///
-/// Draconis only watches: it polls CrossOver's bottles directory every few
-/// seconds until a bottle appears that contains steam.exe — at which point the
-/// game-install step is up to the user.
+/// Strategy changed in the wizard rewrite: bottle creation is no longer
+/// handed off to a CrossTie file (which forced Steam to be the launcher).
+/// `WineBottleCreator` creates the bottle programmatically via `cxbottle
+/// --create`, then this class watches the bottle's contents to drive the
+/// next step (install launcher, install game, done).
 @MainActor
 public final class BottleInstaller {
     public static let shared = BottleInstaller()
 
     public enum Frontend: String, CaseIterable, Identifiable, Sendable {
-        case steam, ea, epic
+        // Declaration order is the order the picker renders. Maxima
+        // first (most reliable on macOS/CrossOver, no CEG ever), then
+        // EA app (no CEG), then Steam (CEG fix needed), then Epic
+        // (coming soon).
+        case maxima, ea, steam, epic
         public var id: String { rawValue }
         public var displayName: String {
             switch self {
-            case .steam: return "Steam"
-            case .ea:    return "EA app"
-            case .epic:  return "Epic Games"
+            case .steam:  return "Steam"
+            case .ea:     return "EA app"
+            case .maxima: return "Maxima (direct download)"
+            case .epic:   return "Epic Games"
             }
         }
-        public var available: Bool { self == .steam }
+
+        /// True when this path is fully implemented end-to-end. Epic is
+        /// off until someone with an Epic copy of TF2 tests the flow.
+        public var available: Bool {
+            switch self {
+            case .steam, .ea, .maxima: return true
+            case .epic:                return false
+            }
+        }
+
+        /// One-line summary shown next to the option in the picker.
+        public var summary: String {
+            switch self {
+            case .steam:
+                return "Steam delivers the game. EA Desktop installs automatically on first launch and handles auth. Steam-installed binaries are CEG-signed — apply the Maxima fix afterward if you hit \"File corruption\" on macOS/CrossOver."
+            case .ea:
+                return "EA app delivers the game and handles auth natively. Simplest path on macOS/CrossOver."
+            case .maxima:
+                return "Maxima downloads the game directly from EA's servers without Steam or EA Desktop. Requires the game to be in your EA library (purchased on EA, or Steam/Epic linked + synced at least once)."
+            case .epic:
+                return "Coming soon — Epic's TF2 install hasn't been validated through this wizard yet."
+            }
+        }
     }
 
     public enum Stage: Equatable, Sendable {
@@ -38,31 +64,6 @@ public final class BottleInstaller {
     }
 
     private var pollTask: Task<Void, Never>?
-
-    /// Open the bundled crosstie with CrossOver. Returns false if the resource
-    /// is missing or LaunchServices refuses.
-    @discardableResult
-    public func openTitanfall2Crosstie() -> Bool {
-        guard let tie = Bundle.main.url(
-            forResource: "Titanfall2", withExtension: "tie"
-        ) else {
-            DebugLog.shared.error("bottle.auto", "Titanfall2.tie not bundled")
-            return false
-        }
-        DebugLog.shared.info("bottle.auto", "Opening crosstie \(tie.lastPathComponent) with CrossOver")
-        let cfg = NSWorkspace.OpenConfiguration()
-        cfg.activates = true
-        NSWorkspace.shared.open(
-            [tie],
-            withApplicationAt: PathResolver.crossOverApp,
-            configuration: cfg
-        ) { _, error in
-            if let error {
-                DebugLog.shared.error("bottle.auto", "open .tie failed: \(error.localizedDescription)")
-            }
-        }
-        return true
-    }
 
     /// Start polling every `interval` seconds. `onStage` fires on the main
     /// actor whenever the detected stage advances. Cancel the returned task
@@ -95,15 +96,23 @@ public final class BottleInstaller {
     /// Snapshot today's bottles and pick the most relevant one to report on.
     /// Preference order:
     ///   1. A bottle that already has Titanfall 2 → `.done`
-    ///   2. A bottle that has any launcher (Steam, EA App, or Epic Games) → `.waitingForTitanfall`
+    ///   2. A bottle that has any launcher (Steam, EA App, Epic Games) OR
+    ///      has Maxima installed → `.waitingForTitanfall` (the user is past
+    ///      the bottle/launcher step and now needs to drive the game install
+    ///      from whichever frontend landed)
     ///   3. Nothing matching → `.waitingForBottle`
+    ///
+    /// Maxima is treated as a launcher for stage purposes even though it
+    /// isn't part of `WineBottle.hasLauncher` — the Maxima route in the
+    /// wizard installs Maxima as its frontend equivalent, and from the
+    /// progress page's POV step 1 is complete once Maxima is in place.
     private func detectStage() async -> Stage {
         let bottles = await CrossOverDetector.shared.bottles()
         if let withGame = bottles.first(where: \.hasTitanfall2) {
             return .done(bottleID: withGame.id)
         }
-        if let withLauncher = bottles.first(where: \.hasLauncher) {
-            return .waitingForTitanfall(bottleID: withLauncher.id)
+        if let withFrontend = bottles.first(where: { $0.hasLauncher || $0.hasMaxima }) {
+            return .waitingForTitanfall(bottleID: withFrontend.id)
         }
         return .waitingForBottle
     }

@@ -57,8 +57,25 @@ public final class AppEnvironment: ObservableObject {
     @Published public var maximaSettingUp: Bool = false
     @Published public var maximaProgress: MaximaService.Progress?
     @Published public var maximaError: String?
+
+    /// Cached result of the most recent `maxima-cli list-games --json`
+    /// run. `nil` when never fetched; an empty array means Maxima
+    /// responded but the user's EA library has no recognised games.
+    @Published public var maximaLibrary: [MaximaService.OwnedGame]?
+    @Published public var maximaLibraryError: String?
+
+    /// True while a CEG-fix run is in flight. UI hides the button and
+    /// shows a spinner while this is `true`.
+    @Published public var cegFixRunning: Bool = false
+    @Published public var cegFixError: String?
     @Published public var maximaUpdateAvailable: Bool = false
     @Published public var maximaInstalledVersion: String?
+
+    /// True while the user's chosen `MaximaRole` is being applied
+    /// (install / uninstall / CEG fix in progress). UI disables the
+    /// Apply button + shows a spinner.
+    @Published public var applyingMaximaRole: Bool = false
+    @Published public var maximaRoleError: String?
 
     // Maxima section visibility (persisted preference)
     @Published public var maximaEnabled: Bool = UserDefaults.standard.bool(forKey: "maximaEnabled") {
@@ -182,26 +199,157 @@ public final class AppEnvironment: ObservableObject {
         await refreshMaximaState()
     }
 
-    /// Open CrossOver.app so the user can create a Titanfall 2 bottle from
-    /// CrossOver's install profile (which handles win10_64 template + DXVK
-    /// settings + Steam install correctly). Draconis no longer drives bottle
-    /// creation programmatically — `cxbottle --create` plus our AppleScript
-    /// hand-off was brittle and couldn't reach CrossOver's CrossTie database.
+    /// Open CrossOver.app — used when the user wants to inspect a bottle
+    /// or run something inside it manually. Draconis itself drives bottle
+    /// creation via `WineBottleCreator` (which wraps `cxbottle --create`)
+    /// and launcher installation via `SteamInstaller` / `EAInstaller`.
     public func openCrossOver() {
         NSWorkspace.shared.open(PathResolver.crossOverApp)
     }
 
     // MARK: - Auto bottle install
 
-    /// Hand the bundled Titanfall2.tie off to CrossOver and start polling
-    /// CrossOver's bottle directory every 5 s. UI observes `autoInstallStage`.
-    public func startAutoBottleInstall(frontend: BottleInstaller.Frontend) {
-        guard frontend == .steam else {
+    /// Create a fresh "Titanfall 2" bottle via `cxbottle --create`, then
+    /// start polling CrossOver's bottle directory every 5 s for progress
+    /// updates as the user installs their chosen launcher and the game
+    /// inside it. UI observes `autoInstallStage`.
+    ///
+    /// The wizard drives each step explicitly:
+    ///   1. Bottle creation (this method handles).
+    ///   2. Launcher install (Steam / EA Desktop / Maxima) — user-driven
+    ///      via the wizard's source picker; not all paths are wired up
+    ///      yet in this PR.
+    ///   3. Game install — user-driven through whichever launcher was
+    ///      chosen.
+    public func startAutoBottleInstall(
+        frontend: BottleInstaller.Frontend,
+        bottleName: String? = nil
+    ) {
+        guard frontend.available else {
             DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) frontend not implemented yet")
             return
         }
         autoInstallStage = .waitingForBottle
-        _ = BottleInstaller.shared.openTitanfall2Crosstie()
+        // Kick off bottle creation off-thread. The polling watcher is
+        // started in parallel so the UI shows live progress (it will
+        // initially report `.waitingForBottle` until the new directory
+        // appears, then transition through the launcher / game stages
+        // as the user installs the chosen launcher and Titanfall 2).
+        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
+            guard let self else { return }
+            self.autoInstallStage = stage
+            Task { await self.refreshBottles() }
+            if case .waitingForTitanfall(let id) = stage {
+                self.selectedBottleID = id
+            }
+            if case .done(let id) = stage {
+                self.selectedBottleID = id
+            }
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            // 1. Create the bottle if it doesn't already exist.
+            //    Caller may pass a custom name (used by the wizard's
+            //    "Create new bottle" branch when an existing bottle
+            //    already owns "Titanfall 2" — auto-suffixed there to
+            //    avoid the `bottleAlreadyExists` no-op path).
+            let bottleName = bottleName ?? "Titanfall 2"
+            do {
+                try await WineBottleCreator.shared.createBottle(
+                    name: bottleName,
+                    description: "Titanfall 2 / Northstar — created by Draconis (\(frontend.displayName))"
+                )
+            } catch WineBottleCreator.CreatorError.bottleAlreadyExists(let name) {
+                DebugLog.shared.info("bottle.auto", "Reusing existing bottle \"\(name)\"")
+            } catch {
+                DebugLog.shared.error("bottle.auto", "Bottle creation failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.autoInstallStage = nil
+                    BottleInstaller.shared.stopWatching()
+                }
+                return
+            }
+
+            // 2. Find the bottle we just created (or are reusing) so we
+            //    can pass it to the launcher installer.
+            await self.refreshBottles()
+            guard let bottle = await MainActor.run(body: {
+                self.bottles.first(where: { $0.name == bottleName })
+            }) else {
+                DebugLog.shared.error("bottle.auto", "Couldn't locate \"\(bottleName)\" after creation")
+                return
+            }
+
+            // 3. Install the launcher the user chose. Each path runs the
+            //    relevant installer (synchronous from the user's POV —
+            //    they'll watch progress in the per-bottle log pane).
+            //    `.maxima` doesn't need its own launcher install here;
+            //    the wizard flow expects the user to click "Install
+            //    Maxima" via the Settings / Maxima section after the
+            //    bottle exists.
+            do {
+                switch frontend {
+                case .steam:
+                    if !(await SteamInstaller.shared.isSteamInstalled(in: bottle)) {
+                        try await SteamInstaller.shared.install(into: bottle)
+                    } else {
+                        DebugLog.shared.info("bottle.auto", "Steam already installed in bottle, skipping")
+                    }
+                case .ea:
+                    if !(await EAInstaller.shared.isEAInstalled(in: bottle)) {
+                        try await EAInstaller.shared.install(into: bottle, silent: false)
+                    } else {
+                        DebugLog.shared.info("bottle.auto", "EA Desktop already installed in bottle, skipping")
+                    }
+                case .maxima:
+                    // Maxima route: install MaximaSetup.exe into the
+                    // bottle now (analogous to how the Steam and EA
+                    // branches above install their launchers) so the
+                    // user has `maxima-cli.exe` + `maxima.exe` ready
+                    // to use for the interactive game-install step.
+                    // The user still does the OAuth login + game
+                    // download themselves inside Maxima — there's no
+                    // way to script EA's qrc:// flow from here — but
+                    // at least the binaries are in place.
+                    if await !MaximaService.shared.isInstalled(in: bottle) {
+                        DebugLog.shared.info("bottle.auto", "Installing Maxima into bottle…")
+                        try await MaximaService.shared.downloadAndInstall(into: bottle) { p in
+                            Task { @MainActor in
+                                self.maximaProgress = p
+                            }
+                        }
+                    } else {
+                        DebugLog.shared.info("bottle.auto", "Maxima already installed in bottle, skipping")
+                    }
+                case .epic:
+                    DebugLog.shared.warn("bottle.auto", "Epic Games path not implemented yet")
+                }
+                await self.refreshBottles()
+            } catch {
+                DebugLog.shared.error("bottle.auto", "Launcher install failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    public func cancelAutoBottleInstall() {
+        BottleInstaller.shared.stopWatching()
+        autoInstallStage = nil
+    }
+
+    /// Attach the wizard's progress watcher to an existing bottle the
+    /// user picked from the bottle-choice page. Same `BottleInstaller`
+    /// poller as `startAutoBottleInstall`, but skips bottle creation +
+    /// launcher install (the bottle already owns whichever launcher is
+    /// in it; the watcher will just report whichever stage matches
+    /// what's already present and advance as the user installs the
+    /// rest manually inside the existing launcher).
+    public func resumeAutoWatching(forBottle bottle: WineBottle) {
+        selectedBottleID = bottle.id
+        autoInstallStage = bottle.hasTitanfall2
+            ? .done(bottleID: bottle.id)
+            : (bottle.hasLauncher
+                ? .waitingForTitanfall(bottleID: bottle.id)
+                : .waitingForBottle)
         BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
             guard let self else { return }
             self.autoInstallStage = stage
@@ -215,24 +363,126 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
-    public func cancelAutoBottleInstall() {
-        BottleInstaller.shared.stopWatching()
-        autoInstallStage = nil
+    // MARK: - Maxima CLI integration
+
+    /// Refresh `maximaLibrary` by running `maxima-cli list-games --json`
+    /// in the given bottle. Caller is typically a Settings / Maxima
+    /// section "Refresh library" button. The CLI requires the user to
+    /// have completed OAuth at least once — surface `.notLoggedIn`
+    /// errors clearly so the user knows what to do.
+    public func loadMaximaLibrary(in bottle: WineBottle) {
+        Task { [weak self] in
+            guard let self else { return }
+            await MainActor.run { self.maximaLibraryError = nil }
+            do {
+                let games = try await MaximaService.shared.listGames(in: bottle)
+                await MainActor.run { self.maximaLibrary = games }
+            } catch let error as MaximaService.CliError {
+                DebugLog.shared.error("maxima.cli", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaLibrary = []
+                    self.maximaLibraryError = error.localizedDescription
+                }
+            } catch {
+                DebugLog.shared.error("maxima.cli", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaLibrary = []
+                    self.maximaLibraryError = error.localizedDescription
+                }
+            }
+        }
     }
 
-    // MARK: - Auto bottle install
-
-    /// Start watching for a bottle to appear without opening the CrossTie.
-    /// Used by the manual onboarding path so progress steps update as the
-    /// user installs things inside CrossOver themselves.
-    public func startManualBottleWatching() {
-        autoInstallStage = .waitingForBottle
-        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
+    /// Apply the Steam-CEG fix to a Titanfall 2 install: surgical
+    /// replacement of `Titanfall2.exe` + `Titanfall2_trial.exe` with
+    /// the EA originals via `maxima-cli install --replace-files
+    /// --only-listed-files`. ~3 MB download, <60 s on a normal
+    /// connection.
+    ///
+    /// `gamePath` must point at the TF2 install root (e.g.
+    /// `C:\Program Files (x86)\Steam\steamapps\common\Titanfall2`).
+    /// Caller is responsible for confirming the user actually wants
+    /// to apply this — the dialog component handles that.
+    public func applyCegFix(in bottle: WineBottle, gamePath: String) {
+        guard !cegFixRunning else { return }
+        cegFixRunning = true
+        cegFixError = nil
+        Task { [weak self] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.cegFixRunning = false
+                }
+            }
             guard let self else { return }
-            self.autoInstallStage = stage
-            Task { await self.refreshBottles() }
-            if case .waitingForTitanfall(let id) = stage { self.selectedBottleID = id }
-            if case .done(let id) = stage { self.selectedBottleID = id }
+            do {
+                try await MaximaService.shared.applyCegFix(
+                    in: bottle,
+                    gamePath: gamePath
+                )
+                await self.refreshBottles()
+            } catch {
+                DebugLog.shared.error("maxima.ceg", error.localizedDescription)
+                await MainActor.run {
+                    self.cegFixError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Drive a `MaximaRole` choice for a bottle end-to-end:
+    /// install/uninstall Maxima as needed, register the helper, apply
+    /// the CEG fix for `.fullReplace`, persist the role to UserDefaults
+    /// so `WineBottle.maximaRole` reads it back at launch time.
+    ///
+    /// UI binding lives on the wizard's MaximaRole page — the button
+    /// reads `applyingMaximaRole` for spinner state and `maximaRoleError`
+    /// for surface display.
+    public func applyMaximaRole(_ role: MaximaRole, in bottle: WineBottle) async {
+        guard !applyingMaximaRole else { return }
+        await MainActor.run {
+            self.applyingMaximaRole = true
+            self.maximaRoleError = nil
+        }
+        defer {
+            Task { @MainActor [weak self] in
+                self?.applyingMaximaRole = false
+            }
+        }
+
+        do {
+            try await MaximaService.shared.applyRole(role, in: bottle) { [weak self] progress in
+                Task { @MainActor [weak self] in
+                    self?.maximaProgress = progress
+                }
+            }
+            // Refresh detection so `hasMaxima` + `maximaRole` reads
+            // are current before the wizard advances.
+            await refreshBottles()
+            await refreshMaximaState()
+        } catch {
+            DebugLog.shared.error("maxima.role", error.localizedDescription)
+            await MainActor.run {
+                self.maximaRoleError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Launch Maxima's graphical UI (`maxima.exe`) inside the given
+    /// bottle. Used by the wizard's Maxima route so the user can do
+    /// the OAuth login + library browse + game-install steps that
+    /// can't be scripted from Draconis. Surfaces failures via
+    /// `maximaError`; the spawn itself is fire-and-forget (the UI
+    /// runs in the bottle, the user closes it when they're done).
+    public func openMaximaUI(in bottle: WineBottle) {
+        Task {
+            do {
+                try await MaximaService.shared.launchMaximaUI(in: bottle)
+            } catch {
+                DebugLog.shared.error("maxima.ui", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaError = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -335,16 +585,148 @@ public final class AppEnvironment: ObservableObject {
 
     // MARK: - Launch
 
+    /// Background task tailing the per-bottle log into DebugLog. Held
+    /// only while `launchInFlight` is true; cancelled on game exit so
+    /// we're not reading a file forever.
+    private var logTailTask: Task<Void, Never>?
+
     public func launch(mode: NorthstarLauncher.LaunchMode) async {
         guard let bottle = selectedBottle else { return }
+        guard !launchInFlight else {
+            DebugLog.shared.warn("app", "Launch already in flight — ignoring duplicate click.")
+            return
+        }
         launchInFlight = true
-        defer { launchInFlight = false }
+
+        // Make Draconis's in-app console visible so the user sees the
+        // wine + maxima-cli output stream as the launch progresses.
+        // The console toggle persists in UserDefaults, so flipping it
+        // here also sticks across restarts; that's intentional during
+        // the wizard rewrite — once the integration is stable the
+        // auto-open behavior can be removed.
+        showConsole = true
+
+        // Truncate the log so the tail starts from the new launch's
+        // output instead of replaying whatever's left from the
+        // previous run. ProcessRunner.detached opens the log in
+        // append mode so writes continue from the file's new end.
+        let logURL = PathResolver.bottleLogFile(for: bottle)
+        try? FileManager.default.removeItem(at: logURL)
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+
+        // Start streaming the log into DebugLog. The task self-cancels
+        // when pollUntilGameExits clears `launchInFlight`.
+        logTailTask?.cancel()
+        logTailTask = Task { [weak self] in
+            await self?.streamBottleLog(at: logURL)
+        }
+
         do {
             _ = try await NorthstarLauncher.shared.launch(bottle: bottle, mode: mode)
             lastLaunchError = nil
         } catch {
             lastLaunchError = error.localizedDescription
             DebugLog.shared.error("app", error.localizedDescription)
+            launchInFlight = false
+            logTailTask?.cancel()
+            logTailTask = nil
+            return
+        }
+
+        // cxstart returns within a second or two after forking the
+        // launch chain. To make `launchInFlight` actually mean "the
+        // game is running" (and keep the Play button disabled while
+        // it is), we poll the host process list for `Titanfall2.exe`
+        // and clear the flag once it disappears.
+        Task { [weak self] in
+            await self?.pollUntilGameExits()
+        }
+    }
+
+    private func pollUntilGameExits() async {
+        // Give the launch chain time to spawn TF2 before we start
+        // polling — otherwise we'd see "no process yet" on the first
+        // tick and clear `launchInFlight` immediately.
+        try? await Task.sleep(for: .seconds(8))
+
+        while await Self.isTitanfallRunning() {
+            try? await Task.sleep(for: .seconds(3))
+        }
+
+        await MainActor.run {
+            self.launchInFlight = false
+            self.logTailTask?.cancel()
+            self.logTailTask = nil
+        }
+        DebugLog.shared.info("app", "Titanfall 2 process exited.")
+    }
+
+    /// Host-side check: is `Titanfall2.exe` currently in the process
+    /// list? `pgrep -f` matches against the full command line, which
+    /// is where Wine's exec wrapper puts the Windows binary name.
+    /// Returns true on exit code 0 (matches found), false otherwise.
+    private static func isTitanfallRunning() async -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-f", "Titanfall2.exe"]
+        // Discard pgrep's stdout (we only care about the exit code).
+        let devNull = FileHandle(forWritingAtPath: "/dev/null")
+        p.standardOutput = devNull
+        p.standardError = devNull
+        do {
+            try p.run()
+            p.waitUntilExit()
+        } catch {
+            return false
+        }
+        return p.terminationStatus == 0
+    }
+
+    /// Follow the per-bottle log file and forward each new line to
+    /// DebugLog so it shows in Draconis's in-app console. Cheaper than
+    /// spawning a Terminal.app `tail -F` and keeps everything in one
+    /// pane.
+    ///
+    /// The loop opens the file, seeks past whatever's already there,
+    /// then sleeps + re-reads. New writes by `ProcessRunner.detached`
+    /// (append-mode) appear in subsequent reads.
+    private func streamBottleLog(at logURL: URL) async {
+        // Wait briefly for the log file to exist (ProcessRunner may
+        // not have created it yet at the moment we start).
+        for _ in 0..<20 {
+            if FileManager.default.fileExists(atPath: logURL.path) { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard let handle = try? FileHandle(forReadingFrom: logURL) else {
+            DebugLog.shared.warn("app", "Couldn't open bottle log for tailing: \(logURL.path)")
+            return
+        }
+        defer { try? handle.close() }
+
+        var buffer = Data()
+        while !Task.isCancelled {
+            do {
+                let chunk = try handle.read(upToCount: 8192) ?? Data()
+                if chunk.isEmpty {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    continue
+                }
+                buffer.append(chunk)
+                // Split on newlines (\n) and emit complete lines.
+                while let newlineIdx = buffer.firstIndex(of: 0x0A) {
+                    let lineData = buffer[..<newlineIdx]
+                    buffer.removeSubrange(...newlineIdx)
+                    let raw = String(data: lineData, encoding: .utf8) ?? ""
+                    let line = raw.trimmingCharacters(
+                        in: .whitespacesAndNewlines.union(.controlCharacters)
+                    )
+                    if !line.isEmpty {
+                        DebugLog.shared.info("bottle.log", line)
+                    }
+                }
+            } catch {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
         }
     }
 

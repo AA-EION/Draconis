@@ -42,11 +42,28 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     public var hasSteam: Bool
     public var hasEAApp: Bool
     public var hasEpicGames: Bool
+    public var hasMaxima: Bool                 // C:\Program Files\Maxima\maxima-cli.exe present
     public var northstarVersion: String?       // e.g. "v1.28.0", from ns_version.txt
     public var titanfall2InstallPath: String?  // POSIX path to TF2 root inside drive_c
 
     /// True when any game-store launcher (Steam, EA App, or Epic Games) is present.
     public var hasLauncher: Bool { hasSteam || hasEAApp || hasEpicGames }
+
+    /// User's stated role for Maxima in this bottle. Read-only computed
+    /// from `UserDefaults`; the launch path reads this to pick the
+    /// right command. Independent from `hasMaxima` — the user can have
+    /// Maxima physically installed but choose `.none` (use a different
+    /// launcher for this bottle).
+    ///
+    /// **Backward-compat fallback:** when no role is persisted yet and
+    /// Maxima IS physically installed in the bottle, default to
+    /// `.authOnly` so pre-wizard users keep launching through
+    /// maxima-cli (their previous behavior). Without this fallback,
+    /// existing Maxima-installed bottles would suddenly route to the
+    /// `.none` path and fail without EA Desktop.
+    public var maximaRole: MaximaRole {
+        MaximaRole.load(forBottle: id, fallback: hasMaxima ? .authOnly : .none)
+    }
 
     public init(
         id: String,
@@ -58,6 +75,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         hasSteam: Bool = false,
         hasEAApp: Bool = false,
         hasEpicGames: Bool = false,
+        hasMaxima: Bool = false,
         northstarVersion: String? = nil,
         titanfall2InstallPath: String? = nil
     ) {
@@ -70,6 +88,7 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
         self.hasSteam = hasSteam
         self.hasEAApp = hasEAApp
         self.hasEpicGames = hasEpicGames
+        self.hasMaxima = hasMaxima
         self.northstarVersion = northstarVersion
         self.titanfall2InstallPath = titanfall2InstallPath
     }

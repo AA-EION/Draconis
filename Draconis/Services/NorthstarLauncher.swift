@@ -1,27 +1,37 @@
 import Foundation
 
-/// Launches Titanfall 2 inside a bottle. The launch path is different for
-/// each mode because each game binary handles DRM differently:
+/// Launches Titanfall 2 inside a bottle. The exact command depends on
+/// six variables; rather than the previous "pick vanilla or northstar
+/// at the call site" branching, this actor now walks a single decision
+/// matrix:
 ///
-/// **Vanilla** — run `NorthstarLauncher.exe -vanilla` (when Northstar is installed),
-///   or `Titanfall2.exe` as a fallback. NorthstarLauncher.exe -vanilla launches
-///   vanilla TF2 cleanly without loading Northstar mods, and avoids auth issues
-///   that arise when Maxima or the EA launcher isn't running.
+/// | Northstar installed | Mode      | Maxima role           | Command                                                                         |
+/// |---------------------|-----------|-----------------------|---------------------------------------------------------------------------------|
+/// | yes                 | vanilla   | `.fullReplace`/`.authOnly` | maxima-cli launch + --game-path NorthstarLauncher.exe + -noOriginStartup -vanilla |
+/// | yes                 | vanilla   | `.none`               | cxstart NorthstarLauncher.exe -noOriginStartup -vanilla                          |
+/// | yes                 | northstar | `.fullReplace`/`.authOnly` | maxima-cli launch + --game-path NorthstarLauncher.exe + -noOriginStartup        |
+/// | yes                 | northstar | `.none`               | cxstart NorthstarLauncher.exe -noOriginStartup                                   |
+/// | no                  | vanilla   | `.fullReplace`/`.authOnly` | maxima-cli launch + --game-path Titanfall2.exe                                |
+/// | no                  | vanilla   | `.none`               | cxstart Titanfall2.exe                                                           |
+/// | no                  | northstar | * (any)               | error — Northstar isn't installed                                                |
 ///
-/// **Northstar** — run `steam.exe -applaunch 1237970 -northstar -noOriginStartup -multiple`.
-///   NorthstarLauncher.exe hard-codes starting Origin via a Win32 path (not
-///   `origin2://`), so it hangs forever on "Waiting for Origin..." when
-///   Origin isn't installed (which is always, on macOS / Wine). The
-///   supported Northstar entry point is Steam launch options: Steam runs
-///   Titanfall2.exe with `-northstar`, Northstar's hooks load.
-///   `-noOriginStartup -multiple` are required when using Maxima — without
-///   them Northstar tries to start Origin, which hangs in Wine.
-///   See: https://github.com/AA-EION/Maxima-Draconis#northstar-online-play
+/// Two notable design decisions:
+///
+///   * **`-northstar` is NEVER passed to `Titanfall2.exe`.** Empirically,
+///     this Wine branch ignores the flag and falls back to vanilla.
+///     Northstar always goes through `NorthstarLauncher.exe` instead —
+///     which loads Northstar's hooks via the `wsock32.dll` proxy
+///     regardless of how the executable is invoked.
+///
+///   * **Vanilla with Northstar installed still uses NorthstarLauncher**
+///     (with `-vanilla`). Northstar's wsock32 proxy is in the install
+///     dir; even when the user picks vanilla, going through
+///     NorthstarLauncher gives us the auth-fix patches Northstar
+///     applies. `-vanilla` tells the launcher to skip mod loading.
 public actor NorthstarLauncher {
     public static let shared = NorthstarLauncher()
 
-    // Steam App ID for Titanfall 2.
-    private let tf2SteamAppID = "1237970"
+    private let tf2Offer = "Origin.OFR.50.0001456"
 
     public enum LaunchMode: String, Sendable, CaseIterable, Identifiable {
         case northstar
@@ -38,19 +48,16 @@ public actor NorthstarLauncher {
     public enum LaunchError: Error, LocalizedError {
         case titanfallNotFound
         case northstarNotFound
-        case steamNotFoundForNorthstar
+        case eaAuthBackboneMissing
 
         public var errorDescription: String? {
             switch self {
             case .titanfallNotFound:
                 return "Titanfall 2 wasn't found in this bottle."
             case .northstarNotFound:
-                return "NorthstarLauncher.exe wasn't found in this bottle. " +
-                       "Install Northstar before launching in Northstar mode."
-            case .steamNotFoundForNorthstar:
-                return "Northstar mode launches through Steam launch options " +
-                       "(-northstar -noOriginStartup -multiple). " +
-                       "Install Steam in this bottle first, or use Vanilla mode."
+                return "NorthstarLauncher.exe wasn't found in this bottle. Install Northstar before launching in Northstar mode."
+            case .eaAuthBackboneMissing:
+                return "This launch needs an EA-auth backbone — install Maxima or EA Desktop from the onboarding wizard."
             }
         }
     }
@@ -63,7 +70,7 @@ public actor NorthstarLauncher {
     ) async throws -> Process {
         Log.info(
             "northstar.launch",
-            "Asked to launch \(mode.label) in '\(bottle.name)' [\(bottle.backend.rawValue)]"
+            "Asked to launch \(mode.label) in '\(bottle.name)' [role=\(bottle.maximaRole.rawValue), hasNS=\(bottle.hasNorthstar)]"
         )
 
         guard let tf2Root = bottle.titanfall2InstallPath
@@ -75,79 +82,94 @@ public actor NorthstarLauncher {
             throw LaunchError.titanfallNotFound
         }
 
-        switch mode {
-        case .vanilla:
-            return try await launchVanilla(
-                bottle: bottle, tf2Root: tf2Root, extraArgs: extraArgs
-            )
-        case .northstar:
-            return try await launchNorthstar(
-                bottle: bottle, tf2Root: tf2Root, extraArgs: extraArgs
-            )
-        }
-    }
+        // Build the exe path + per-mode args for the target binary.
+        // After this block, `targetExe` is the binary we'll spawn (via
+        // Maxima or cxstart) and `targetArgs` is its argv.
+        let targetExe: String
+        var targetArgs: [String]
 
-    private func launchVanilla(
-        bottle: WineBottle, tf2Root: String, extraArgs: [String]
-    ) async throws -> Process {
-        // Prefer NorthstarLauncher.exe -vanilla: avoids auth issues when
-        // Maxima/EA launcher isn't running, and cleanly loads without mods.
-        let nsExe = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
-        if FileManager.default.fileExists(atPath: nsExe) {
-            let args = ["-vanilla", "-novid"] + extraArgs
-            Log.info("northstar.launch", "NorthstarLauncher.exe -vanilla \(args.joined(separator: " "))")
-            return try await WineBackendManager.shared.launch(
-                executable: nsExe,
-                arguments: args,
+        if bottle.hasNorthstar {
+            targetExe = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
+            guard FileManager.default.fileExists(atPath: targetExe) else {
+                Log.error("northstar.launch", "NorthstarLauncher.exe missing at \(targetExe)")
+                throw LaunchError.northstarNotFound
+            }
+            // `-noOriginStartup` skips NorthstarLauncher's hardcoded
+            // Origin.exe wait (Origin doesn't exist under Wine).
+            // `-vanilla` disables Northstar mod loading when the user
+            // explicitly picked the vanilla mode.
+            targetArgs = ["-noOriginStartup", "-novid"]
+            if mode == .vanilla {
+                targetArgs.append("-vanilla")
+            }
+        } else {
+            // No Northstar in the bottle; fall back to Titanfall2.exe.
+            // Northstar mode without Northstar installed is an error.
+            guard mode == .vanilla else {
+                Log.error("northstar.launch", "Northstar mode requested but NorthstarLauncher.exe not present")
+                throw LaunchError.northstarNotFound
+            }
+            targetExe = (tf2Root as NSString).appendingPathComponent("Titanfall2.exe")
+            guard FileManager.default.fileExists(atPath: targetExe) else {
+                Log.error("northstar.launch", "Titanfall2.exe missing at \(targetExe)")
+                throw LaunchError.titanfallNotFound
+            }
+            targetArgs = ["-novid"]
+        }
+        targetArgs.append(contentsOf: extraArgs)
+
+        // Dispatch on Maxima role.
+        switch bottle.maximaRole {
+        case .authOnly, .fullReplace:
+            // Maxima drives the launch — it sets up LSX + EA env vars
+            // and spawns the target through its bootstrap.
+            Log.info("northstar.launch", "Routing through maxima-cli (\(bottle.maximaRole.rawValue))")
+            return try await MaximaService.shared.launchGame(
                 in: bottle,
-                workingDirectory: tf2Root,
-                wait: false
+                gamePath: targetExe,
+                gameArgs: targetArgs
             )
-        }
 
-        // Fallback: run Titanfall2.exe directly when Northstar isn't installed.
-        let exe = (tf2Root as NSString).appendingPathComponent("Titanfall2.exe")
-        guard FileManager.default.fileExists(atPath: exe) else {
-            Log.error("northstar.launch", "Titanfall2.exe missing at \(exe)")
-            throw LaunchError.titanfallNotFound
+        case .none:
+            // No Maxima — direct cxstart. This requires EA Desktop to
+            // be in the bottle to handle link2ea:// auth requests TF2
+            // (or NorthstarLauncher) emits during startup.
+            //
+            // Must go through CleanSpawn (not WineBackendManager.launch)
+            // for the same reason game launches via maxima-cli do:
+            // Foundation.Process from a .app freezes the Wine chain.
+            // See CleanSpawn.swift's doc-comment for the full reasoning.
+            guard bottle.hasEAApp else {
+                throw LaunchError.eaAuthBackboneMissing
+            }
+            guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+                throw LaunchError.titanfallNotFound
+            }
+            let logURL = PathResolver.bottleLogFile(for: bottle)
+            try? FileManager.default.createDirectory(
+                at: logURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if !FileManager.default.fileExists(atPath: logURL.path) {
+                FileManager.default.createFile(atPath: logURL.path, contents: nil)
+            }
+            let cxstartArgs = ["--bottle", bottle.name, targetExe] + targetArgs
+            Log.info(
+                "northstar.launch",
+                "CleanSpawn.spawn cxstart=\(cxstart.path) args=\(cxstartArgs.joined(separator: " "))"
+            )
+            let pid = try CleanSpawn.spawn(
+                executable: cxstart.path,
+                arguments: cxstartArgs,
+                stdinPath: "/dev/null",
+                stdoutPath: logURL.path
+            )
+            Log.info("northstar.launch", "cxstart spawned pid=\(pid)")
+            // No Foundation.Process handle (CleanSpawn returns pid_t only).
+            // AppEnvironment.pollUntilGameExits tracks lifetime via
+            // `pgrep Titanfall2.exe`, so the stub Process here is
+            // intentionally unattached.
+            return Process()
         }
-        let args = ["-novid"] + extraArgs
-        Log.info("northstar.launch", "Titanfall2.exe \(args.joined(separator: " "))")
-        return try await WineBackendManager.shared.launch(
-            executable: exe,
-            arguments: args,
-            in: bottle,
-            workingDirectory: tf2Root,
-            wait: false
-        )
-    }
-
-    private func launchNorthstar(
-        bottle: WineBottle, tf2Root: String, extraArgs: [String]
-    ) async throws -> Process {
-        let nsExe = (tf2Root as NSString).appendingPathComponent("NorthstarLauncher.exe")
-        guard FileManager.default.fileExists(atPath: nsExe) else {
-            Log.error("northstar.launch", "NorthstarLauncher.exe missing at \(nsExe)")
-            throw LaunchError.northstarNotFound
-        }
-        guard let steamExe = SteamInstaller.steamExePath(in: bottle.prefixURL) else {
-            Log.error("northstar.launch", "steam.exe required for Northstar mode")
-            throw LaunchError.steamNotFoundForNorthstar
-        }
-        // Required launch flags when using Maxima (per Maxima-Draconis README):
-        //   -noOriginStartup  prevents Northstar from trying to start Origin
-        //                     (which doesn't exist in Wine and would hang forever)
-        //   -multiple         allows multiple game instances / avoids single-
-        //                     instance lock that can conflict with Maxima
-        //   -northstar        tells the game to load NorthstarLauncher hooks
-        let args = ["-applaunch", tf2SteamAppID, "-noOriginStartup", "-multiple", "-northstar", "-novid"] + extraArgs
-        Log.info("northstar.launch", "steam.exe \(args.joined(separator: " "))")
-        return try await WineBackendManager.shared.launch(
-            executable: steamExe,
-            arguments: args,
-            in: bottle,
-            workingDirectory: nil,
-            wait: false
-        )
     }
 }

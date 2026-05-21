@@ -908,8 +908,14 @@ extension MaximaService {
             // Skip `C:` plus any backslashes/slashes that follow.
             rest = String(rest[rest.index(after: colonIdx)...])
         }
-        // 2. Normalize separators.
+        // 2. Normalize separators + trim leading/trailing slashes.
+        //    `appendingPathComponent` treats a leading-slash component
+        //    as absolute on some Foundation builds (would either drop
+        //    `driveC` from the path or introduce a `//`), so strip
+        //    them explicitly. Both `C:\Foo` and `C:Foo` and `C:\\Foo`
+        //    should land at `<driveC>/Foo/FInstall.txt`.
         let posixTail = rest.replacingOccurrences(of: "\\", with: "/")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let driveC = PathResolver.driveC(in: bottle.prefixURL)
         return driveC
             .appendingPathComponent(posixTail, isDirectory: true)
@@ -943,9 +949,16 @@ extension MaximaService {
             // Already dead or not ours. Nothing to do.
             return
         }
-        // Poll up to 5 seconds for the process to exit.
+        // Poll up to 5 seconds for the process to exit. `try` (not
+        // `try?`) so a parent-task cancellation propagates instead
+        // of being silently swallowed for 5s.
         for _ in 0..<10 {
-            try? await Task.sleep(for: .milliseconds(500))
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+            } catch {
+                Log.info("maxima.ui.quit", "signalProcessQuit cancelled mid-wait")
+                return
+            }
             if Darwin.kill(pid, 0) != 0 {
                 Log.info("maxima.ui.quit", "pid=\(pid) exited cleanly after SIGTERM")
                 return

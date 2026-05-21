@@ -84,6 +84,13 @@ public final class AppEnvironment: ObservableObject {
     /// which is owned by the BottleInstaller poller.
     @Published public var maximaSetupPhase: MaximaSetupPhase = .idle
 
+    /// Handle to the background install + polling task spawned by
+    /// `startGameInstallViaUI`. Stored so the wizard can cancel the
+    /// 2-hour polling loop if the user backs out / re-enters / closes
+    /// Draconis — otherwise the loop leaks and could later flip
+    /// `maximaSetupPhase` to a stale value.
+    private var maximaInstallTask: Task<Void, Never>?
+
     /// Public so the OnboardingView can pattern-match phase
     /// transitions without re-implementing the comparison logic.
     public enum MaximaSetupPhase: Equatable, Sendable {
@@ -363,6 +370,15 @@ public final class AppEnvironment: ObservableObject {
     public func cancelAutoBottleInstall() {
         BottleInstaller.shared.stopWatching()
         autoInstallStage = nil
+        // Tear down the maxima-route install/poll loop too — if the
+        // user closes the wizard mid-install, we don't want a 2-hour
+        // background poller surviving and later mutating
+        // `maximaSetupPhase` against an out-of-date UI.
+        maximaInstallTask?.cancel()
+        maximaInstallTask = nil
+        if case .installingGame = maximaSetupPhase {
+            maximaSetupPhase = .idle
+        }
     }
 
     /// Attach the wizard's progress watcher to an existing bottle the
@@ -515,17 +531,32 @@ public final class AppEnvironment: ObservableObject {
         in bottle: WineBottle,
         installPath: String = MaximaService.defaultTitanfall2WindowsPath
     ) {
-        // Don't fire twice — the wizard's progress page can re-render
-        // on `autoInstallStage` updates and we want this to be a
-        // single-shot when we transition into `.waitingForTitanfall`.
+        // Synchronous lock against the .idle slot — `onAppear` can
+        // fire multiple times during view transitions, and
+        // `startGameInstallViaUI` contains await points before its
+        // first state mutation, so two near-simultaneous calls could
+        // both pass an "is idle?" check inside the Task and end up
+        // spawning maxima.exe twice. Flip the phase here, before any
+        // async work, so the second caller bails immediately.
         if case .idle = maximaSetupPhase {
-            // fall through to the spawn
+            // pid 0 is a sentinel — the real pid lands once
+            // installGameViaUI returns. We use 0 just to take the
+            // slot; consumers shouldn't read pid until phase has
+            // transitioned through the async spawn.
+            maximaSetupPhase = .installingGame(
+                pid: 0,
+                slug: slug,
+                installPath: installPath
+            )
         } else {
             return
         }
-
         maximaError = nil
-        Task { [weak self] in
+        // Cancel any prior task before launching a new one (defensive;
+        // the .idle gate above should prevent overlap, but explicit
+        // beats implicit).
+        maximaInstallTask?.cancel()
+        maximaInstallTask = Task { [weak self] in
             guard let self else { return }
             // Early out if FInstall.txt is already on disk from a
             // previous run. We do this inside the Task because
@@ -558,6 +589,8 @@ public final class AppEnvironment: ObservableObject {
                     bottle: bottle,
                     installPath: installPath
                 )
+            } catch is CancellationError {
+                DebugLog.shared.info("maxima.install", "Install task cancelled")
             } catch {
                 DebugLog.shared.error("maxima.install", error.localizedDescription)
                 await MainActor.run {
@@ -590,7 +623,15 @@ public final class AppEnvironment: ObservableObject {
         // window — past it we assume something's stuck.
         let maxPolls = (2 * 60 * 60) / 2
         for _ in 0..<maxPolls {
-            try? await Task.sleep(for: pollInterval)
+            // `try` (not `try?`) so a wizard close / cancellation
+            // propagates out of this loop as `CancellationError`
+            // instead of being silently swallowed for the full 2h.
+            do {
+                try await Task.sleep(for: pollInterval)
+            } catch {
+                DebugLog.shared.info("maxima.install", "Polling loop cancelled")
+                return
+            }
             // Marker present? We're done.
             if await MaximaService.shared.didInstallComplete(in: bottle, installPath: installPath) {
                 DebugLog.shared.ok(

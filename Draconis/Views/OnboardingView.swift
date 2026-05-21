@@ -283,10 +283,29 @@ struct OnboardingView: View {
                     state: stageState(.done)
                 )
 
-                if let bottle = env.bottles.first(where: { $0.hasLauncher || $0.hasTitanfall2 }) {
+                if let bottle = env.bottles.first(where: { $0.hasLauncher || $0.hasTitanfall2 || $0.hasMaxima }) {
                     Text("Detected bottle: \(bottle.name)")
                         .font(TF.body(11))
                         .foregroundStyle(.primary.opacity(0.70))
+                }
+
+                // Maxima route only: once the bottle has Maxima but
+                // not yet Titanfall 2, surface a button that opens
+                // `maxima.exe` inside the bottle so the user can do
+                // the OAuth login + game-install flow interactively.
+                if selectedSource == .maxima,
+                   let bottle = env.bottles.first(where: { $0.hasMaxima && !$0.hasTitanfall2 }) {
+                    Button {
+                        env.openMaximaUI(in: bottle)
+                    } label: {
+                        Label("Open Maxima to install Titanfall 2",
+                              systemImage: "arrow.up.right.square.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(.accentColor)
+                    .padding(.top, 4)
                 }
 
                 if shouldOfferMaximaRoleStep, case .done = env.autoInstallStage {
@@ -500,7 +519,7 @@ struct OnboardingView: View {
         switch selectedSource {
         case .steam:  return "Install Steam, then Titanfall 2"
         case .ea:     return "Install EA app, then Titanfall 2"
-        case .maxima: return "Maxima downloads Titanfall 2"
+        case .maxima: return "Install Maxima, then download Titanfall 2"
         case .epic:   return "Install Epic Games Launcher, then Titanfall 2"
         }
     }
@@ -512,7 +531,7 @@ struct OnboardingView: View {
         case .ea:
             return "EA app downloads inside the bottle. Log in, install Titanfall 2, run the game once so EA Desktop's auto-setup finishes, then continue."
         case .maxima:
-            return "Maxima downloads Titanfall 2 directly from EA's servers — no Steam, no EA Desktop. Requires the game to be in your EA library (purchased directly from EA, or Steam/Epic linked + synced at least once)."
+            return "Draconis installs Maxima into the bottle. When it's ready, click \"Open Maxima\" below to log into EA in a browser and download Titanfall 2 from your library. Requires the game to be in your EA library (purchased directly from EA, or Steam/Epic linked + synced at least once)."
         case .epic:
             return "Epic Games path is documented but not yet wired up in the wizard. Install Epic + Titanfall 2 manually for now."
         }

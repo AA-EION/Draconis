@@ -302,11 +302,25 @@ public final class AppEnvironment: ObservableObject {
                         DebugLog.shared.info("bottle.auto", "EA Desktop already installed in bottle, skipping")
                     }
                 case .maxima:
-                    // Maxima route: user installs Maxima from the Settings
-                    // pane (existing flow via `MaximaService.setupMaxima`),
-                    // then uses `maxima-cli install` to download the game.
-                    // No launcher to install at this step.
-                    DebugLog.shared.info("bottle.auto", "Maxima route — bottle ready, user installs Maxima next")
+                    // Maxima route: install MaximaSetup.exe into the
+                    // bottle now (analogous to how the Steam and EA
+                    // branches above install their launchers) so the
+                    // user has `maxima-cli.exe` + `maxima.exe` ready
+                    // to use for the interactive game-install step.
+                    // The user still does the OAuth login + game
+                    // download themselves inside Maxima — there's no
+                    // way to script EA's qrc:// flow from here — but
+                    // at least the binaries are in place.
+                    if await !MaximaService.shared.isInstalled(in: bottle) {
+                        DebugLog.shared.info("bottle.auto", "Installing Maxima into bottle…")
+                        try await MaximaService.shared.downloadAndInstall(into: bottle) { p in
+                            Task { @MainActor in
+                                self.maximaProgress = p
+                            }
+                        }
+                    } else {
+                        DebugLog.shared.info("bottle.auto", "Maxima already installed in bottle, skipping")
+                    }
                 case .epic:
                     DebugLog.shared.warn("bottle.auto", "Epic Games path not implemented yet")
                 }
@@ -449,6 +463,25 @@ public final class AppEnvironment: ObservableObject {
             DebugLog.shared.error("maxima.role", error.localizedDescription)
             await MainActor.run {
                 self.maximaRoleError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Launch Maxima's graphical UI (`maxima.exe`) inside the given
+    /// bottle. Used by the wizard's Maxima route so the user can do
+    /// the OAuth login + library browse + game-install steps that
+    /// can't be scripted from Draconis. Surfaces failures via
+    /// `maximaError`; the spawn itself is fire-and-forget (the UI
+    /// runs in the bottle, the user closes it when they're done).
+    public func openMaximaUI(in bottle: WineBottle) {
+        Task {
+            do {
+                try await MaximaService.shared.launchMaximaUI(in: bottle)
+            } catch {
+                DebugLog.shared.error("maxima.ui", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaError = error.localizedDescription
+                }
             }
         }
     }

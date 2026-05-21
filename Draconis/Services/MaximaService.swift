@@ -98,6 +98,12 @@ public actor MaximaService {
         maximaFilePath(in: bottle, named: "maxima-cli.exe")
     }
 
+    /// POSIX path to `maxima.exe` (the graphical UI shipped in the
+    /// installer) inside the bottle, or `nil` if not installed.
+    public func maximaUiPath(in bottle: WineBottle) -> String? {
+        maximaFilePath(in: bottle, named: "maxima.exe")
+    }
+
     /// POSIX path to MaximaSetup's NSIS uninstaller (`Uninstall.exe`) inside
     /// the bottle, or nil if not present.
     public func uninstallerPath(in bottle: WineBottle) -> String? {
@@ -812,6 +818,48 @@ extension MaximaService {
         // (which polls `pgrep Titanfall2.exe` instead). The stub stays
         // unattached to any real child.
         return Process()
+    }
+
+    /// Launch Maxima's graphical UI (`maxima.exe`) interactively
+    /// inside the bottle. Used by the onboarding wizard's Maxima
+    /// route so the user can do OAuth login + pick + install
+    /// Titanfall 2 from their EA library — steps that require a
+    /// human in the loop and can't be scripted from Draconis (qrc://
+    /// callback, browser handoff, library browsing).
+    ///
+    /// Goes through `CleanSpawn` for the same reason `launchGame`
+    /// does — `Foundation.Process` from a `.app` context freezes the
+    /// Wine chain. See `CleanSpawn.swift` for the full rationale.
+    public func launchMaximaUI(in bottle: WineBottle) async throws {
+        guard let uiPath = maximaUiPath(in: bottle) else {
+            throw CliError.notInstalled
+        }
+        guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+            throw CliError.cxstartMissing
+        }
+
+        let logURL = PathResolver.bottleLogFile(for: bottle)
+        try? FileManager.default.createDirectory(
+            at: logURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+
+        let cxstartArgs: [String] = ["--bottle", bottle.name, uiPath]
+        Log.info(
+            "maxima.ui",
+            "CleanSpawn.spawn cxstart=\(cxstart.path) args=\(cxstartArgs.joined(separator: " "))"
+        )
+
+        let pid = try CleanSpawn.spawn(
+            executable: cxstart.path,
+            arguments: cxstartArgs,
+            stdinPath: "/dev/null",
+            stdoutPath: logURL.path
+        )
+        Log.info("maxima.ui", "maxima.exe spawned pid=\(pid)")
     }
 
     /// Drive the user's `MaximaRole` choice for a bottle:

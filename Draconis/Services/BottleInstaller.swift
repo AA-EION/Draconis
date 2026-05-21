@@ -96,15 +96,23 @@ public final class BottleInstaller {
     /// Snapshot today's bottles and pick the most relevant one to report on.
     /// Preference order:
     ///   1. A bottle that already has Titanfall 2 → `.done`
-    ///   2. A bottle that has any launcher (Steam, EA App, or Epic Games) → `.waitingForTitanfall`
+    ///   2. A bottle that has any launcher (Steam, EA App, Epic Games) OR
+    ///      has Maxima installed → `.waitingForTitanfall` (the user is past
+    ///      the bottle/launcher step and now needs to drive the game install
+    ///      from whichever frontend landed)
     ///   3. Nothing matching → `.waitingForBottle`
+    ///
+    /// Maxima is treated as a launcher for stage purposes even though it
+    /// isn't part of `WineBottle.hasLauncher` — the Maxima route in the
+    /// wizard installs Maxima as its frontend equivalent, and from the
+    /// progress page's POV step 1 is complete once Maxima is in place.
     private func detectStage() async -> Stage {
         let bottles = await CrossOverDetector.shared.bottles()
         if let withGame = bottles.first(where: \.hasTitanfall2) {
             return .done(bottleID: withGame.id)
         }
-        if let withLauncher = bottles.first(where: \.hasLauncher) {
-            return .waitingForTitanfall(bottleID: withLauncher.id)
+        if let withFrontend = bottles.first(where: { $0.hasLauncher || $0.hasMaxima }) {
+            return .waitingForTitanfall(bottleID: withFrontend.id)
         }
         return .waitingForBottle
     }

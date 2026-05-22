@@ -38,7 +38,7 @@ Two invariants that never change regardless of the row:
 
 ## Maxima integration (MaximaService.swift)
 
-- Maxima is **opt-in** — gated behind `env.maximaEnabled` (UserDefaults `"maximaEnabled"`). Not installed by default.
+- Maxima is **opt-in** — determined by `MaximaRole` per bottle (`.none` = no Maxima; `.authOnly` / `.fullReplace` = active). Not installed by default.
 - Installer saved to `PathResolver.downloadsCache/MaximaSetup.exe` (overwritten each install).
 - Installed version tracked in UserDefaults key `"maximaInstalledVersion"` using the GitHub release tag.
 - `isUpdateAvailable()` compares local tag vs remote. Shows **Update** button; does **not** auto-update.
@@ -111,6 +111,12 @@ Maxima supports offline play after a first successful online launch (license fil
 ### Epic Games path
 `BottleInstaller.Frontend.epic` is intentionally `.available = false`. Epic delivers TF2 with EA Desktop bundled the same way Steam does, so the path is likely identical to Steam-with-CEG-fix, but it hasn't been validated by anyone with an Epic copy.
 
+### Privacy consent revocation UI
+Currently there is no in-app way to withdraw consent — only `defaults delete org.draconis.launcher` from Terminal. A "Withdraw consent" / "Reset privacy" option in Settings → About would be more discoverable. `ConsentManager.revoke()` already exists; it just needs a button that also quits the app (since the consent screen is shown before the main window).
+
+### SwiftUI Picker + container views gotcha
+SwiftUI's `Picker` with `.segmented` style expands container views (`HStack`, `VStack`, `Group`) into individual segments rather than treating the container as one label. `HStack { Image; Text }` inside `ForEach` produces two segments per item instead of one. **Rule:** only use plain `Text` (or `Label`) as direct children of `Picker { ForEach { } }` — never a container with multiple children.
+
 ## Code conventions
 
 - No inline comments unless the *why* is non-obvious. No doc-comment blocks.
@@ -128,7 +134,7 @@ Draconis integrates `sentry-cocoa` v9.14.0 (SPM) for crash reports and bug feedb
 | File | Role |
 |---|---|
 | `Draconis/Services/ConsentManager.swift` | `ConsentManager` — reads/writes `UserDefaults.standard["privacyConsentAccepted"]`; `SentryConfig` — idempotent `boot()` that configures and starts the SDK |
-| `Draconis/Services/BugReporter.swift` | `BugReportContext` (Sendable snapshot of AppEnvironment state) + `BugReporter` actor that submits a `SentryEvent` + `SentryUserFeedback` pair |
+| `Draconis/Services/BugReporter.swift` | `BugReportContext` (Sendable snapshot of AppEnvironment state) + `BugReporter` actor that submits a Sentry `Event` + `SentryFeedback` pair (sentry-cocoa v9 API) |
 | `Draconis/Views/PrivacyConsentView.swift` | Full-window overlay shown until consent; "Decline & Quit" calls `NSApp.terminate`; "Accept & Continue" calls `ConsentManager.accept()` + sets `env.privacyConsentAccepted` |
 | `Draconis/Views/BugReportSheet.swift` | Sheet triggered by Help menu (⌘⌥B) or Settings → About; auto-collects context + last 60 console lines |
 
@@ -147,7 +153,7 @@ Draconis integrates `sentry-cocoa` v9.14.0 (SPM) for crash reports and bug feedb
 
 - Structured tags: app version, bottle state, Northstar/Maxima versions, Maxima phase
 - Extra: last 60 console lines (home path sanitized to `~`), recent launch/update/Maxima errors
-- `SentryUserFeedback` linked to the same event: user description + optional name + optional contact
+- `SentryFeedback` (v9 API, replaces removed `SentryUserFeedback`) linked to the same event via `associatedEventId`: user description + optional name + optional contact
 
 ### GDPR compliance notes
 
@@ -174,12 +180,6 @@ See `BUILD.md` for signing, notarisation, and DMG packaging.
 4. Merge the release PR (or commit directly to main).
 5. Tag on main: `git tag vX.Y.Z <merge-sha> && git push origin vX.Y.Z`.
 6. Create the GitHub release targeting that tag, pasting the CHANGELOG section as the release notes.
-
----
-
-# Session snapshot — 2026-05-20 (wizard rewrite + clean spawn)
-
-In-flight branch: **`feat/wine-bottle-creator`** in this repo. Not yet PR'd. Multiple uncommitted changes. Don't lose context — this section is the recovery doc if memory rolls over.
 
 ## What landed on Maxima-Draconis (backend) — all shipped to master
 
@@ -278,24 +278,9 @@ User's macOS dev machine:
   - Northstar files extracted alongside TF2 (via Draconis's Northstar updater)
   - Bottle log: `~/Library/Application Support/Draconis/Logs/crossover_Titanfall 2.log` (streamed into Draconis's in-app console while a launch is in flight)
 - Maxima's own log: `<bottle>/drive_c/users/crossover/AppData/Local/Maxima/Logs/maxima-cli.log`
-- Built Draconis.app: `~/Library/Developer/Xcode/DerivedData/Draconis-dlnmihavmcdjlzgdavlvtbxnyien/Build/Products/Debug/Draconis.app`
+- Built Draconis.app: `build/Build/Products/Debug/Draconis.app` (via `xcodebuild -derivedDataPath build`)
 
 Confirmed working states:
 - `maxima-cli launch Origin.OFR.50.0001456 --game-path "C:\Program Files (x86)\Steam\steamapps\common\Titanfall2\Titanfall2.exe"` from a bottle cmd window — reaches Main Menu.
 - Same command from macOS Terminal via `cxstart` — reaches Main Menu.
 - Same command via Draconis using `CleanSpawn` (with all three posix_spawn flags + disclaim) — reaches Main Menu.
-
-## Quick orientation for a fresh Claude
-
-If you're picking this up cold:
-
-1. Read this section top to bottom.
-2. Check `git status` on `feat/wine-bottle-creator` in this repo — many uncommitted changes.
-3. The first thing to do is fix the four signature mismatches in `MaximaService.applyRole` (see "In-flight work #1").
-4. Then add the three missing AppEnvironment hooks (see "In-flight work #2").
-5. Then reorder the Frontend enum (#3).
-6. Build verify (#4).
-7. Manual test (#5).
-8. Commit + PR (#6).
-
-After that lands, the wizard rewrite is done end-to-end and the user can take it.

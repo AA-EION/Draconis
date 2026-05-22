@@ -4,6 +4,17 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.11.0] — 2026-05-22
+
+### Added
+- **Privacy & GDPR consent screen** — shown on first launch before any other content. Users must read both the Privacy Notice and GPL-3.0 license tabs before accepting. Acceptance is stored in `~/Library/Preferences/org.draconis.launcher.plist` and remembered permanently. Decline & Quit terminates the app.
+- **Sentry crash reporting** (`sentry-cocoa` v9.14.0, SPM). Captures unhandled exceptions and handled errors at every `catch` site in `AppEnvironment`. Never starts before consent. Data stored on EU servers (`ingest.de.sentry.io`).
+- **Automatic Sentry scope sync** — bottle state, Maxima role, and version tags are pushed to the Sentry scope on every `refreshMaximaState()` call, so automatic crash reports always carry full context without user action.
+- **Bug report sheet** (`Help → Report a Bug…` ⌘⌥B, or Settings → About). Auto-collects bottle state, versions, and last 60 console lines (home path sanitised to `~`). Description required; name and contact optional. Submits a Sentry `Event` + linked `SentryFeedback`.
+- **dSYM generation** — `DEBUG_INFORMATION_FORMAT: dwarf-with-dsym` added to `project.yml` so Sentry's symbolication pipeline works on all builds.
+
+---
+
 ## [0.10.0] — 2026-05-22
 
 This release rewrites the install flow for new users and folds Maxima setup into a coherent, multi-launcher experience. Requires [Maxima-Draconis v0.13.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.13.0) (auto-downloaded by Draconis at install time when the Maxima route is picked).

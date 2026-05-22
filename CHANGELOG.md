@@ -4,6 +4,36 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.10.0] — 2026-05-22
+
+This release rewrites the install flow for new users and folds Maxima setup into a coherent, multi-launcher experience. Requires [Maxima-Draconis v0.13.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.13.0) (auto-downloaded by Draconis at install time when the Maxima route is picked).
+
+### Added
+- **Onboarding wizard rewrite** ([#16](https://github.com/AA-EION/Draconis/pull/16)) — the wizard now asks the user to pick an install source (**Maxima**, **EA app**, **Steam**, or **Epic**) up front, creates a CrossOver bottle via `cxbottle` with the right Wine profile, walks them through installing the chosen launcher + Titanfall 2 inside it, and finishes by configuring Maxima at the right scope. The pre-existing CrossTie (`Titanfall2.tie`) flow was removed — it baked the EA-Desktop assumption into the bottle template and didn't compose with Maxima or Steam paths.
+- **`MaximaRole` per bottle** ([#16](https://github.com/AA-EION/Draconis/pull/16)) — every bottle records how Maxima should participate in its launch chain: `.none` (no Maxima, launcher handles auth), `.authOnly` (Maxima registers as `link2ea://` handler, binaries untouched), or `.fullReplace` (Maxima + CEG-fix replaces Steam-signed `Titanfall2.exe` / `Titanfall2_trial.exe` with the EA originals). Persisted in `UserDefaults` keyed by bottle ID, read by `NorthstarLauncher` at launch time. Steam bottles see all three roles in the wizard; EA bottles see `.none` / `.authOnly`; Maxima-installed bottles default to `.fullReplace` and skip the picker.
+- **Auto-driven Maxima install via `maxima.exe --install`** ([#17](https://github.com/AA-EION/Draconis/pull/17)) — the wizard's Maxima route spawns `maxima.exe --install <slug> --install-path <path>` (added in Maxima-Draconis v0.12.0), watches the install dir for `FInstall.txt` (the marker Maxima writes when the download settles), then SIGTERMs `maxima.exe` and advances the wizard. The user sees Maxima's own UI for login + download progress, Draconis takes over once the marker appears. Polling loop is `Task`-isolated and cancellation-aware (`try`, not `try?`) so closing the wizard mid-install actually stops the loop instead of running for 2 hours in the background.
+- **`MaximaInstallStatusCard` on the progress page** — phase-driven status (`.idle` / `.installingGame` / `.finishing` / `.done` / `.failed`) with auto-fire of `startGameInstallViaUI` on entry. Cancellable via the cached `Task<Void, Never>` handle so the wizard exits clean.
+- **Settings → Maxima tab** ([#20](https://github.com/AA-EION/Draconis/pull/20)) — install / update / uninstall, MaximaHelper registration, per-bottle role display, and an "Open Onboarding wizard…" button moved here from the old PlayView toggle card. Setup hint text adapts to whichever piece is missing.
+
+### Fixed
+- **Launcher pill said "Missing" for Maxima bottles** ([#18](https://github.com/AA-EION/Draconis/pull/18)) — `launcherStatusValue` and `hasLauncher` predicates didn't recognise `hasMaxima` as a launcher, so a bottle running only Maxima failed the Launch button's `.disabled` check. Pill now treats Maxima as a first-class launcher (ordered first), and added a `hasAnyFrontend` helper used by both the pill and the Launch button.
+- **Post-update Maxima showed as not-installed** ([#19](https://github.com/AA-EION/Draconis/pull/19)) — `setupMaxima` / `updateMaxima` only called `refreshMaximaState`, leaving per-bottle `WineBottle.hasMaxima` stale. Both call sites now use `refreshBottles` (which calls `refreshMaximaState` internally).
+- **Wizard offered Maxima alongside EA after a Maxima install** ([#19](https://github.com/AA-EION/Draconis/pull/19)) — `startGameInstallViaUI` never wrote a `MaximaRole` on completion. Re-entering the wizard saw the install but no explicit role and re-prompted the user. Persists `.fullReplace` when `FInstall.txt` appears (Maxima-installed games carry the EA originals by construction).
+- **`noTitanfallCard` referenced the dropped CrossOver-profile flow** ([#19](https://github.com/AA-EION/Draconis/pull/19)) — rewrote the copy to direct users to the Onboarding wizard; `instructionsCard` helper gained an optional `primaryActionIcon` parameter.
+- **Settings → Maxima couldn't uninstall in some states** ([#20](https://github.com/AA-EION/Draconis/pull/20)) — the first cut gated Uninstall behind `maximaInstalled && maximaHelperRegistered`. If binaries were present but the helper unbound (a common partial state), the user had no UI path out. Refactored to one-button-per-row, each shown when its operation is meaningful: Set up / Update / Register Helper / Uninstall / Unregister Helper.
+
+### Changed
+- **`CleanSpawn` for all game launches** ([#16](https://github.com/AA-EION/Draconis/pull/16)) — `posix_spawn` with `CLOEXEC_DEFAULT + SETSID + responsibility_spawnattrs_setdisclaim`. Replaces `Foundation.Process` for spawning Wine chains, which used to deadlock in `.app` contexts when the launched process had to outlive Draconis. The Maxima install spawn + game launches both go through it.
+- **Reordered Frontend enum** ([#16](https://github.com/AA-EION/Draconis/pull/16)) — `Maxima` first in the picker so it surfaces as the default-recommended path on macOS. Other launchers still available, but the wizard copy now leads with the Maxima story.
+- **Settings window height** 460 → 540 to fit the new Maxima tab without forcing a scroll on first paint.
+
+### Removed
+- **`maximaEnabled` user pref + UserDefaults mirror** ([#20](https://github.com/AA-EION/Draconis/pull/20)) — redundant with `MaximaRole`. The truth is "is `maxima-cli.exe` in this bottle + did the user pick a role", not a separate toggle.
+- **`maximaToggleCard` / `maximaCard` / `maximaInfoPopover` / `showMaximaInfo` / `maximaVersionLabel` / `maximaSetupNote` from PlayView** — moved to Settings tab.
+- **`Titanfall2.tie` CrossTie + `WineBottleCreator` template** ([#16](https://github.com/AA-EION/Draconis/pull/16)) — replaced by `cxbottle` direct creation. All CrossTie references swept from the UI.
+
+---
+
 ## [0.9.2] — 2026-05-16
 
 ### Fixed

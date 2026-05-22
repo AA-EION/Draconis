@@ -3,7 +3,6 @@ import SwiftUI
 struct PlayView: View {
     @EnvironmentObject private var env: AppEnvironment
     @State private var mode: NorthstarLauncher.LaunchMode = .northstar
-    @State private var showMaximaInfo: Bool = false
     @State private var confirmNorthstarUninstall: Bool = false
 
     var body: some View {
@@ -22,10 +21,10 @@ struct PlayView: View {
                         errorCard(err)
                     }
                     actionsCard
-                    maximaToggleCard
-                    if env.maximaEnabled {
-                        maximaCard
-                    }
+                    // Maxima install/update/uninstall + role admin lives
+                    // in Settings → Maxima now. PlayView surfaces only
+                    // the gameplay-facing pieces (launcher status pill,
+                    // launch buttons, progress + errors during install).
                 }
                 Spacer(minLength: 60)
             }
@@ -376,192 +375,6 @@ struct PlayView: View {
         }
         .padding(.top, 18)
         .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 22))
-    }
-
-    // MARK: - Maxima toggle card
-
-    private var maximaToggleCard: some View {
-        HStack(spacing: 12) {
-            Toggle(isOn: $env.maximaEnabled) {
-                HStack(spacing: 8) {
-                    Image(systemName: "gamecontroller.fill")
-                        .foregroundStyle(Color.white.opacity(0.85))
-                    Text("EA LAUNCHER (MAXIMA)")
-                        .stencilLabel(color: Color.white.opacity(0.85))
-                }
-            }
-            .toggleStyle(.switch)
-
-            Button {
-                showMaximaInfo.toggle()
-            } label: {
-                Image(systemName: "info.circle")
-                    .foregroundStyle(.primary.opacity(0.70))
-            }
-            .buttonStyle(.plain)
-            .help("About Maxima")
-            .popover(isPresented: $showMaximaInfo, arrowEdge: .top) {
-                maximaInfoPopover
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentSubtle)), in: .rect(cornerRadius: 18))
-    }
-
-    private var maximaInfoPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("About Maxima", systemImage: "gamecontroller.fill")
-                .font(TF.title(14))
-                .foregroundStyle(.primary)
-
-            Text("Maxima is an open-source replacement for the EA Desktop launcher. It runs inside your CrossOver bottle and handles EA authentication so Titanfall 2 can sign in without the full EA app.")
-                .font(TF.body(12))
-                .foregroundStyle(.primary.opacity(0.85))
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("This feature is currently in beta. Enable it only if you need EA account authentication — for example, if Titanfall 2 refuses to start without an EA login.")
-                .font(TF.body(12))
-                .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
-                .fixedSize(horizontal: false, vertical: true)
-
-            Link("Learn more about Maxima →",
-                 destination: URL(string: "https://github.com/AA-EION/Maxima-Draconis")!)
-                .font(TF.body(12))
-        }
-        .padding(16)
-        .frame(width: 320)
-    }
-
-    // MARK: - Maxima card
-
-    private var maximaCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Status pills
-            HStack(spacing: 10) {
-                StatusPill(
-                    label: "MaximaHelper",
-                    value: env.maximaHelperRegistered ? "Registered" : "Not registered",
-                    symbol: env.maximaHelperRegistered
-                        ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
-                    active: env.maximaHelperRegistered
-                )
-                StatusPill(
-                    label: "Maxima",
-                    value: maximaVersionLabel,
-                    symbol: env.maximaInstalled
-                        ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
-                    active: env.maximaInstalled
-                )
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-
-            HStack(spacing: 12) {
-                if env.maximaInstalled && env.maximaHelperRegistered {
-                    Text("Maxima is ready. Use the Launch button above to start the game.")
-                        .font(TF.body(12))
-                        .foregroundStyle(.primary.opacity(0.72))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if env.maximaUpdateAvailable {
-                        Button {
-                            Task { await env.updateMaxima() }
-                        } label: {
-                            Label(
-                                env.maximaSettingUp ? "Updating…" : "Update Maxima",
-                                systemImage: env.maximaSettingUp ? "hourglass" : "arrow.up.circle.fill"
-                            )
-                            .font(TF.title(14))
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 6)
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(.accentColor)
-                        .disabled(env.selectedBottle == nil || env.maximaSettingUp)
-                    }
-
-                    Button {
-                        Task { await env.uninstallMaxima() }
-                    } label: {
-                        Label(
-                            env.maximaSettingUp ? "Uninstalling…" : "Uninstall",
-                            systemImage: env.maximaSettingUp ? "hourglass" : "trash"
-                        )
-                        .font(TF.title(14))
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 6)
-                    }
-                    .buttonStyle(.glass)
-                    .disabled(env.selectedBottle == nil || env.maximaSettingUp)
-                } else {
-                    Button {
-                        Task { await env.setupMaxima() }
-                    } label: {
-                        Label(
-                            env.maximaSettingUp ? "Setting up…" : "Set up Maxima",
-                            systemImage: env.maximaSettingUp
-                                ? "hourglass" : "arrow.down.circle.fill"
-                        )
-                        .font(TF.title(16))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(.accentColor)
-                    .disabled(
-                        env.selectedBottle == nil
-                        || env.maximaSettingUp
-                        || env.selectedBottle?.hasTitanfall2 != true
-                    )
-
-                    if env.maximaHelperRegistered {
-                        Button {
-                            Task { await env.uninstallMaxima() }
-                        } label: {
-                            Label("Unregister", systemImage: "trash")
-                                .font(TF.title(14))
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 6)
-                        }
-                        .buttonStyle(.glass)
-                        .disabled(env.maximaSettingUp)
-                    }
-                }
-            }
-            .padding([.horizontal, .bottom], 18)
-
-            if !env.maximaInstalled || !env.maximaHelperRegistered {
-                Text(maximaSetupNote)
-                    .font(TF.body(11))
-                    .foregroundStyle(.primary.opacity(0.72))
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 14)
-            }
-        }
-        .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accentMedium)), in: .rect(cornerRadius: 22))
-    }
-
-    private var maximaVersionLabel: String {
-        guard env.maximaInstalled else { return "Not installed" }
-        if let ver = env.maximaInstalledVersion {
-            return env.maximaUpdateAvailable ? "\(ver) (update)" : ver
-        }
-        return "Installed"
-    }
-
-    private var maximaSetupNote: String {
-        if env.selectedBottle?.hasTitanfall2 != true {
-            return "Titanfall 2 must be installed in the bottle before setting up Maxima."
-        }
-        if !env.maximaInstalled && !env.maximaHelperRegistered {
-            return "Maxima installs the EA launcher replacement inside your CrossOver bottle " +
-                   "and registers a background helper on your Mac to handle EA's login redirect."
-        }
-        if !env.maximaInstalled {
-            return "Maxima is not yet installed in this bottle."
-        }
-        return "MaximaHelper is not registered. Re-run setup to fix this."
     }
 
     // MARK: - Error card

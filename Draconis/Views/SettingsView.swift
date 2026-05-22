@@ -10,12 +10,14 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape.fill") }
             backendTab
                 .tabItem { Label("CrossOver", systemImage: "wineglass.fill") }
+            maximaTab
+                .tabItem { Label("Maxima", systemImage: "gamecontroller.fill") }
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "terminal") }
             aboutTab
                 .tabItem { Label("About", systemImage: "info.circle.fill") }
         }
-        .frame(width: 580, height: 460)
+        .frame(width: 580, height: 540)
     }
 
     // MARK: - General
@@ -131,6 +133,244 @@ struct SettingsView: View {
             }
             .padding(20)
         }
+    }
+
+    // MARK: - Maxima
+    //
+    // Maxima admin lives here (not in PlayView) — install / update /
+    // uninstall, MaximaHelper registration, and the per-bottle
+    // `MaximaRole` are all infrequent setup concerns rather than
+    // active gameplay. PlayView only surfaces the gameplay-facing
+    // launcher pill and progress/error during install.
+    private var maximaTab: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Status pills — install + helper-registration health.
+                GlassEffectContainer {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            StatusPill(
+                                label: "MaximaHelper",
+                                value: env.maximaHelperRegistered ? "Registered" : "Not registered",
+                                symbol: env.maximaHelperRegistered
+                                    ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
+                                active: env.maximaHelperRegistered
+                            )
+                            StatusPill(
+                                label: "Maxima",
+                                value: maximaVersionLabel,
+                                symbol: env.maximaInstalled
+                                    ? "checkmark.circle.fill" : "exclamationmark.circle.fill",
+                                active: env.maximaInstalled
+                            )
+                        }
+                        if let bottle = env.selectedBottle, env.maximaInstalled {
+                            Divider().overlay(.primary.opacity(0.10))
+                            HStack {
+                                Text("Role for this bottle")
+                                    .font(.callout)
+                                    .foregroundStyle(.primary.opacity(0.6))
+                                Spacer()
+                                Text(bottle.maximaRole.displayName)
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+                    .padding(20)
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+
+                // Action buttons — install / update / uninstall.
+                //
+                // Layout is driven by what's actually on disk, not by a
+                // user preference: each row is shown only when the
+                // operation it represents is meaningful. In particular,
+                // **Uninstall** is offered whenever `maximaInstalled` is
+                // true — including when the helper isn't registered or
+                // TF2 isn't installed — so users can always clean up
+                // an existing Maxima install regardless of surrounding
+                // state. (Gemini #20.)
+                GlassEffectContainer {
+                    VStack(spacing: 0) {
+                        // Set up Maxima — only when the bottle has no
+                        // maxima-cli.exe yet. Disabled if TF2 isn't
+                        // installed (Maxima auths against TF2's offer
+                        // ID; no game means nothing to auth).
+                        if !env.maximaInstalled {
+                            Button {
+                                Task { await env.setupMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Setting up…" : "Set up Maxima",
+                                    systemImage: env.maximaSettingUp
+                                        ? "hourglass" : "arrow.down.circle.fill"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(
+                                env.selectedBottle == nil
+                                || env.maximaSettingUp
+                                || env.selectedBottle?.hasTitanfall2 != true
+                            )
+                        }
+
+                        // Update Maxima — only meaningful when a newer
+                        // release exists and the binaries are already
+                        // in the bottle.
+                        if env.maximaInstalled && env.maximaUpdateAvailable {
+                            if !env.maximaInstalled { Divider().overlay(.primary.opacity(0.10)) }
+                            Button {
+                                Task { await env.updateMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Updating…" : "Update Maxima",
+                                    systemImage: env.maximaSettingUp ? "hourglass" : "arrow.up.circle.fill"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                        }
+
+                        // Register Helper — when binaries are installed
+                        // but the macOS helper isn't bound to qrc://.
+                        // setupMaxima() handles this case without
+                        // re-downloading the installer.
+                        if env.maximaInstalled && !env.maximaHelperRegistered {
+                            Divider().overlay(.primary.opacity(0.10))
+                            Button {
+                                Task { await env.setupMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Registering…" : "Register MaximaHelper",
+                                    systemImage: env.maximaSettingUp ? "hourglass" : "link.circle.fill"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                        }
+
+                        // Uninstall Maxima — available whenever binaries
+                        // are in the bottle, regardless of helper or
+                        // TF2 state. Users need a way out of every
+                        // intermediate state.
+                        if env.maximaInstalled {
+                            Divider().overlay(.primary.opacity(0.10))
+                            Button {
+                                Task { await env.uninstallMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Uninstalling…" : "Uninstall Maxima",
+                                    systemImage: env.maximaSettingUp ? "hourglass" : "trash"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                        }
+
+                        // Unregister Helper — when the macOS helper is
+                        // bound to qrc:// but no bottle install exists
+                        // (e.g. user uninstalled Maxima manually inside
+                        // a bottle, or switched bottles, etc.).
+                        if !env.maximaInstalled && env.maximaHelperRegistered {
+                            Divider().overlay(.primary.opacity(0.10))
+                            Button {
+                                Task { await env.uninstallMaxima() }
+                            } label: {
+                                Label("Unregister Helper", systemImage: "trash")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.maximaSettingUp)
+                        }
+                    }
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+
+                // Setup hint, when something's missing.
+                if !env.maximaInstalled || !env.maximaHelperRegistered {
+                    GlassEffectContainer {
+                        Text(maximaSetupNote)
+                            .font(.callout)
+                            .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(20)
+                    }
+                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                }
+
+                // Reset Onboarding — long-pressed for in the wizard
+                // flow, useful when a user installs in a new bottle
+                // or wants to re-run the picker. (D4.)
+                GlassEffectContainer {
+                    Button {
+                        env.showOnboarding = true
+                    } label: {
+                        Label("Open Onboarding wizard…", systemImage: "wand.and.stars")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.glass)
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+
+                // About + learn-more link.
+                GlassEffectContainer {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("About Maxima")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Maxima is an open-source replacement for the EA Desktop launcher. It runs inside your CrossOver bottle and handles EA authentication so Titanfall 2 can sign in without the full EA app.")
+                            .font(.callout)
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Link("Learn more about Maxima →",
+                             destination: URL(string: "https://github.com/AA-EION/Maxima-Draconis")!)
+                            .font(.callout)
+                    }
+                    .padding(20)
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+            }
+            .padding(20)
+        }
+    }
+
+    private var maximaVersionLabel: String {
+        guard env.maximaInstalled else { return "Not installed" }
+        if let ver = env.maximaInstalledVersion {
+            return env.maximaUpdateAvailable ? "\(ver) (update)" : ver
+        }
+        return "Installed"
+    }
+
+    private var maximaSetupNote: String {
+        if env.selectedBottle?.hasTitanfall2 != true {
+            return "Titanfall 2 must be installed in the bottle before setting up Maxima."
+        }
+        if !env.maximaInstalled && !env.maximaHelperRegistered {
+            return "Maxima installs the EA launcher replacement inside your CrossOver bottle " +
+                   "and registers a background helper on your Mac to handle EA's login redirect."
+        }
+        if !env.maximaInstalled {
+            return "Maxima is not yet installed in this bottle."
+        }
+        return "MaximaHelper is not registered. Re-run setup to fix this."
     }
 
     // MARK: - Advanced

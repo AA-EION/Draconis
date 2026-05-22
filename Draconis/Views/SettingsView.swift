@@ -182,41 +182,22 @@ struct SettingsView: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 16))
 
                 // Action buttons — install / update / uninstall.
+                //
+                // Layout is driven by what's actually on disk, not by a
+                // user preference: each row is shown only when the
+                // operation it represents is meaningful. In particular,
+                // **Uninstall** is offered whenever `maximaInstalled` is
+                // true — including when the helper isn't registered or
+                // TF2 isn't installed — so users can always clean up
+                // an existing Maxima install regardless of surrounding
+                // state. (Gemini #20.)
                 GlassEffectContainer {
                     VStack(spacing: 0) {
-                        if env.maximaInstalled && env.maximaHelperRegistered {
-                            if env.maximaUpdateAvailable {
-                                Button {
-                                    Task { await env.updateMaxima() }
-                                } label: {
-                                    Label(
-                                        env.maximaSettingUp ? "Updating…" : "Update Maxima",
-                                        systemImage: env.maximaSettingUp ? "hourglass" : "arrow.up.circle.fill"
-                                    )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 14)
-                                }
-                                .buttonStyle(.glass)
-                                .disabled(env.selectedBottle == nil || env.maximaSettingUp)
-
-                                Divider().overlay(.primary.opacity(0.10))
-                            }
-
-                            Button {
-                                Task { await env.uninstallMaxima() }
-                            } label: {
-                                Label(
-                                    env.maximaSettingUp ? "Uninstalling…" : "Uninstall Maxima",
-                                    systemImage: env.maximaSettingUp ? "hourglass" : "trash"
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
-                            }
-                            .buttonStyle(.glass)
-                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
-                        } else {
+                        // Set up Maxima — only when the bottle has no
+                        // maxima-cli.exe yet. Disabled if TF2 isn't
+                        // installed (Maxima auths against TF2's offer
+                        // ID; no game means nothing to auth).
+                        if !env.maximaInstalled {
                             Button {
                                 Task { await env.setupMaxima() }
                             } label: {
@@ -235,20 +216,86 @@ struct SettingsView: View {
                                 || env.maximaSettingUp
                                 || env.selectedBottle?.hasTitanfall2 != true
                             )
+                        }
 
-                            if env.maximaHelperRegistered {
-                                Divider().overlay(.primary.opacity(0.10))
-                                Button {
-                                    Task { await env.uninstallMaxima() }
-                                } label: {
-                                    Label("Unregister Helper", systemImage: "trash")
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 20)
-                                        .padding(.vertical, 14)
-                                }
-                                .buttonStyle(.glass)
-                                .disabled(env.maximaSettingUp)
+                        // Update Maxima — only meaningful when a newer
+                        // release exists and the binaries are already
+                        // in the bottle.
+                        if env.maximaInstalled && env.maximaUpdateAvailable {
+                            if !env.maximaInstalled { Divider().overlay(.primary.opacity(0.10)) }
+                            Button {
+                                Task { await env.updateMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Updating…" : "Update Maxima",
+                                    systemImage: env.maximaSettingUp ? "hourglass" : "arrow.up.circle.fill"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
                             }
+                            .buttonStyle(.glass)
+                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                        }
+
+                        // Register Helper — when binaries are installed
+                        // but the macOS helper isn't bound to qrc://.
+                        // setupMaxima() handles this case without
+                        // re-downloading the installer.
+                        if env.maximaInstalled && !env.maximaHelperRegistered {
+                            Divider().overlay(.primary.opacity(0.10))
+                            Button {
+                                Task { await env.setupMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Registering…" : "Register MaximaHelper",
+                                    systemImage: env.maximaSettingUp ? "hourglass" : "link.circle.fill"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                        }
+
+                        // Uninstall Maxima — available whenever binaries
+                        // are in the bottle, regardless of helper or
+                        // TF2 state. Users need a way out of every
+                        // intermediate state.
+                        if env.maximaInstalled {
+                            Divider().overlay(.primary.opacity(0.10))
+                            Button {
+                                Task { await env.uninstallMaxima() }
+                            } label: {
+                                Label(
+                                    env.maximaSettingUp ? "Uninstalling…" : "Uninstall Maxima",
+                                    systemImage: env.maximaSettingUp ? "hourglass" : "trash"
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.selectedBottle == nil || env.maximaSettingUp)
+                        }
+
+                        // Unregister Helper — when the macOS helper is
+                        // bound to qrc:// but no bottle install exists
+                        // (e.g. user uninstalled Maxima manually inside
+                        // a bottle, or switched bottles, etc.).
+                        if !env.maximaInstalled && env.maximaHelperRegistered {
+                            Divider().overlay(.primary.opacity(0.10))
+                            Button {
+                                Task { await env.uninstallMaxima() }
+                            } label: {
+                                Label("Unregister Helper", systemImage: "trash")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 14)
+                            }
+                            .buttonStyle(.glass)
+                            .disabled(env.maximaSettingUp)
                         }
                     }
                 }

@@ -290,22 +290,40 @@ struct OnboardingView: View {
                 }
 
                 // Maxima route only: once the bottle has Maxima but
-                // not yet Titanfall 2, surface a button that opens
-                // `maxima.exe` inside the bottle so the user can do
-                // the OAuth login + game-install flow interactively.
+                // not yet Titanfall 2, auto-fire `maxima.exe
+                // --install titanfall-2 --install-path ...` and
+                // surface phase-driven status text. The user only
+                // has to complete the OAuth login inside Maxima —
+                // Draconis watches `FInstall.txt` to know when the
+                // install is truly complete and gracefully closes
+                // the UI then.
                 if selectedSource == .maxima,
-                   let bottle = env.bottles.first(where: { $0.hasMaxima && !$0.hasTitanfall2 }) {
-                    Button {
-                        env.openMaximaUI(in: bottle)
-                    } label: {
-                        Label("Open Maxima to install Titanfall 2",
-                              systemImage: "arrow.up.right.square.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                   let bottle = env.bottles.first(where: { $0.hasMaxima && !$0.hasTitanfall2 })
+                {
+                    MaximaInstallStatusCard(phase: env.maximaSetupPhase)
+                        .padding(.top, 4)
+                        .onAppear {
+                            // Single-shot. AppEnvironment.startGameInstallViaUI
+                            // is idempotent against `maximaSetupPhase`,
+                            // so re-renders here don't spawn a second
+                            // maxima.exe.
+                            env.startGameInstallViaUI(slug: "titanfall-2", in: bottle)
+                        }
+                    if case .failed = env.maximaSetupPhase {
+                        Button {
+                            // Reset phase to .idle so the next call
+                            // can spawn again.
+                            env.maximaSetupPhase = .idle
+                            env.startGameInstallViaUI(slug: "titanfall-2", in: bottle)
+                        } label: {
+                            Label("Retry install", systemImage: "arrow.clockwise")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .tint(.accentColor)
+                        .padding(.top, 4)
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(.accentColor)
-                    .padding(.top, 4)
                 }
 
                 if shouldOfferMaximaRoleStep, case .done = env.autoInstallStage {
@@ -472,12 +490,27 @@ struct OnboardingView: View {
     }
 
     private func nextPageForExistingBottle(_ bottle: WineBottle) -> ExistingBottleRoute {
-        if bottle.hasTitanfall2 {
+        // For Maxima-installed bottles the .exe can appear mid-download.
+        // Use the FInstall.txt marker (written only after the install
+        // truly completes) as the "is this a real install?" check, so
+        // we don't dismiss the wizard on a partial state.
+        let installComplete = !bottle.hasMaxima ||
+            FileManager.default.fileExists(
+                atPath: PathResolver.driveC(in: bottle.prefixURL)
+                    .appendingPathComponent("Program Files (x86)/Origin Games/Titanfall2/FInstall.txt")
+                    .path
+            )
+        if bottle.hasTitanfall2 && installComplete {
             return MaximaRole.isExplicitlySet(forBottle: bottle.id)
                 ? .dismiss
                 : .maximaRole
         }
-        if bottle.hasLauncher {
+        if bottle.hasLauncher || bottle.hasMaxima {
+            // Includes the "partial install" case: bottle has Maxima
+            // but FInstall.txt is missing → resume the install on the
+            // progress page (Draconis re-spawns maxima.exe --install,
+            // Maxima picks up where it left off if its queue state is
+            // healthy, or restarts otherwise).
             return .progress
         }
         return .sourceChoice
@@ -552,6 +585,78 @@ struct OnboardingView: View {
 }
 
 // MARK: - Subviews
+
+/// Phase-driven status card shown on the wizard's progress page while
+/// `maxima.exe --install <slug>` is running. Drives off
+/// `AppEnvironment.MaximaSetupPhase` so the user can tell at a glance
+/// whether to log in (Maxima UI is open), wait (download in flight),
+/// or retry (failure surfaced).
+private struct MaximaInstallStatusCard: View {
+    let phase: AppEnvironment.MaximaSetupPhase
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundStyle(tint)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                Text(detail)
+                    .font(TF.body(11))
+                    .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var icon: String {
+        switch phase {
+        case .idle:           return "circle.dotted"
+        case .installingGame: return "arrow.down.circle"
+        case .finishing:      return "checkmark.circle"
+        case .done:           return "checkmark.circle.fill"
+        case .failed:         return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch phase {
+        case .failed: return .red
+        case .done:   return .green
+        default:      return .accentColor
+        }
+    }
+
+    private var title: String {
+        switch phase {
+        case .idle:           return "Preparing install…"
+        case .installingGame: return "Maxima is open — complete the install"
+        case .finishing:      return "Wrapping up…"
+        case .done:           return "Titanfall 2 installed"
+        case .failed:         return "Install didn't finish"
+        }
+    }
+
+    private var detail: String {
+        switch phase {
+        case .idle:
+            return "Spawning maxima.exe — give it a moment to start up inside the bottle."
+        case .installingGame:
+            return "Log into EA when Maxima asks (browser opens on macOS). Once logged in, the download starts automatically. Draconis watches for FInstall.txt and closes Maxima when the game is fully installed — you don't need to keep an eye on it."
+        case .finishing:
+            return "FInstall.txt was detected. Closing Maxima gracefully, then advancing the wizard."
+        case .done:
+            return "Titanfall 2 finished downloading. The wizard will advance to the next step automatically."
+        case .failed(let msg):
+            return msg
+        }
+    }
+}
 
 /// Row used on the `bottleChoice` page for each existing bottle.
 /// Shows the bottle name + a horizontal strip of small status chips

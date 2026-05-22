@@ -77,6 +77,42 @@ public final class AppEnvironment: ObservableObject {
     @Published public var applyingMaximaRole: Bool = false
     @Published public var maximaRoleError: String?
 
+    /// Phase of the wizard's Maxima-route auto-install flow. Drives
+    /// the copy + button state on the progress page so the user can
+    /// see what's happening (Maxima still booting? login? game
+    /// downloading? almost done?). Independent of `autoInstallStage`
+    /// which is owned by the BottleInstaller poller.
+    @Published public var maximaSetupPhase: MaximaSetupPhase = .idle
+
+    /// Handle to the background install + polling task spawned by
+    /// `startGameInstallViaUI`. Stored so the wizard can cancel the
+    /// 2-hour polling loop if the user backs out / re-enters / closes
+    /// Draconis — otherwise the loop leaks and could later flip
+    /// `maximaSetupPhase` to a stale value.
+    private var maximaInstallTask: Task<Void, Never>?
+
+    /// Public so the OnboardingView can pattern-match phase
+    /// transitions without re-implementing the comparison logic.
+    public enum MaximaSetupPhase: Equatable, Sendable {
+        /// Either the wizard isn't on the Maxima route, or we've
+        /// already finished and gone idle.
+        case idle
+        /// `maxima.exe --install ...` has been spawned. The user is
+        /// either logging in or watching the download bar inside
+        /// Maxima's own UI. We poll for `FInstall.txt` in the
+        /// background.
+        case installingGame(pid: pid_t, slug: String, installPath: String)
+        /// `FInstall.txt` appeared. We're SIGTERM-ing maxima.exe to
+        /// close it gracefully, then we'll move to `.done`.
+        case finishing
+        /// All done — wizard can advance.
+        case done
+        /// Something went wrong (maxima.exe exited before marker
+        /// appeared, spawn failed, etc.). The user can retry from
+        /// the wizard.
+        case failed(String)
+    }
+
     // Maxima section visibility (persisted preference)
     @Published public var maximaEnabled: Bool = UserDefaults.standard.bool(forKey: "maximaEnabled") {
         didSet { UserDefaults.standard.set(maximaEnabled, forKey: "maximaEnabled") }
@@ -334,6 +370,15 @@ public final class AppEnvironment: ObservableObject {
     public func cancelAutoBottleInstall() {
         BottleInstaller.shared.stopWatching()
         autoInstallStage = nil
+        // Tear down the maxima-route install/poll loop too — if the
+        // user closes the wizard mid-install, we don't want a 2-hour
+        // background poller surviving and later mutating
+        // `maximaSetupPhase` against an out-of-date UI.
+        maximaInstallTask?.cancel()
+        maximaInstallTask = nil
+        if case .installingGame = maximaSetupPhase {
+            maximaSetupPhase = .idle
+        }
     }
 
     /// Attach the wizard's progress watcher to an existing bottle the
@@ -467,22 +512,163 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
-    /// Launch Maxima's graphical UI (`maxima.exe`) inside the given
-    /// bottle. Used by the wizard's Maxima route so the user can do
-    /// the OAuth login + library browse + game-install steps that
-    /// can't be scripted from Draconis. Surfaces failures via
-    /// `maximaError`; the spawn itself is fire-and-forget (the UI
-    /// runs in the bottle, the user closes it when they're done).
-    public func openMaximaUI(in bottle: WineBottle) {
-        Task {
-            do {
-                try await MaximaService.shared.launchMaximaUI(in: bottle)
-            } catch {
-                DebugLog.shared.error("maxima.ui", error.localizedDescription)
+    /// Wizard's Maxima-route end game: spawn `maxima.exe --install
+    /// <slug> --install-path <path>` (added in Maxima-Draconis
+    /// v0.12.0), then watch the install dir for `FInstall.txt`
+    /// (`INSTALL_MARKER_FILENAME` upstream, written by
+    /// `ContentManager::update` when the download settles). When the
+    /// marker appears, gracefully terminate maxima.exe via SIGTERM
+    /// (escalating to SIGKILL after 5s) and mark the phase done.
+    /// If maxima exits before the marker appears, surface a clear
+    /// error so the user can retry instead of staring at a frozen
+    /// wizard.
+    ///
+    /// Idempotent against `maximaSetupPhase` — if a flow is already
+    /// in progress this is a no-op, so re-entering the progress page
+    /// doesn't spawn a second maxima.exe.
+    public func startGameInstallViaUI(
+        slug: String,
+        in bottle: WineBottle,
+        installPath: String = MaximaService.defaultTitanfall2WindowsPath
+    ) {
+        // Synchronous lock against the .idle slot — `onAppear` can
+        // fire multiple times during view transitions, and
+        // `startGameInstallViaUI` contains await points before its
+        // first state mutation, so two near-simultaneous calls could
+        // both pass an "is idle?" check inside the Task and end up
+        // spawning maxima.exe twice. Flip the phase here, before any
+        // async work, so the second caller bails immediately.
+        if case .idle = maximaSetupPhase {
+            // pid 0 is a sentinel — the real pid lands once
+            // installGameViaUI returns. We use 0 just to take the
+            // slot; consumers shouldn't read pid until phase has
+            // transitioned through the async spawn.
+            maximaSetupPhase = .installingGame(
+                pid: 0,
+                slug: slug,
+                installPath: installPath
+            )
+        } else {
+            return
+        }
+        maximaError = nil
+        // Cancel any prior task before launching a new one (defensive;
+        // the .idle gate above should prevent overlap, but explicit
+        // beats implicit).
+        maximaInstallTask?.cancel()
+        maximaInstallTask = Task { [weak self] in
+            guard let self else { return }
+            // Early out if FInstall.txt is already on disk from a
+            // previous run. We do this inside the Task because
+            // `didInstallComplete` is actor-isolated to MaximaService.
+            if await MaximaService.shared.didInstallComplete(in: bottle, installPath: installPath) {
+                DebugLog.shared.info(
+                    "maxima.install",
+                    "FInstall.txt already present at \(installPath) — marking done"
+                )
                 await MainActor.run {
+                    self.maximaSetupPhase = .done
+                }
+                return
+            }
+            do {
+                let pid = try await MaximaService.shared.installGameViaUI(
+                    in: bottle,
+                    slug: slug,
+                    installPath: installPath
+                )
+                await MainActor.run {
+                    self.maximaSetupPhase = .installingGame(
+                        pid: pid,
+                        slug: slug,
+                        installPath: installPath
+                    )
+                }
+                await self.pollForInstallCompletion(
+                    pid: pid,
+                    bottle: bottle,
+                    installPath: installPath
+                )
+            } catch is CancellationError {
+                DebugLog.shared.info("maxima.install", "Install task cancelled")
+            } catch {
+                DebugLog.shared.error("maxima.install", error.localizedDescription)
+                await MainActor.run {
+                    self.maximaSetupPhase = .failed(error.localizedDescription)
                     self.maximaError = error.localizedDescription
                 }
             }
+        }
+    }
+
+    /// Polling loop for the `FInstall.txt` marker. Runs in the
+    /// background after `installGameViaUI` returns; check every 2s
+    /// up to a generous ceiling. If the spawned `maxima.exe` exits
+    /// before the marker appears, treat that as user cancellation /
+    /// failure rather than success.
+    ///
+    /// 2s is a deliberate compromise: faster polls would spike disk
+    /// I/O on a download that's writing many small files (lots of
+    /// FileManager.fileExists calls during file growth races), and
+    /// slower polls add visible UI lag.
+    private func pollForInstallCompletion(
+        pid: pid_t,
+        bottle: WineBottle,
+        installPath: String
+    ) async {
+        let pollInterval = Duration.seconds(2)
+        // Upper bound: 2 hours. EA's CDN ranges from a few minutes
+        // (Titanfall 2 over a fast line) to ~half-hour on slower
+        // connections. 2h is way past any realistic completion
+        // window — past it we assume something's stuck.
+        let maxPolls = (2 * 60 * 60) / 2
+        for _ in 0..<maxPolls {
+            // `try` (not `try?`) so a wizard close / cancellation
+            // propagates out of this loop as `CancellationError`
+            // instead of being silently swallowed for the full 2h.
+            do {
+                try await Task.sleep(for: pollInterval)
+            } catch {
+                DebugLog.shared.info("maxima.install", "Polling loop cancelled")
+                return
+            }
+            // Marker present? We're done.
+            if await MaximaService.shared.didInstallComplete(in: bottle, installPath: installPath) {
+                DebugLog.shared.ok(
+                    "maxima.install",
+                    "FInstall.txt detected at \(installPath) — closing maxima.exe"
+                )
+                await MainActor.run {
+                    self.maximaSetupPhase = .finishing
+                }
+                await MaximaService.shared.signalProcessQuit(pid: pid)
+                await self.refreshBottles()
+                await MainActor.run {
+                    self.maximaSetupPhase = .done
+                }
+                return
+            }
+            // Process gone without marker? User canceled or it crashed.
+            // `kill(pid, 0)` returns -1 (with errno=ESRCH) when the
+            // process no longer exists.
+            if Darwin.kill(pid, 0) != 0 {
+                let msg = "Maxima closed before the install finished (no FInstall.txt at \(installPath))."
+                DebugLog.shared.warn("maxima.install", msg)
+                await MainActor.run {
+                    self.maximaSetupPhase = .failed(msg)
+                    self.maximaError = msg
+                }
+                return
+            }
+        }
+        // Hit the upper bound. Surface as failure so the user can
+        // retry. We do NOT auto-kill maxima here — the user might
+        // still want to interact with it.
+        let msg = "Install didn't complete after 2 hours. Check Maxima for errors."
+        DebugLog.shared.warn("maxima.install", msg)
+        await MainActor.run {
+            self.maximaSetupPhase = .failed(msg)
+            self.maximaError = msg
         }
     }
 

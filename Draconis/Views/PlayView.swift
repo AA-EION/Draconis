@@ -173,9 +173,9 @@ struct PlayView: View {
             StatusPill(
                 label: "Launcher",
                 value: launcherStatusValue,
-                symbol: env.selectedBottle?.hasLauncher == true
+                symbol: hasAnyFrontend
                     ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
-                active: env.selectedBottle?.hasLauncher == true
+                active: hasAnyFrontend
             )
             StatusPill(
                 label: "Northstar",
@@ -189,10 +189,25 @@ struct PlayView: View {
 
     private var launcherStatusValue: String {
         guard let bottle = env.selectedBottle else { return "Missing" }
-        if bottle.hasSteam { return "Steam" }
-        if bottle.hasEAApp { return "EA App" }
-        if bottle.hasEpicGames { return "Epic" }
+        // Preference order matches the wizard's source picker (most
+        // reliable on macOS first). Maxima counts as a frontend — it's
+        // the EA-auth backbone when nothing else is installed.
+        if bottle.hasMaxima     { return "Maxima" }
+        if bottle.hasEAApp      { return "EA App" }
+        if bottle.hasSteam      { return "Steam" }
+        if bottle.hasEpicGames  { return "Epic" }
         return "Missing"
+    }
+
+    /// True when ANY launcher / auth-frontend is installed in the
+    /// selected bottle — Steam, EA app, Epic, OR Maxima. Used by the
+    /// status pill and the launch button to decide whether the bottle
+    /// can drive TF2 at all. `WineBottle.hasLauncher` deliberately
+    /// excludes Maxima (Maxima is conceptually a separate role), so
+    /// this view-local helper unions them.
+    private var hasAnyFrontend: Bool {
+        guard let bottle = env.selectedBottle else { return false }
+        return bottle.hasLauncher || bottle.hasMaxima
     }
 
     private var northstarStatusValue: String {
@@ -292,9 +307,16 @@ struct PlayView: View {
                     || env.launchInFlight
                     || env.selectedBottle?.hasTitanfall2 != true
                     || (mode == .northstar && env.selectedBottle?.hasNorthstar != true)
-                    || (mode == .northstar && env.selectedBottle?.hasSteam != true)
                     || env.updating
                 )
+                // NOTE: there used to be an additional
+                // `(mode == .northstar && bottle.hasSteam != true)`
+                // condition here — leftover from the old launch path
+                // that ran `steam.exe -applaunch 1237970 -northstar`.
+                // `NorthstarLauncher.swift`'s decision matrix now
+                // always uses `NorthstarLauncher.exe -noOriginStartup`
+                // directly (no Steam needed), so Northstar mode no
+                // longer depends on Steam being in the bottle.
 
                 // Install button: only when Northstar is absent.
                 // Auto-update runs on each launch when it is already installed.

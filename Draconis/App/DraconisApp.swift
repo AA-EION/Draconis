@@ -5,15 +5,28 @@ import AppKit
 struct DraconisApp: App {
     @StateObject private var environment = AppEnvironment()
 
+    init() {
+        // Only start Sentry if the user has already accepted the privacy notice.
+        // First-time users see PrivacyConsentView, which calls SentryConfig.boot()
+        // after they accept.
+        if ConsentManager.isAccepted { SentryConfig.boot() }
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(environment)
-                .preferredColorScheme(.dark)
-                .frame(minWidth: 980, minHeight: 620)
-                .task { await environment.bootstrap() }
-                .background(WindowConfigurator())
-                .background(TransparentBackdrop().ignoresSafeArea())
+            Group {
+                if environment.privacyConsentAccepted {
+                    ContentView()
+                        .task { await environment.bootstrap() }
+                } else {
+                    PrivacyConsentView()
+                }
+            }
+            .environmentObject(environment)
+            .preferredColorScheme(.dark)
+            .frame(minWidth: 980, minHeight: 620)
+            .background(WindowConfigurator())
+            .background(TransparentBackdrop().ignoresSafeArea())
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
@@ -128,6 +141,13 @@ struct DraconisCommands: Commands {
 
         // ── Help extras ───────────────────────────────────────────────────────
         CommandGroup(after: .help) {
+            Button("Report a Bug…") {
+                env.showBugReport = true
+            }
+            .keyboardShortcut("b", modifiers: [.command, .option])
+
+            Divider()
+
             Button("Open Support Folder in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([PathResolver.draconisSupport])
             }

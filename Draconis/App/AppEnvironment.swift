@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
+import Sentry
 
 /// Single source of truth for app-wide state.
 @MainActor
@@ -34,6 +35,12 @@ public final class AppEnvironment: ObservableObject {
     @Published public var updating: Bool = false
     @Published public var updateProgress: NorthstarUpdater.Progress?
     @Published public var lastUpdateError: String?
+
+    // Privacy consent — mirrors ConsentManager so views can react to changes.
+    @Published public var privacyConsentAccepted: Bool = ConsentManager.isAccepted
+
+    // Bug report sheet
+    @Published public var showBugReport: Bool = false
 
     // Onboarding + console (manual UserDefaults mirror — @AppStorage doesn't
     // integrate with ObservableObject's objectWillChange).
@@ -501,6 +508,10 @@ public final class AppEnvironment: ObservableObject {
             await refreshMaximaState()
         } catch {
             DebugLog.shared.error("maxima.role", error.localizedDescription)
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "applyMaximaRole", key: "operation")
+                scope.setTag(value: role.rawValue, key: "maxima.role")
+            }
             await MainActor.run {
                 self.maximaRoleError = error.localizedDescription
             }
@@ -588,6 +599,10 @@ public final class AppEnvironment: ObservableObject {
                 DebugLog.shared.info("maxima.install", "Install task cancelled")
             } catch {
                 DebugLog.shared.error("maxima.install", error.localizedDescription)
+                SentrySDK.capture(error: error) { scope in
+                    scope.setTag(value: "startGameInstallViaUI", key: "operation")
+                    scope.setTag(value: slug, key: "maxima.slug")
+                }
                 await MainActor.run {
                     self.maximaSetupPhase = .failed(error.localizedDescription)
                     self.maximaError = error.localizedDescription
@@ -658,6 +673,10 @@ public final class AppEnvironment: ObservableObject {
             if Darwin.kill(pid, 0) != 0 {
                 let msg = "Maxima closed before the install finished (no FInstall.txt at \(installPath))."
                 DebugLog.shared.warn("maxima.install", msg)
+                SentrySDK.capture(message: msg) { scope in
+                    scope.setTag(value: "pollForInstallCompletion", key: "operation")
+                    scope.setLevel(.warning)
+                }
                 await MainActor.run {
                     self.maximaSetupPhase = .failed(msg)
                     self.maximaError = msg
@@ -670,6 +689,10 @@ public final class AppEnvironment: ObservableObject {
         // still want to interact with it.
         let msg = "Install didn't complete after 2 hours. Check Maxima for errors."
         DebugLog.shared.warn("maxima.install", msg)
+        SentrySDK.capture(message: msg) { scope in
+            scope.setTag(value: "pollForInstallCompletion", key: "operation")
+            scope.setLevel(.warning)
+        }
         await MainActor.run {
             self.maximaSetupPhase = .failed(msg)
             self.maximaError = msg
@@ -691,11 +714,49 @@ public final class AppEnvironment: ObservableObject {
             maximaInstalled = false
             maximaHelperRegistered = false
             maximaInstalledVersion = nil
+            syncSentryScope()
             return
         }
         maximaInstalled = await MaximaService.shared.isInstalled(in: bottle)
         maximaHelperRegistered = await MaximaService.shared.isHelperRegistered()
         maximaInstalledVersion = MaximaService.shared.installedVersion
+        syncSentryScope()
+    }
+
+    // MARK: - Sentry scope sync
+
+    /// Push current environment state into Sentry's scope so every event
+    /// (crash, handled error, or manual bug report) carries up-to-date context
+    /// without the user having to do anything.
+    private func syncSentryScope() {
+        guard ConsentManager.isAccepted else { return }
+        let bottle = selectedBottle
+        let nsVersion = bottle?.northstarVersion
+        let maxVersion = maximaInstalledVersion
+        SentrySDK.configureScope { scope in
+            scope.setTag(value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+                         key: "app.version")
+            scope.setTag(value: self.crossOverInstalled ? "true" : "false",
+                         key: "crossover.installed")
+            scope.setTag(value: bottle != nil ? "true" : "false",
+                         key: "bottle.exists")
+            scope.setTag(value: bottle?.name ?? "none",
+                         key: "bottle.name")
+            scope.setTag(value: bottle?.hasTitanfall2 == true ? "true" : "false",
+                         key: "bottle.hasTF2")
+            scope.setTag(value: bottle?.hasNorthstar == true ? "true" : "false",
+                         key: "bottle.hasNS")
+            scope.setTag(value: bottle?.hasSteam == true ? "true" : "false",
+                         key: "bottle.hasSteam")
+            scope.setTag(value: bottle?.hasEAApp == true ? "true" : "false",
+                         key: "bottle.hasEA")
+            scope.setTag(value: bottle?.hasMaxima == true ? "true" : "false",
+                         key: "bottle.hasMaxima")
+            scope.setTag(value: bottle?.maximaRole.rawValue ?? "none",
+                         key: "maxima.role")
+            if let v = nsVersion  { scope.setTag(value: v, key: "northstar.version") }
+            if let v = maxVersion { scope.setTag(value: v, key: "maxima.version") }
+        }
     }
 
     public func setupMaxima() async {
@@ -726,6 +787,9 @@ public final class AppEnvironment: ObservableObject {
         } catch {
             maximaError = error.localizedDescription
             DebugLog.shared.error("maxima", error.localizedDescription)
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "setupMaxima", key: "operation")
+            }
         }
     }
 
@@ -761,6 +825,9 @@ public final class AppEnvironment: ObservableObject {
         } catch {
             maximaError = error.localizedDescription
             DebugLog.shared.error("maxima", error.localizedDescription)
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "updateMaxima", key: "operation")
+            }
         }
     }
 
@@ -835,6 +902,10 @@ public final class AppEnvironment: ObservableObject {
         } catch {
             lastLaunchError = error.localizedDescription
             DebugLog.shared.error("app", error.localizedDescription)
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "launch", key: "operation")
+                scope.setTag(value: mode.rawValue, key: "launch.mode")
+            }
             launchInFlight = false
             logTailTask?.cancel()
             logTailTask = nil
@@ -1131,6 +1202,9 @@ public final class AppEnvironment: ObservableObject {
         } catch {
             DebugLog.shared.error("app", error.localizedDescription)
             lastUpdateError = error.localizedDescription
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "installLatestNorthstar", key: "operation")
+            }
         }
     }
 }

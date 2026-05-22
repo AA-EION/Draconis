@@ -433,6 +433,23 @@ struct SettingsView: View {
                 .foregroundStyle(.tertiary)
 
             Spacer()
+
+            HStack(spacing: 12) {
+                Button {
+                    env.showBugReport = true
+                } label: {
+                    Label("Report a Bug", systemImage: "ladybug.fill")
+                }
+                .buttonStyle(.glass)
+
+                Button {
+                    env.showOnboarding = true
+                } label: {
+                    Label("Setup Wizard", systemImage: "wand.and.stars")
+                }
+                .buttonStyle(.glass)
+            }
+            .padding(.bottom, 24)
         }
         .padding()
     }

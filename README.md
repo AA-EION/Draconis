@@ -103,6 +103,30 @@ When Maxima is installed in a bottle, Draconis routes launches through it for EA
 
 If your Titanfall 2 EA license isn't linked to your EA account (Steam-only owners), Maxima can't see the game in your library. Linking accounts at [ea.com](https://www.ea.com) resolves this — takes about 30 seconds.
 
+## Privacy & error reporting
+
+On first launch Draconis presents a **Privacy & Data Notice** you must accept before the app opens. This acceptance is stored in `~/Library/Preferences/org.draconis.launcher.plist` and is remembered permanently — you will not be asked again unless you delete that file or run `defaults delete org.draconis.launcher`.
+
+**What's collected:**
+
+- Crash reports and handled errors via [Sentry](https://sentry.io/privacy/) (EU servers)
+- Bottle state (which components are installed), app version, CrossOver availability
+- Last 60 lines of console output when you submit a bug report (home-directory path replaced with `~`)
+- Optional: display name and contact handle you enter yourself in a bug report
+
+**Third-party services — each governs their own data:**
+
+| Service | What it handles | Privacy policy |
+|---|---|---|
+| Sentry | Crash / error telemetry and bug feedback | [sentry.io/privacy](https://sentry.io/privacy/) |
+| GitHub | Source code, releases, public issues | [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
+| Electronic Arts / Maxima | EA authentication and game downloads (if using Maxima) | [ea.com/legal/privacy-policy](https://www.ea.com/legal/privacy-policy) |
+| Northstar master server | IP visibility when connecting to community servers | [northstar.tf](https://northstar.tf) |
+
+Draconis does not run its own remote database. To withdraw consent, delete your preferences (`defaults delete org.draconis.launcher`) — the notice will reappear on next launch.
+
+**Reporting a bug:** use **Help → Report a Bug…** (⌘⌥B) or the **Report a Bug** button in Settings → About. Your last 60 console lines and bottle state are bundled automatically; description is required, name and contact are optional.
+
 ## Building
 
 ```bash

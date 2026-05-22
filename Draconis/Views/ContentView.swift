@@ -47,6 +47,17 @@ struct ContentView: View {
             DraconisUpdateSheet(release: release)
                 .environmentObject(env)
         }
+        .sheet(isPresented: $env.showBugReport) {
+            BugReportSheet()
+                .environmentObject(env)
+        }
+        .overlay {
+            if !env.privacyConsentAccepted {
+                PrivacyConsentView()
+                    .environmentObject(env)
+                    .transition(.opacity)
+            }
+        }
         .navigationTitle("Draconis")
     }
 

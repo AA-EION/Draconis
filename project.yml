@@ -5,6 +5,11 @@
 
 name: Draconis
 
+packages:
+  sentry-cocoa:
+    url: https://github.com/getsentry/sentry-cocoa
+    minorVersion: "9.14.0"
+
 options:
   bundleIdPrefix: org.draconis
   createIntermediateGroups: true
@@ -55,6 +60,9 @@ targets:
     # away the `$(MARKETING_VERSION)` placeholders and shipping every
     # release as "1.0" in the About panel. Instead we point INFOPLIST_FILE
     # at the hand-managed plist in settings.base below.
+    dependencies:
+      - package: sentry-cocoa
+        product: Sentry
     entitlements:
       path: Draconis/Resources/Draconis.entitlements
     settings:

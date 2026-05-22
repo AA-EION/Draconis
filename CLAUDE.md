@@ -119,6 +119,42 @@ Maxima supports offline play after a first successful online launch (license fil
 - `Log.*` (alias for `DebugLog.shared.*`) for all in-app console output. Use `.run` for shell commands, `.ok` for success, `.error` for failures.
 - New downloads → `PathResolver.downloadsCache`. New per-bottle logs → `PathResolver.bottleLogFile(for:)`.
 
+## Error tracking & privacy consent (Sentry)
+
+Draconis integrates `sentry-cocoa` v9.14.0 (SPM) for crash reports and bug feedback.
+
+### Key files
+
+| File | Role |
+|---|---|
+| `Draconis/Services/ConsentManager.swift` | `ConsentManager` — reads/writes `UserDefaults.standard["privacyConsentAccepted"]`; `SentryConfig` — idempotent `boot()` that configures and starts the SDK |
+| `Draconis/Services/BugReporter.swift` | `BugReportContext` (Sendable snapshot of AppEnvironment state) + `BugReporter` actor that submits a `SentryEvent` + `SentryUserFeedback` pair |
+| `Draconis/Views/PrivacyConsentView.swift` | Full-window overlay shown until consent; "Decline & Quit" calls `NSApp.terminate`; "Accept & Continue" calls `ConsentManager.accept()` + sets `env.privacyConsentAccepted` |
+| `Draconis/Views/BugReportSheet.swift` | Sheet triggered by Help menu (⌘⌥B) or Settings → About; auto-collects context + last 60 console lines |
+
+### Consent sequencing
+
+`DraconisApp.init()` calls `SentryConfig.boot()` only when `ConsentManager.isAccepted` is already `true`. First-time users see `PrivacyConsentView` which blocks the entire window; `ConsentManager.accept()` persists consent, then calls `SentryConfig.boot()`, then fires a `privacy_consent_accepted` Sentry event.
+
+`SentryConfig.boot()` is idempotent — safe to call from both paths (returning users and first-time acceptors). The SDK is **never started before consent**.
+
+### What's sent automatically (all launches, post-consent)
+
+- Unhandled exceptions (Sentry default)
+- Handled errors captured by `SentrySDK.capture(event:)` at each `catch` site in `AppEnvironment`
+
+### What's sent on user-initiated bug reports
+
+- Structured tags: app version, bottle state, Northstar/Maxima versions, Maxima phase
+- Extra: last 60 console lines (home path sanitized to `~`), recent launch/update/Maxima errors
+- `SentryUserFeedback` linked to the same event: user description + optional name + optional contact
+
+### GDPR compliance notes
+
+- Consent is required before the SDK starts; there is no opt-out after acceptance other than deleting `org.draconis.launcher` prefs.
+- The DSN points to Sentry's EU ingest (`ingest.de.sentry.io`); data is stored in the EU.
+- `sendDefaultPii = true` means Sentry may collect IP addresses; this is disclosed in the consent notice.
+
 ## Build
 
 ```bash

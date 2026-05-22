@@ -35,6 +35,7 @@ settings:
     GENERATE_INFOPLIST_FILE: NO
     MARKETING_VERSION: "0.10.0"
     CURRENT_PROJECT_VERSION: "1"
+    DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
 
 targets:
   Draconis:

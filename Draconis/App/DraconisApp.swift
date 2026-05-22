@@ -14,13 +14,19 @@ struct DraconisApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(environment)
-                .preferredColorScheme(.dark)
-                .frame(minWidth: 980, minHeight: 620)
-                .task { await environment.bootstrap() }
-                .background(WindowConfigurator())
-                .background(TransparentBackdrop().ignoresSafeArea())
+            Group {
+                if environment.privacyConsentAccepted {
+                    ContentView()
+                        .task { await environment.bootstrap() }
+                } else {
+                    PrivacyConsentView()
+                }
+            }
+            .environmentObject(environment)
+            .preferredColorScheme(.dark)
+            .frame(minWidth: 980, minHeight: 620)
+            .background(WindowConfigurator())
+            .background(TransparentBackdrop().ignoresSafeArea())
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)

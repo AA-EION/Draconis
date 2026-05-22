@@ -51,13 +51,6 @@ struct ContentView: View {
             BugReportSheet()
                 .environmentObject(env)
         }
-        .overlay {
-            if !env.privacyConsentAccepted {
-                PrivacyConsentView()
-                    .environmentObject(env)
-                    .transition(.opacity)
-            }
-        }
         .navigationTitle("Draconis")
     }
 

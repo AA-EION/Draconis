@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
 
-/// Full-window overlay shown on first launch (and every launch until accepted).
-/// Blocks all underlying UI; "Decline & Quit" terminates the app immediately.
-/// The user must visit both the Privacy Notice and License tabs before accepting.
+/// Shown inside the main window before any other content when the user
+/// hasn't accepted the privacy notice yet. Styled to match the rest of
+/// the app (GlassEffect cards, TF typography, dark mode).
 struct PrivacyConsentView: View {
     @EnvironmentObject private var env: AppEnvironment
 
@@ -18,86 +18,77 @@ struct PrivacyConsentView: View {
     private var allTabsVisited: Bool { visitedTabs.count == Tab.allCases.count }
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.85).ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                header
-                tabPicker
-                Divider().overlay(.white.opacity(0.12))
-                ScrollView {
-                    Group {
-                        switch activeTab {
-                        case .privacy:  privacyBody
-                        case .license:  licenseBody
-                        }
+        VStack(spacing: 0) {
+            header
+            tabPicker
+                .padding(.horizontal, 24)
+                .padding(.top, 4)
+            ScrollView {
+                Group {
+                    switch activeTab {
+                    case .privacy: privacyBody
+                    case .license: licenseBody
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 24)
                 }
-                .frame(maxWidth: 640)
-                Divider().overlay(.white.opacity(0.12))
-                actionRow
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
             }
-            .frame(maxWidth: 640)
-            .padding(.vertical, 32)
+            actionRow
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Header
 
     private var header: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 6) {
             Image(systemName: "lock.shield.fill")
-                .font(.system(size: 40))
+                .font(.system(size: 36))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white.opacity(0.9))
-                .padding(.top, 8)
+                .foregroundStyle(.primary.opacity(0.85))
+                .padding(.top, 32)
 
             Text("Before you continue")
-                .font(TF.hero(24))
-                .foregroundStyle(.white)
+                .font(TF.hero(22))
 
-            Text("Please read the Privacy Notice and License before using Draconis.")
+            Text("Please read the Privacy Notice and License.")
                 .font(.callout)
-                .foregroundStyle(.white.opacity(0.6))
-                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 20)
+        .padding(.bottom, 16)
     }
 
     // MARK: - Tab picker
 
     private var tabPicker: some View {
-        HStack(spacing: 0) {
-            ForEach(Tab.allCases, id: \.self) { tab in
-                Button {
-                    activeTab = tab
-                    visitedTabs.insert(tab)
-                } label: {
-                    HStack(spacing: 6) {
-                        if visitedTabs.contains(tab) && tab != activeTab {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.green.opacity(0.8))
+        GlassEffectContainer {
+            HStack(spacing: 0) {
+                ForEach(Tab.allCases, id: \.self) { tab in
+                    Button {
+                        activeTab = tab
+                        visitedTabs.insert(tab)
+                    } label: {
+                        HStack(spacing: 6) {
+                            if visitedTabs.contains(tab) && tab != activeTab {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.green.opacity(0.8))
+                            }
+                            Text(tab.rawValue)
+                                .font(TF.title(13).weight(activeTab == tab ? .semibold : .regular))
+                                .foregroundStyle(activeTab == tab ? .primary : .secondary)
                         }
-                        Text(tab.rawValue)
-                            .font(.callout.weight(activeTab == tab ? .semibold : .regular))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(activeTab == tab ? Color.primary.opacity(0.10) : Color.clear)
                     }
-                    .foregroundStyle(activeTab == tab ? .white : .white.opacity(0.55))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        activeTab == tab
-                            ? Color.white.opacity(0.12)
-                            : Color.clear
-                    )
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
-        .background(Color.white.opacity(0.06))
+        .glassEffect(.regular, in: .rect(cornerRadius: 10))
     }
 
     // MARK: - Action row
@@ -105,131 +96,124 @@ struct PrivacyConsentView: View {
     private var actionRow: some View {
         VStack(spacing: 10) {
             if !allTabsVisited {
-                Text("Read both tabs to continue.")
+                Text("Read both tabs to enable the accept button.")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.tertiary)
             }
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Button("Decline & Quit") {
                     ConsentManager.revoke()
                     NSApp.terminate(nil)
                 }
-                .buttonStyle(ConsentDeclineButtonStyle())
+                .buttonStyle(.glass)
+
+                Spacer()
 
                 Button("I accept — Continue") {
                     ConsentManager.accept()
                     env.privacyConsentAccepted = true
                 }
-                .buttonStyle(ConsentAcceptButtonStyle(enabled: allTabsVisited))
+                .buttonStyle(.glass)
                 .disabled(!allTabsVisited)
+                .opacity(allTabsVisited ? 1 : 0.4)
             }
         }
-        .padding(.horizontal, 32)
-        .padding(.vertical, 20)
     }
 
-    // MARK: - Privacy Notice body
+    // MARK: - Privacy Notice
 
     private var privacyBody: some View {
-        VStack(alignment: .leading, spacing: 20) {
-
-            section(title: "What Draconis collects") {
-                VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 16) {
+            card(title: "What Draconis collects") {
+                VStack(alignment: .leading, spacing: 5) {
                     bullet("Crash reports and handled errors (via Sentry)")
-                    bullet("Your bottle state: whether Titanfall 2, Northstar, Steam, EA App, or Maxima are present")
+                    bullet("Bottle state: whether Titanfall 2, Northstar, Steam, EA App, or Maxima are present")
                     bullet("Launcher version and CrossOver installation status")
-                    bullet("Console output from launch sessions (last 60 lines, home-directory path replaced with ~)")
-                    bullet("Voluntary information you enter in a bug report: description, display name, and contact handle (all optional)")
+                    bullet("Console output from the last session (last 60 lines, home path replaced with ~)")
+                    bullet("Voluntary info you enter in a bug report: description, name, contact (all optional)")
                     bullet("A one-time event confirming you accepted this notice")
                 }
             }
 
-            section(title: "How it's used") {
+            card(title: "How it's used") {
                 bodyText(
                     "Crash data and error reports are used solely to identify and fix bugs. " +
                     "No data is sold or shared beyond the processors listed below. " +
-                    "Draconis runs entirely on your device; no game data, save files, or " +
+                    "Draconis runs entirely on your device — no game data, save files, or " +
                     "account credentials pass through Draconis's servers."
                 )
             }
 
-            section(title: "Third-party services") {
+            card(title: "Third-party services") {
                 VStack(alignment: .leading, spacing: 12) {
                     processorRow(
                         name: "Sentry",
                         detail: "Receives error reports and bug feedback submitted from within the app.",
                         url: "https://sentry.io/privacy/"
                     )
+                    Divider().overlay(.primary.opacity(0.08))
                     processorRow(
                         name: "GitHub",
-                        detail: "Hosts the Draconis source code, releases, and public issue tracker. " +
-                                "If you file a GitHub issue you are subject to GitHub's terms.",
+                        detail: "Hosts the source code, releases, and public issue tracker. Filing a GitHub issue is subject to GitHub's terms.",
                         url: "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
                     )
+                    Divider().overlay(.primary.opacity(0.08))
                     processorRow(
                         name: "Electronic Arts / Maxima",
-                        detail: "If you use the Maxima integration, authentication and game-download data " +
-                                "are handled by EA's infrastructure. Draconis does not process EA credentials.",
+                        detail: "If you use the Maxima integration, authentication and downloads go through EA's infrastructure. Draconis does not handle EA credentials.",
                         url: "https://www.ea.com/legal/privacy-policy"
                     )
+                    Divider().overlay(.primary.opacity(0.08))
                     processorRow(
                         name: "Northstar master server",
-                        detail: "When you connect to community servers, your IP address is visible to the " +
-                                "Northstar master server and individual game servers.",
+                        detail: "When connecting to community servers your IP is visible to the Northstar master server and individual game servers.",
                         url: "https://northstar.tf"
                     )
                 }
             }
 
-            section(title: "Your rights (GDPR / CCPA)") {
+            card(title: "Your rights (GDPR / CCPA)") {
                 bodyText(
-                    "You may request access to, correction of, or deletion of your data by contacting " +
-                    "the respective service. To withdraw consent and stop future data collection, " +
-                    "delete your Draconis preferences: open Terminal and run " +
-                    "\"defaults delete org.draconis.launcher\". " +
-                    "This resets consent and Draconis will present this notice again on next launch."
-                )
-            }
-
-            section(title: "Data storage") {
-                bodyText(
+                    "To withdraw consent and stop data collection, delete your Draconis preferences: " +
+                    "run \"defaults delete org.draconis.launcher\" in Terminal. " +
+                    "This resets consent and Draconis will show this screen again on next launch. " +
                     "Your acceptance is stored in ~/Library/Preferences/org.draconis.launcher.plist. " +
-                    "All crash and error data is processed by Sentry on servers in the EU. " +
-                    "Draconis does not maintain its own remote database."
+                    "All error data is processed by Sentry on EU servers."
                 )
             }
         }
     }
 
-    // MARK: - License body
+    // MARK: - License (GPL-3.0)
 
     private var licenseBody: some View {
-        VStack(alignment: .leading, spacing: 20) {
-
-            section(title: "GNU General Public License v3.0") {
-                bodyText(
-                    "Draconis is free software distributed under the GNU General Public " +
-                    "License, version 3 (GPL-3.0-or-later). You are free to use, study, " +
-                    "share, and modify this software under the terms of that license."
-                )
-                if let url = URL(string: "https://github.com/AA-EION/Draconis/blob/main/LICENSE") {
-                    Link("Full license text on GitHub →", destination: url)
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.55))
+        VStack(alignment: .leading, spacing: 16) {
+            card(title: "GNU General Public License v3.0") {
+                VStack(alignment: .leading, spacing: 10) {
+                    bodyText(
+                        "Draconis is free software distributed under the GNU General Public License, " +
+                        "version 3 (GPL-3.0-or-later). You are free to use, study, share, and modify " +
+                        "this software under the terms of that license."
+                    )
+                    if let url = URL(string: "https://github.com/AA-EION/Draconis/blob/main/LICENSE") {
+                        Link("Full license text on GitHub →", destination: url)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
-            section(title: "Your rights under GPL-3.0") {
-                VStack(alignment: .leading, spacing: 6) {
+            card(title: "Your rights under GPL-3.0") {
+                VStack(alignment: .leading, spacing: 5) {
                     bullet("Run the program for any purpose")
-                    bullet("Study how the program works and modify it (source code available on GitHub)")
+                    bullet("Study how the program works and modify it (source code on GitHub)")
                     bullet("Redistribute copies")
                     bullet("Distribute your modified versions to others")
                 }
             }
 
-            section(title: "15. Disclaimer of Warranty") {
-                legalBox(
+            card(title: "§15 — Disclaimer of Warranty") {
+                legalText(
                     "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY " +
                     "APPLICABLE LAW. EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT " +
                     "HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM \"AS IS\" WITHOUT WARRANTY " +
@@ -241,8 +225,8 @@ struct PrivacyConsentView: View {
                 )
             }
 
-            section(title: "16. Limitation of Liability") {
-                legalBox(
+            card(title: "§16 — Limitation of Liability") {
+                legalText(
                     "IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING " +
                     "WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS " +
                     "THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY " +
@@ -255,12 +239,14 @@ struct PrivacyConsentView: View {
                 )
             }
 
-            section(title: "Source code") {
-                bodyText("The complete source code for this version of Draconis is available at:")
-                if let url = URL(string: "https://github.com/AA-EION/Draconis") {
-                    Link("github.com/AA-EION/Draconis →", destination: url)
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.55))
+            card(title: "Source code") {
+                VStack(alignment: .leading, spacing: 6) {
+                    bodyText("The complete source code for this version of Draconis is available at:")
+                    if let url = URL(string: "https://github.com/AA-EION/Draconis") {
+                        Link("github.com/AA-EION/Draconis →", destination: url)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -268,88 +254,56 @@ struct PrivacyConsentView: View {
 
     // MARK: - Sub-view helpers
 
-    private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(TF.title(14))
-                .foregroundStyle(.white)
-            content()
+    private func card<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        GlassEffectContainer {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(TF.title(13))
+                    .foregroundStyle(.primary.opacity(0.75))
+                content()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
     }
 
     private func bullet(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Text("•").foregroundStyle(.white.opacity(0.5)).font(.callout)
-            Text(text).font(.callout).foregroundStyle(.white.opacity(0.75))
+            Text("•").foregroundStyle(.secondary).font(.callout)
+            Text(text).font(.callout).foregroundStyle(.primary.opacity(0.8))
         }
     }
 
     private func bodyText(_ text: String) -> some View {
         Text(text)
             .font(.callout)
-            .foregroundStyle(.white.opacity(0.75))
+            .foregroundStyle(.primary.opacity(0.75))
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func legalBox(_ text: String) -> some View {
+    private func legalText(_ text: String) -> some View {
         Text(text)
             .font(.caption)
-            .foregroundStyle(.white.opacity(0.6))
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.10)))
     }
 
     private func processorRow(name: String, detail: String, url: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Text(name)
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white)
                 if let dest = URL(string: url) {
                     Link("Privacy Policy →", destination: dest)
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.tertiary)
                 }
             }
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-// MARK: - Button styles
-
-private struct ConsentAcceptButtonStyle: ButtonStyle {
-    let enabled: Bool
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(TF.title(14))
-            .foregroundStyle(enabled ? .black : .white.opacity(0.3))
-            .padding(.horizontal, 28)
-            .padding(.vertical, 12)
-            .background(
-                enabled
-                    ? Color.white.opacity(configuration.isPressed ? 0.8 : 1.0)
-                    : Color.white.opacity(0.15)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-private struct ConsentDeclineButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.callout)
-            .foregroundStyle(.white.opacity(0.6))
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

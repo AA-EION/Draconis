@@ -1,4 +1,5 @@
 import SwiftUI
+import Sentry
 
 struct BugReportSheet: View {
     @EnvironmentObject private var env: AppEnvironment
@@ -11,8 +12,8 @@ struct BugReportSheet: View {
     @State private var submitting: Bool = false
     @State private var submitted: Bool = false
     @State private var submitError: String?
-
-    private var context: BugReportContext { BugReportContext.capture(from: env) }
+    // Captured once on appear — avoids re-running log processing on every keystroke.
+    @State private var context: BugReportContext? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +29,7 @@ struct BugReportSheet: View {
             }
         }
         .frame(width: 560, height: submitted ? 320 : 580)
+        .onAppear { context = BugReportContext.capture(from: env) }
     }
 
     // MARK: - Header
@@ -65,23 +67,25 @@ struct BugReportSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label("What happened?", systemImage: "text.alignleft")
                     .font(.callout.weight(.semibold))
-                TextEditor(text: $description)
-                    .font(.callout)
-                    .frame(minHeight: 100)
-                    .padding(10)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.primary.opacity(0.12))
-                    )
-                if description.isEmpty {
-                    Text("Describe what you were doing and what went wrong…")
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $description)
                         .font(.callout)
-                        .foregroundStyle(.tertiary)
-                        .allowsHitTesting(false)
-                        .padding(.top, -84)
-                        .padding(.leading, 14)
+                        .frame(minHeight: 100)
+                        .padding(10)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.primary.opacity(0.12))
+                        )
+                    if description.isEmpty {
+                        Text("Describe what you were doing and what went wrong…")
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 18)
+                    }
                 }
             }
 
@@ -157,27 +161,27 @@ struct BugReportSheet: View {
             }
             .buttonStyle(.plain)
 
-            if showingContext {
+            if showingContext, let ctx = context {
                 Divider().overlay(.primary.opacity(0.10))
                 VStack(alignment: .leading, spacing: 4) {
-                    contextRow("App version", context.appVersion)
-                    contextRow("CrossOver installed", context.crossOverInstalled ? "Yes" : "No")
-                    contextRow("Bottle exists", context.bottleExists ? "Yes" : "No")
-                    if context.bottleExists {
-                        contextRow("Has Titanfall 2", context.hasTitanfall2 ? "Yes" : "No")
-                        contextRow("Has Northstar", context.hasNorthstar ? "Yes" : "No")
-                        if let v = context.northstarVersion { contextRow("Northstar version", v) }
-                        contextRow("Has Steam", context.hasSteam ? "Yes" : "No")
-                        contextRow("Has EA App", context.hasEAApp ? "Yes" : "No")
-                        contextRow("Has Maxima", context.hasMaxima ? "Yes" : "No")
-                        contextRow("Maxima role", context.maximaRole)
-                        if let v = context.maximaInstalledVersion { contextRow("Maxima version", v) }
-                        contextRow("Maxima phase", context.maximaSetupPhaseLabel)
+                    contextRow("App version", ctx.appVersion)
+                    contextRow("CrossOver installed", ctx.crossOverInstalled ? "Yes" : "No")
+                    contextRow("Bottle exists", ctx.bottleExists ? "Yes" : "No")
+                    if ctx.bottleExists {
+                        contextRow("Has Titanfall 2", ctx.hasTitanfall2 ? "Yes" : "No")
+                        contextRow("Has Northstar", ctx.hasNorthstar ? "Yes" : "No")
+                        if let v = ctx.northstarVersion { contextRow("Northstar version", v) }
+                        contextRow("Has Steam", ctx.hasSteam ? "Yes" : "No")
+                        contextRow("Has EA App", ctx.hasEAApp ? "Yes" : "No")
+                        contextRow("Has Maxima", ctx.hasMaxima ? "Yes" : "No")
+                        contextRow("Maxima role", ctx.maximaRole)
+                        if let v = ctx.maximaInstalledVersion { contextRow("Maxima version", v) }
+                        contextRow("Maxima phase", ctx.maximaSetupPhaseLabel)
                     }
-                    if let e = context.lastLaunchError { contextRow("Last launch error", e) }
-                    if let e = context.lastUpdateError { contextRow("Last update error", e) }
-                    if let e = context.maximaError     { contextRow("Last Maxima error", e) }
-                    contextRow("Console lines included", "\(context.recentLogs.count)")
+                    if let e = ctx.lastLaunchError { contextRow("Last launch error", e) }
+                    if let e = ctx.lastUpdateError { contextRow("Last update error", e) }
+                    if let e = ctx.maximaError     { contextRow("Last Maxima error", e) }
+                    contextRow("Console lines included", "\(ctx.recentLogs.count)")
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -230,14 +234,18 @@ struct BugReportSheet: View {
     private func submit() async {
         submitting = true
         submitError = nil
-        let snap = BugReportContext.capture(from: env)
+        let snap = context ?? BugReportContext.capture(from: env)
         let report = BugReporter.Report(
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
             reporterName: reporterName.isEmpty ? nil : reporterName,
             reporterContact: reporterContact.isEmpty ? nil : reporterContact
         )
-        await BugReporter.shared.submit(report, context: snap)
+        let eventId = await BugReporter.shared.submit(report, context: snap)
         submitting = false
-        submitted = true
+        if eventId != SentryId.empty {
+            submitted = true
+        } else {
+            submitError = "Failed to send report. Please check your connection and try again."
+        }
     }
 }

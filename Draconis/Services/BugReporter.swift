@@ -86,7 +86,8 @@ public actor BugReporter {
         public var reporterContact: String?
     }
 
-    public func submit(_ report: Report, context: BugReportContext) {
+    @discardableResult
+    public func submit(_ report: Report, context: BugReportContext) -> SentryId {
         // 1. Capture a structured event so context tags appear on the timeline.
         let event = Event(level: .info)
         event.message = SentryMessage(formatted: "User Bug Report")
@@ -95,15 +96,19 @@ public actor BugReporter {
 
         let eventId = SentrySDK.capture(event: event)
 
-        // 2. Attach user-written feedback linked to the event above.
-        let feedback = SentryFeedback(
-            message: report.description,
-            name: report.reporterName?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? "Anonymous",
-            email: report.reporterContact?.trimmingCharacters(in: .whitespaces),
-            source: .custom,
-            associatedEventId: eventId
-        )
-        SentrySDK.capture(feedback: feedback)
+        // 2. Attach user-written feedback only when the event was accepted.
+        if eventId != SentryId.empty {
+            let feedback = SentryFeedback(
+                message: report.description,
+                name: report.reporterName?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? "Anonymous",
+                email: report.reporterContact?.trimmingCharacters(in: .whitespaces),
+                source: .custom,
+                associatedEventId: eventId
+            )
+            SentrySDK.capture(feedback: feedback)
+        }
+
+        return eventId
     }
 
     // MARK: - Private helpers

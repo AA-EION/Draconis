@@ -25,7 +25,7 @@ public enum ConsentManager {
     public static func accept() {
         UserDefaults.standard.set(true, forKey: acceptedKey)
         SentryConfig.boot()
-        let event = SentryEvent(level: .info)
+        let event = Event(level: .info)
         event.message = SentryMessage(formatted: "privacy_consent_accepted")
         SentrySDK.capture(event: event)
     }

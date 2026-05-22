@@ -75,8 +75,8 @@ extension BugReportContext {
 }
 
 /// Submits a user-written bug report to Sentry with full context.
-/// Uses the `SentryUserFeedback` API to link a description + optional contact
-/// to the associated context event so Sentry displays them together.
+/// Captures a structured Event (so context tags appear on the issue timeline)
+/// and links a SentryFeedback to it for the User Feedback section.
 public actor BugReporter {
     public static let shared = BugReporter()
 
@@ -87,22 +87,23 @@ public actor BugReporter {
     }
 
     public func submit(_ report: Report, context: BugReportContext) {
-        // 1. Capture a structured event carrying all context so it appears
-        //    in Sentry's issue timeline with full environment data.
-        let event = SentryEvent(level: .info)
+        // 1. Capture a structured event so context tags appear on the timeline.
+        let event = Event(level: .info)
         event.message = SentryMessage(formatted: "User Bug Report")
         event.tags = buildTags(from: context)
         event.extra = buildExtra(from: context)
 
         let eventId = SentrySDK.capture(event: event)
 
-        // 2. Attach user-written feedback to the event — this surfaces in
-        //    Sentry's "User Feedback" section alongside the event detail.
-        let feedback = SentryUserFeedback(eventId: eventId)
-        feedback.name     = report.reporterName?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? "Anonymous"
-        feedback.email    = report.reporterContact?.trimmingCharacters(in: .whitespaces) ?? ""
-        feedback.comments = report.description
-        SentrySDK.captureUserFeedback(feedback)
+        // 2. Attach user-written feedback linked to the event above.
+        let feedback = SentryFeedback(
+            message: report.description,
+            name: report.reporterName?.trimmingCharacters(in: .whitespaces).nilIfEmpty ?? "Anonymous",
+            email: report.reporterContact?.trimmingCharacters(in: .whitespaces),
+            source: .custom,
+            associatedEventId: eventId
+        )
+        SentrySDK.capture(feedback: feedback)
     }
 
     // MARK: - Private helpers

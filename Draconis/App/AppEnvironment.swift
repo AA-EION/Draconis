@@ -642,6 +642,15 @@ public final class AppEnvironment: ObservableObject {
                     self.maximaSetupPhase = .finishing
                 }
                 await MaximaService.shared.signalProcessQuit(pid: pid)
+                // Persist `.fullReplace` for this bottle so a future
+                // wizard re-entry sees an explicit role and dismisses
+                // instead of asking the user to pick again. (D-Bug
+                // #45.) Maxima-installed bottles always carry the
+                // EA-original binaries by construction — the user
+                // already made the equivalent "full replace" choice
+                // by picking the Maxima install route at the source
+                // picker, so we record it implicitly here.
+                MaximaRole.save(.fullReplace, forBottle: bottle.id)
                 await self.refreshBottles()
                 await MainActor.run {
                     self.maximaSetupPhase = .done
@@ -713,7 +722,11 @@ public final class AppEnvironment: ObservableObject {
                     Task { @MainActor in self.maximaProgress = p }
                 }
             }
-            await refreshMaximaState()
+            // refreshBottles() refreshes per-bottle `hasMaxima` AND
+            // calls refreshMaximaState() — covers the case where the
+            // installer just dropped binaries into the bottle (same
+            // gap as `updateMaxima`, D-Bug #44).
+            await refreshBottles()
             await checkMaximaForUpdate()
         } catch {
             maximaError = error.localizedDescription
@@ -724,6 +737,16 @@ public final class AppEnvironment: ObservableObject {
     /// Downloads and installs the latest Maxima release regardless of whether
     /// a previous version is already in the bottle. Called when the user
     /// explicitly clicks "Update Maxima".
+    ///
+    /// Internally `downloadAndInstall` runs the NSIS uninstaller first
+    /// (best-effort) and then the new installer, so for a brief window
+    /// the bottle has no `maxima-cli.exe`. We need to refresh both
+    /// `bottle.hasMaxima` (via `refreshBottles`) AND the derived
+    /// `env.maximaInstalled` (via `refreshMaximaState`) after the
+    /// install completes — `refreshMaximaState` alone wouldn't update
+    /// the per-bottle `hasMaxima` field used by `PlayView`'s launcher
+    /// pill and Onboarding wizard, leaving the UI showing "Maxima not
+    /// installed" until the user manually rescans bottles. (D-Bug #44.)
     public func updateMaxima() async {
         guard let bottle = selectedBottle else { return }
         maximaSettingUp = true
@@ -734,7 +757,11 @@ public final class AppEnvironment: ObservableObject {
             try await MaximaService.shared.downloadAndInstall(into: bottle) { @Sendable p in
                 Task { @MainActor in self.maximaProgress = p }
             }
-            await refreshMaximaState()
+            // refreshBottles() rebuilds the WineBottle list (so
+            // `selectedBottle.hasMaxima` reflects the freshly-installed
+            // binaries) AND calls refreshMaximaState() internally —
+            // a separate refreshMaximaState call would be redundant.
+            await refreshBottles()
             await checkMaximaForUpdate()
         } catch {
             maximaError = error.localizedDescription

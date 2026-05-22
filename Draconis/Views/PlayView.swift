@@ -67,15 +67,14 @@ struct PlayView: View {
             body: [
                 "Draconis sees the bottle but no Titanfall2.exe inside it.",
                 "",
-                "Open CrossOver, pick the Titanfall 2 install profile, and either:",
-                "• Let CrossOver install Steam and then install Titanfall 2 from your Steam library, or",
-                "• Point CrossOver's installer at the EA app or Epic Games launcher when prompted.",
+                "Run the Onboarding wizard to install Titanfall 2 — pick a source (Maxima downloads it directly with no other launcher needed, or you can install via EA app, Steam, or Epic) and Draconis walks you through the rest.",
                 "",
-                "Then come back here and hit Rescan.",
+                "Already installing in another launcher? Finish there and hit Rescan.",
             ].joined(separator: "\n"),
-            primaryActionTitle: "Open CrossOver",
-            primaryActionDisabled: !env.crossOverInstalled,
-            primaryAction: { env.openCrossOver() }
+            primaryActionTitle: "Open Onboarding",
+            primaryActionDisabled: false,
+            primaryActionIcon: "wand.and.stars",
+            primaryAction: { env.showOnboarding = true }
         )
     }
 
@@ -84,6 +83,7 @@ struct PlayView: View {
         body: String,
         primaryActionTitle: String,
         primaryActionDisabled: Bool,
+        primaryActionIcon: String = "wineglass.fill",
         primaryAction: @escaping () -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -94,7 +94,7 @@ struct PlayView: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
                 Button(action: primaryAction) {
-                    Label(primaryActionTitle, systemImage: "wineglass.fill")
+                    Label(primaryActionTitle, systemImage: primaryActionIcon)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 14)
                 }

@@ -113,11 +113,6 @@ public final class AppEnvironment: ObservableObject {
         case failed(String)
     }
 
-    // Maxima section visibility (persisted preference)
-    @Published public var maximaEnabled: Bool = UserDefaults.standard.bool(forKey: "maximaEnabled") {
-        didSet { UserDefaults.standard.set(maximaEnabled, forKey: "maximaEnabled") }
-    }
-
     // Draconis self-update
     @Published public var draconisUpdateAvailable: DraconisUpdater.Release?
     @Published public var draconisUpdating: Bool = false

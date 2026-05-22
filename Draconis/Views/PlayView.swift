@@ -189,9 +189,15 @@ struct PlayView: View {
 
     private var launcherStatusValue: String {
         guard let bottle = env.selectedBottle else { return "Missing" }
-        // Preference order matches the wizard's source picker (most
-        // reliable on macOS first). Maxima counts as a frontend — it's
-        // the EA-auth backbone when nothing else is installed.
+        // Preference order matches the wizard's source picker AND the
+        // launch decision matrix: when Maxima is installed and
+        // `MaximaRole != .none`, `NorthstarLauncher` routes through
+        // `maxima-cli launch` — so Maxima IS the active auth-frontend
+        // for those bottles. Showing "Maxima" first reflects that.
+        // EA app / Steam / Epic are fallback labels when Maxima isn't
+        // around. (Gemini caught a wording inconsistency between the
+        // first commit's message and the code here — code is right,
+        // commit message was wrong.)
         if bottle.hasMaxima     { return "Maxima" }
         if bottle.hasEAApp      { return "EA App" }
         if bottle.hasSteam      { return "Steam" }
@@ -306,6 +312,7 @@ struct PlayView: View {
                     env.selectedBottle == nil
                     || env.launchInFlight
                     || env.selectedBottle?.hasTitanfall2 != true
+                    || !hasAnyFrontend
                     || (mode == .northstar && env.selectedBottle?.hasNorthstar != true)
                     || env.updating
                 )

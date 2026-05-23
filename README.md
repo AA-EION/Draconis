@@ -29,21 +29,15 @@ Draconis is **not notarised by Apple**, so the first time you launch it macOS wi
 
 Normal for any open-source macOS app without an Apple Developer ID. Pick whichever route is easiest:
 
-### Option A — Right-click → Open *(recommended)*
 
-1. In Finder, **right-click** (or Control-click) `Draconis.app`.
-2. Choose **Open**.
-3. macOS shows the warning again, this time with an **Open** button. Click it.
-4. From now on Draconis launches normally.
-
-### Option B — System Settings
+### Option A — System Settings
 
 1. Try to launch Draconis normally (it gets blocked).
 2. Open **System Settings → Privacy & Security**.
 3. Scroll to the **Security** section — there's a line *"Draconis was blocked from use…"* with an **Open Anyway** button.
 4. Click it and confirm.
 
-### Option C — Terminal *(if Gatekeeper says "damaged")*
+### Option B — Terminal *(if Gatekeeper says "damaged")*
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Draconis.app

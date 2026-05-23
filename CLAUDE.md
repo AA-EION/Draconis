@@ -117,6 +117,53 @@ Currently there is no in-app way to withdraw consent — only `defaults delete o
 ### SwiftUI Picker + container views gotcha
 SwiftUI's `Picker` with `.segmented` style expands container views (`HStack`, `VStack`, `Group`) into individual segments rather than treating the container as one label. `HStack { Image; Text }` inside `ForEach` produces two segments per item instead of one. **Rule:** only use plain `Text` (or `Label`) as direct children of `Picker { ForEach { } }` — never a container with multiple children.
 
+## Bugs found in code audit (not yet fixed)
+
+### 🔴 CRITICAL — Double-resume crash in MaximaService (withCheckedContinuation)
+`MaximaService.swift` — `terminationHandler` is assigned **after** `proc.run()`. If the process exits between `run()` and the handler assignment, Foundation executes the handler immediately upon assignment; the `if !proc.isRunning` guard then fires a second `cont.resume()` → `CheckedContinuation` fatal error → whole app crashes.
+
+Fix: set `terminationHandler` **before** calling `run()`, then remove the `if !proc.isRunning` guard.
+
+### 🔴 HIGH — `applyRole(.none)` silences uninstall errors → inconsistent state
+`MaximaService.swift` — `case .none` uses `try?` on `uninstall(from:progress:)`. If uninstall fails (wineserver blocked, timeout), the error is swallowed, `MaximaRole.save(.none, …)` persists regardless, and the next launch takes the `.none` path (requires EA Desktop), throwing `eaAuthBackboneMissing` even though Maxima is still physically installed. `.authOnly` and `.fullReplace` use `try` correctly — the asymmetry is the bug.
+
+Fix: change `try?` to `try` and let the error propagate to the caller.
+
+### 🔴 HIGH — Version tag not saved when `registerHelper()` fails
+`MaximaService.swift` — `UserDefaults.set(tagName, forKey: versionKey)` comes **after** `try await registerHelper()`. If the user dismisses the OS dialog for the `qrc://` handler, `registerHelper()` throws, the tag is never saved, `installedVersion` returns `nil`, and `setupMaxima()` re-downloads and re-installs on every launch.
+
+Fix: save the version tag before calling `registerHelper()`, or catch `registerHelper()` errors separately without re-throwing.
+
+### 🟡 MEDIUM — `waitUntilExit()` blocks Swift Concurrency thread pool
+`ProcessRunner.swift` + `AppEnvironment.isTitanfallRunning` — both call `process.waitUntilExit()` synchronously on a Concurrency-managed thread. For short-lived processes (`pgrep`) it's low-risk; for long operations (`ditto`, `hdiutil`) it starves other tasks.
+
+Fix: wrap in `Task.detached { process.waitUntilExit() }` or use `AsyncStream`/`NotificationCenter` on `NSProcessInfoThermalStateDidChange`.
+
+### 🟡 MEDIUM — `dlclose` before using returned function pointer in CleanSpawn
+`CleanSpawn.swift` — `defer { dlclose(handle) }` runs before the `unsafeBitCast` result is returned and stored. Works in practice (libSystem never unloads), but is technically UB per POSIX — a future macOS change could leave a dangling pointer.
+
+Fix: remove `dlclose` (opening `nil` references the main executable which is always loaded), or use `dlopen(nil, RTLD_NOLOAD)` which doesn't modify the refcount.
+
+### 🟡 MEDIUM — `modUpdatesAvailable` is an O(n) computed property read by SwiftUI
+`AppEnvironment.swift` — rebuilds two dictionaries over all Thunderstore packages (thousands of entries) on every access. SwiftUI reads computed properties multiple times per render pass.
+
+Fix: convert to `@Published private(set) var modUpdatesAvailable = [String: ThunderstoreVersion]()` and recompute only when `thunderstorePackages` or `installedMods` change.
+
+### 🟢 LOW — `launchGame` returns an empty `Process()` — misleading return type
+`MaximaService.swift` — the method returns `Process` but hands back an unstarted `Process()` with no child attached. Callers using `.isRunning`, `.waitUntilExit()`, or `.terminationStatus` get silently wrong values. The real return value is a `pid_t`.
+
+Fix: change return type to `pid_t` (or `@discardableResult pid_t`) to make the contract explicit.
+
+### 🟢 LOW — Wrong error thrown when `cxstart` is missing in the `.none` launch path
+`NorthstarLauncher.swift` — when `CrossOverDetector.shared.cxstartBinary()` returns `nil`, the code throws `LaunchError.titanfallNotFound` ("Titanfall 2 wasn't found in this bottle"). The actual problem is CrossOver / `cxstart` not being available.
+
+Fix: throw a dedicated `LaunchError.crossOverNotFound` (or reuse an existing backend-missing error).
+
+### 🟢 LOW — Prefix ambiguity in `removeExistingVersions` (ThunderstoreClient)
+`ThunderstoreClient.swift` — the prefix is built as `Author-Mod-`, which also matches `Author-Mod-Extras-1.0.0` (a different package). Updating one mod could accidentally delete another.
+
+Fix: match on the full `Author-Mod-<version>` pattern or compare decoded package identity, not a raw string prefix.
+
 ## Code conventions
 
 - No inline comments unless the *why* is non-obvious. No doc-comment blocks.

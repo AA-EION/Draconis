@@ -27,23 +27,25 @@ Draconis is **not notarised by Apple**, so the first time you launch it macOS wi
 
 > *"Draconis" is damaged and can't be opened. You should move it to the Trash.*
 
-Normal for any open-source macOS app without an Apple Developer ID. Pick whichever route is easiest:
+Normal for any open-source macOS app without an Apple Developer ID. On **macOS Tahoe 26.6 and later**, the Finder dialog for a non-notarised app often only offers **Move to Trash** — don't pick that. Use the Terminal route instead; it works on every macOS version.
 
+### Option A — Terminal *(recommended)*
 
-### Option A — System Settings
-
-1. Try to launch Draconis normally (it gets blocked).
-2. Open **System Settings → Privacy & Security**.
-3. Scroll to the **Security** section — there's a line *"Draconis was blocked from use…"* with an **Open Anyway** button.
-4. Click it and confirm.
-
-### Option B — Terminal *(if Gatekeeper says "damaged")*
+After dragging Draconis into Applications, run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Draconis.app
 ```
 
-Then launch normally.
+Then launch normally. This clears the "downloaded from the internet" flag on this one app only; Gatekeeper stays on for everything else. In-app updates are downloaded without that flag, so you only need to do this once.
+
+### Option B — System Settings *(older macOS)*
+
+1. Try to launch Draconis normally (it gets blocked).
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to the **Security** section — if there's a line *"Draconis was blocked from use…"* with an **Open Anyway** button, click it and confirm.
+
+If there's no **Open Anyway** button, use Option A.
 
 ---
 

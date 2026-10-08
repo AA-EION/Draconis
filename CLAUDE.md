@@ -70,6 +70,7 @@ All `cxstart`-based methods pipe output to the per-bottle log file (`PathResolve
 - `WineBottle` has `hasSteam`, `hasEAApp`, `hasEpicGames`, `hasMaxima`, `hasLauncher` (= any of Steam/EA/Epic).
 - The Maxima route in `NorthstarLauncher.launch` checks `hasMaxima` first and routes through `maxima-cli launch` when present; everything else is fallback.
 - `BottleInstaller.detectStage()` uses `hasLauncher` so EA/Steam manual installs advance onboarding steps.
+- "Is TF2 fully installed?" is `WineBottle.isTitanfallInstallComplete` everywhere (wizard routing + `detectStage`). It requires `FInstall.txt` only when TF2 lives at Maxima's own install root (`maximaInstallRoot`); a Steam/EA copy in a bottle that has Maxima for auth or the CEG fix never gets a marker.
 
 ## Onboarding sources
 
@@ -226,7 +227,9 @@ NorthstarProton (Linux) explicitly disables the same Wine patch in their [proton
 
 `Foundation.Process` doesn't expose any of these. The fix lives in `Draconis/Services/CleanSpawn.swift` — a direct `posix_spawn` wrapper with all three flags set. Returns `pid_t` only (no `Process` handle), so lifetime tracking uses `pgrep Titanfall2.exe` polling in `AppEnvironment.pollUntilGameExits`.
 
-**`MaximaService.launchGame` uses CleanSpawn exclusively for the cxstart invocation.** Other Wine launches (Steam installer, EA installer, bottle creation) still go through `WineBackendManager.launch` → `ProcessRunner.detached` because they're short-lived helpers that don't need the disclaim.
+**Every `cxstart maxima-cli …` call goes through CleanSpawn** — `launchGame` via `CleanSpawn.spawn`, and the short-lived `listGames` / `applyCegFix` via `CleanSpawn.spawnAndWait` (output to files, not pipes). Since Maxima-Draconis v0.15, `maxima-cli` is a thin client that starts a long-lived `maxima-server.exe` inside the bottle on first use, and every later game descends from that server — so if *any* CLI call came from `Foundation.Process`, the server and all its games would stay responsibility-attributed to Draconis and the freeze returns. The server also inherits Wine's stderr and outlives the CLI, so a pipe would never reach EOF. Other Wine launches (Steam installer, EA installer, bottle creation) still go through `WineBackendManager.launch` → `ProcessRunner.detached` because they're short-lived helpers that don't need the disclaim.
+
+**Compatibility note:** Draconis downloads the *latest* `MaximaSetup.exe` at runtime, so a new Maxima release reaches existing installs immediately. Ship the Draconis side of any Maxima contract change before the Maxima tag.
 
 ## Launch decision matrix (the actual code path)
 

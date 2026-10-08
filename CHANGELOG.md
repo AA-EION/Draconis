@@ -4,6 +4,24 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Withdraw Consent** button in Settings → About. Shows a confirmation alert, clears the stored privacy consent via `ConsentManager.revoke()`, then quits; the privacy notice is shown again on next launch.
+
+### Fixed
+- **Crash from double-resumed continuation** when a Wine installer/uninstaller exited quickly — the `terminationHandler` is now installed before `Process.run()`, and a failing `run()` resumes exactly once. Installer/uninstaller waits go through the new `WineBackendManager.launchAndWait`.
+- **Role switch to `.none` could leave Maxima installed** — `applyRole(.none)` no longer swallows uninstall errors, so the role is only persisted when the uninstall succeeded.
+- **Maxima reinstalled on every launch** after dismissing the `qrc://` handler prompt — the installed version tag is now saved before `registerHelper()`.
+- **Blocked Swift Concurrency threads** — `ProcessRunner.capture`, `MaximaService` CLI/installer calls, bottle creation, the `pgrep` game poll and the installers no longer call `waitUntilExit()`; they suspend until the process exits.
+- **`CleanSpawn`** no longer `dlclose`s the handle that backs the cached `responsibility_spawnattrs_setdisclaim` pointer.
+- **Mods tab performance** — `modUpdatesAvailable` is now a published value recomputed only when the Thunderstore package list or installed mods change, instead of rebuilding two dictionaries on every SwiftUI read.
+- **`MaximaService.launchGame` / `NorthstarLauncher.launch`** return the spawned `pid_t` instead of an empty placeholder `Process`.
+- **Wrong error when CrossOver is missing** — launching without `cxstart` now reports "CrossOver (or its cxstart helper) wasn't found" instead of "Titanfall 2 wasn't found".
+- **Updating a Thunderstore mod could delete a different mod** — older-version cleanup now only removes folders named exactly `Author-Mod-<version>`, so `Author-Mod-Extras-1.0.0` is left alone.
+
+---
+
 ## [0.11.0] — 2026-05-22
 
 ### Added

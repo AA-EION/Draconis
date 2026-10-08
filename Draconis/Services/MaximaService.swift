@@ -153,11 +153,11 @@ public actor MaximaService {
         // LaunchServices ignores URL handler claims from quarantined apps.
         // Without elevated perms these can silently fail (e.g. on /Applications
         // installs the OS may keep quarantine pinned), so don't block on errors.
-        _ = try? runProcess(
+        _ = try? await runProcess(
             "/usr/bin/xattr",
             arguments: ["-dr", "com.apple.quarantine", helperURL.path]
         )
-        _ = try? runProcess(
+        _ = try? await runProcess(
             "/usr/bin/xattr",
             arguments: ["-dr", "com.apple.quarantine", Bundle.main.bundleURL.path]
         )
@@ -175,10 +175,10 @@ public actor MaximaService {
             let canonical = url.resolvingSymlinksInPath().standardizedFileURL.path
             if canonical == canonicalOurs { continue }
             Log.info("maxima.helper", "Unregistering stale copy at \(canonical)")
-            _ = try? runProcess(lsregister.path, arguments: ["-u", canonical])
+            _ = try? await runProcess(lsregister.path, arguments: ["-u", canonical])
         }
 
-        let result = try runProcess(lsregister.path, arguments: ["-f", helperURL.path])
+        let result = try await runProcess(lsregister.path, arguments: ["-f", helperURL.path])
         guard result.exitCode == 0 else {
             Log.error("maxima.helper",
                       "lsregister failed (\(result.exitCode)): \(result.stderr)")
@@ -218,7 +218,7 @@ public actor MaximaService {
         for url in known {
             let path = url.resolvingSymlinksInPath().standardizedFileURL.path
             Log.info("maxima.helper", "Unregistering \(path)")
-            _ = try? runProcess(lsregister.path, arguments: ["-u", path])
+            _ = try? await runProcess(lsregister.path, arguments: ["-u", path])
         }
         Log.ok("maxima.helper",
                "MaximaHelper removed from LaunchServices (\(known.count) copies)")
@@ -236,7 +236,7 @@ public actor MaximaService {
         _ executable: String,
         arguments: [String],
         extraEnv: [String: String] = [:]
-    ) throws -> ProcessResult {
+    ) async throws -> ProcessResult {
         let proc = Process()
         let out = Pipe()
         let err = Pipe()
@@ -249,13 +249,12 @@ public actor MaximaService {
         }
         proc.standardOutput = out
         proc.standardError = err
-        try proc.run()
-        proc.waitUntilExit()
+        let status = try await ProcessRunner.runUntilExit(proc)
         let outStr = String(data: out.fileHandleForReading.readDataToEndOfFile(),
                             encoding: .utf8) ?? ""
         let errStr = String(data: err.fileHandleForReading.readDataToEndOfFile(),
                             encoding: .utf8) ?? ""
-        return .init(exitCode: proc.terminationStatus, stdout: outStr, stderr: errStr)
+        return .init(exitCode: status, stdout: outStr, stderr: errStr)
     }
 
     /// True if MaximaHelper (our bundled copy) is the current system handler
@@ -371,16 +370,9 @@ public actor MaximaService {
         // 4 — Run the NSIS installer silently (/S) inside the bottle
         //     Files are installed before the service-creation step, so even if
         //     the Wine service manager rejects `sc create`, the binaries land.
-        let proc = try await WineBackendManager.shared.launch(
-            executable: bottleTemp.path,
-            arguments: ["/S"],
-            in: bottle,
-            workingDirectory: nil
-        )
-
         // Tick the UI every second so the user can see elapsed time.
         // waitUntilExit() would block the cooperative thread pool and prevent
-        // @MainActor tasks from running, so we use terminationHandler instead.
+        // @MainActor tasks from running, so the wait is termination-handler based.
         let installStart = Date()
         let tickTask = Task {
             while !Task.isCancelled {
@@ -390,25 +382,34 @@ public actor MaximaService {
                                detail: "Running installer… (\(elapsed)s)"))
             }
         }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            proc.terminationHandler = { _ in cont.resume() }
-            if !proc.isRunning { cont.resume() }
+        let code: Int32
+        do {
+            code = try await WineBackendManager.shared.launchAndWait(
+                executable: bottleTemp.path,
+                arguments: ["/S"],
+                in: bottle,
+                workingDirectory: nil
+            )
+        } catch {
+            tickTask.cancel()
+            throw error
         }
         tickTask.cancel()
 
-        let code = proc.terminationStatus
         Log.ok("maxima.install", "Installer exited with code \(code)")
         if code != 0 {
             throw MaximaError.installerFailed(code)
         }
 
+        // Persist the tag before registerHelper(): if the user dismisses the
+        // qrc:// prompt the files are still installed, and a missing tag would
+        // make setupMaxima() reinstall on every launch.
+        UserDefaults.standard.set(tagName, forKey: versionKey)
+
         // 5 — Register helper
         progress(.init(phase: .registeringHelper, fraction: -1,
                        detail: "Registering MaximaHelper…"))
         try await registerHelper()
-
-        // Persist the installed version tag so we can detect updates later.
-        UserDefaults.standard.set(tagName, forKey: versionKey)
 
         progress(.init(phase: .done, fraction: 1, detail: "Maxima is ready"))
     }
@@ -433,13 +434,6 @@ public actor MaximaService {
 
         progress(.init(phase: .installing, fraction: -1,
                        detail: "Running uninstaller…"))
-        let proc = try await WineBackendManager.shared.launch(
-            executable: uninstallerPath,
-            arguments: ["/S"],
-            in: bottle,
-            workingDirectory: nil
-        )
-
         let start = Date()
         let tickTask = Task {
             while !Task.isCancelled {
@@ -449,13 +443,20 @@ public actor MaximaService {
                                detail: "Running uninstaller… (\(elapsed)s)"))
             }
         }
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            proc.terminationHandler = { _ in cont.resume() }
-            if !proc.isRunning { cont.resume() }
+        let code: Int32
+        do {
+            code = try await WineBackendManager.shared.launchAndWait(
+                executable: uninstallerPath,
+                arguments: ["/S"],
+                in: bottle,
+                workingDirectory: nil
+            )
+        } catch {
+            tickTask.cancel()
+            throw error
         }
         tickTask.cancel()
 
-        let code = proc.terminationStatus
         Log.ok("maxima.uninstall", "Uninstaller exited with code \(code)")
         if code != 0 {
             throw MaximaError.installerFailed(code)
@@ -511,7 +512,7 @@ public actor MaximaService {
             return
         }
         var proc = ProcessResult(exitCode: 0, stdout: "", stderr: "")
-        proc = (try? runProcess(
+        proc = (try? await runProcess(
             wineserver.path,
             arguments: ["-k"],
             extraEnv: ["WINEPREFIX": bottle.prefixURL.path]
@@ -640,18 +641,15 @@ extension MaximaService {
 
         Log.run("maxima.cli", "cxstart --bottle \(bottle.name) --wait \(cliPath) list-games --json")
 
-        try await Task.detached(priority: .userInitiated) {
-            try process.run()
-            process.waitUntilExit()
-        }.value
+        let status = try await ProcessRunner.runUntilExit(process)
 
         let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        if process.terminationStatus != 0 {
+        if status != 0 {
             let stderr = String(
                 data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
                 encoding: .utf8
             ) ?? ""
-            throw CliError.cliFailed(exitCode: process.terminationStatus, stderr: stderr)
+            throw CliError.cliFailed(exitCode: status, stderr: stderr)
         }
 
         // cxstart sometimes echoes a launch banner before the program's
@@ -721,16 +719,13 @@ extension MaximaService {
         process.standardOutput = logHandle
         process.standardError = logHandle
 
-        try await Task.detached(priority: .userInitiated) {
-            try process.run()
-            process.waitUntilExit()
-        }.value
+        let status = try await ProcessRunner.runUntilExit(process)
 
         try? logHandle.close()
 
-        if process.terminationStatus != 0 {
+        if status != 0 {
             throw CliError.cliFailed(
-                exitCode: process.terminationStatus,
+                exitCode: status,
                 stderr: "see \(logURL.path) for details"
             )
         }
@@ -990,7 +985,7 @@ extension MaximaService {
         case .none:
             if isInstalled(in: bottle) {
                 Log.info("maxima.role", "Role .none — uninstalling Maxima from \(bottle.name)")
-                try? await uninstall(from: bottle, progress: progress)
+                try await uninstall(from: bottle, progress: progress)
             }
         case .authOnly:
             if !isInstalled(in: bottle) {

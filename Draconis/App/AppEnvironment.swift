@@ -952,13 +952,10 @@ public final class AppEnvironment: ObservableObject {
         let devNull = FileHandle(forWritingAtPath: "/dev/null")
         p.standardOutput = devNull
         p.standardError = devNull
-        do {
-            try p.run()
-            p.waitUntilExit()
-        } catch {
+        guard let status = try? await ProcessRunner.runUntilExit(p) else {
             return false
         }
-        return p.terminationStatus == 0
+        return status == 0
     }
 
     /// Follow the per-bottle log file and forward each new line to

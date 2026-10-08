@@ -76,15 +76,14 @@ public actor SteamInstaller {
 
         let args = silent ? ["/S"] : []
         do {
-            let proc = try await WineBackendManager.shared.launch(
+            let status = try await WineBackendManager.shared.launchAndWait(
                 executable: installer.path,
                 arguments: args,
                 in: bottle,
                 workingDirectory: nil
             )
-            proc.waitUntilExit()
-            if proc.terminationStatus != 0 {
-                throw InstallError.launchFailed("exit code \(proc.terminationStatus)")
+            if status != 0 {
+                throw InstallError.launchFailed("exit code \(status)")
             }
             Log.ok("steam.install", "Steam installed in “\(bottle.name)”")
         } catch {

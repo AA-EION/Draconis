@@ -69,4 +69,25 @@ public actor WineBackendManager {
             logFile: PathResolver.bottleLogFile(for: bottle)
         )
     }
+
+    public func launchAndWait(
+        executable: String,
+        arguments: [String] = [],
+        in bottle: WineBottle,
+        workingDirectory: String? = nil
+    ) async throws -> Int32 {
+        guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
+            throw BackendError.cxstartMissing
+        }
+        let args = ["--bottle", bottle.name, "--wait", executable] + arguments
+
+        Log.run("crossover.launch", "\(cxstart.path) \(args.joined(separator: " "))")
+        return try await ProcessRunner.shared.detachedAndWait(
+            cxstart,
+            arguments: args,
+            environment: nil,
+            currentDirectory: workingDirectory.map { URL(fileURLWithPath: $0) },
+            logFile: PathResolver.bottleLogFile(for: bottle)
+        )
+    }
 }

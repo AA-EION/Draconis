@@ -75,7 +75,9 @@ jobs:
           ### Installation
           1. Download `Draconis-${{ github.ref_name }}.dmg` below
           2. Open the DMG and drag **Draconis.app** to Applications
-          3. Launch and follow the setup wizard
+          3. Draconis isn't notarised, so clear the download flag once (macOS Tahoe 26.6+ otherwise only offers *Move to Trash*):
+             `xattr -dr com.apple.quarantine /Applications/Draconis.app`
+          4. Launch and follow the setup wizard
 
           > **Requires macOS Tahoe (26.0) or later.**
           EOF

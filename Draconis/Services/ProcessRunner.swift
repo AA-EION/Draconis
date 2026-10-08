@@ -48,9 +48,21 @@ public actor ProcessRunner {
         process.standardOutput = outPipe
         process.standardError  = errPipe
 
+        // The handler must be installed before run(): a process that exits
+        // immediately would otherwise finish before anyone is listening.
+        // A buffered stream (instead of a continuation) lets us start
+        // draining the pipes before awaiting exit, so a chatty child can't
+        // fill the pipe buffer and deadlock.
+        let (exitStream, exitContinuation) = AsyncStream<Int32>.makeStream()
+        process.terminationHandler = { finished in
+            exitContinuation.yield(finished.terminationStatus)
+            exitContinuation.finish()
+        }
+
         do {
             try process.run()
         } catch {
+            process.terminationHandler = nil
             throw RunError.launchFailed(error.localizedDescription)
         }
 
@@ -58,13 +70,14 @@ public actor ProcessRunner {
         async let outData: Data = readAll(outPipe.fileHandleForReading)
         async let errData: Data = readAll(errPipe.fileHandleForReading)
 
-        process.waitUntilExit()
+        var status: Int32 = -1
+        for await code in exitStream { status = code }
 
-        let stdout = String(data: try await outData, encoding: .utf8) ?? ""
-        let stderr = String(data: try await errData, encoding: .utf8) ?? ""
+        let stdout = String(data: await outData, encoding: .utf8) ?? ""
+        let stderr = String(data: await errData, encoding: .utf8) ?? ""
 
         return Result(
-            terminationStatus: process.terminationStatus,
+            terminationStatus: status,
             stdout: stdout,
             stderr: stderr
         )
@@ -86,6 +99,57 @@ public actor ProcessRunner {
         currentDirectory: URL? = nil,
         logFile: URL? = nil
     ) throws -> Process {
+        let process = makeDetached(
+            executable,
+            arguments: arguments,
+            environment: environment,
+            currentDirectory: currentDirectory,
+            logFile: logFile
+        )
+        try process.run()
+        return process
+    }
+
+    public nonisolated func detachedAndWait(
+        _ executable: URL,
+        arguments: [String] = [],
+        environment: [String: String]? = nil,
+        currentDirectory: URL? = nil,
+        logFile: URL? = nil
+    ) async throws -> Int32 {
+        let process = makeDetached(
+            executable,
+            arguments: arguments,
+            environment: environment,
+            currentDirectory: currentDirectory,
+            logFile: logFile
+        )
+        return try await Self.runUntilExit(process)
+    }
+
+    public static func runUntilExit(_ process: Process) async throws -> Int32 {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Int32, Error>) in
+            // Installed before run(): a fast exit must not beat the handler,
+            // and a throwing run() must resume the continuation only once.
+            process.terminationHandler = { finished in
+                cont.resume(returning: finished.terminationStatus)
+            }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                cont.resume(throwing: error)
+            }
+        }
+    }
+
+    private nonisolated func makeDetached(
+        _ executable: URL,
+        arguments: [String],
+        environment: [String: String]?,
+        currentDirectory: URL?,
+        logFile: URL?
+    ) -> Process {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
@@ -118,7 +182,6 @@ public actor ProcessRunner {
             process.standardError = FileHandle(forWritingAtPath: "/dev/null")
         }
 
-        try process.run()
         return process
     }
 

@@ -106,25 +106,21 @@ public final class WineBottleCreator {
         process.standardError = stderrPipe
         process.standardOutput = stdoutPipe
 
-        // Run synchronously on a background thread so the @MainActor
-        // doesn't block while Wine sets up the prefix (~3-10 seconds the
-        // first time on a cold disk).
-        try await Task.detached(priority: .userInitiated) {
-            try process.run()
-            process.waitUntilExit()
-        }.value
+        // Suspends instead of blocking a thread while Wine sets up the
+        // prefix (~3-10 seconds the first time on a cold disk).
+        let status = try await ProcessRunner.runUntilExit(process)
 
-        if process.terminationStatus != 0 {
+        if status != 0 {
             let stderr = String(
                 data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
                 encoding: .utf8
             ) ?? ""
             DebugLog.shared.error(
                 "bottle.create",
-                "cxbottle exit=\(process.terminationStatus) stderr=\(stderr)"
+                "cxbottle exit=\(status) stderr=\(stderr)"
             )
             throw CreatorError.creationFailed(
-                exitCode: process.terminationStatus,
+                exitCode: status,
                 stderr: stderr
             )
         }

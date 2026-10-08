@@ -30,8 +30,9 @@ public enum ConsentManager {
         SentrySDK.capture(event: event)
     }
 
-    /// Clears persisted consent. Called when the user declines — the app
-    /// terminates immediately after, so this is mainly for future launches.
+    /// Clears persisted consent. Called when the user declines or withdraws
+    /// consent from Settings — the app terminates immediately after, so this
+    /// is mainly for future launches.
     public static func revoke() {
         UserDefaults.standard.removeObject(forKey: acceptedKey)
     }

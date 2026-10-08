@@ -3,6 +3,7 @@ import AppKit
 
 struct SettingsView: View {
     @EnvironmentObject private var env: AppEnvironment
+    @State private var showWithdrawConsentAlert = false
 
     var body: some View {
         TabView {
@@ -448,10 +449,26 @@ struct SettingsView: View {
                     Label("Setup Wizard", systemImage: "wand.and.stars")
                 }
                 .buttonStyle(.glass)
+
+                Button {
+                    showWithdrawConsentAlert = true
+                } label: {
+                    Label("Withdraw Consent", systemImage: "hand.raised.fill")
+                }
+                .buttonStyle(.glass)
             }
             .padding(.bottom, 24)
         }
         .padding()
+        .alert("Withdraw privacy consent?", isPresented: $showWithdrawConsentAlert) {
+            Button("Withdraw and Quit", role: .destructive) {
+                ConsentManager.revoke()
+                NSApp.terminate(nil)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Draconis will stop sending crash reports and quit now. The privacy notice will be shown again the next time you open the app.")
+        }
     }
 
     // MARK: - Helpers

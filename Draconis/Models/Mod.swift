@@ -22,7 +22,7 @@ public struct InstalledMod: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-// MARK: - Thunderstore (northstar.thunderstore.io)
+// MARK: - Thunderstore (thunderstore.io/c/northstar)
 
 public struct ThunderstorePackage: Identifiable, Hashable, Codable, Sendable {
     public var name: String

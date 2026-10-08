@@ -49,6 +49,28 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     /// True when any game-store launcher (Steam, EA App, or Epic Games) is present.
     public var hasLauncher: Bool { hasSteam || hasEAApp || hasEpicGames }
 
+    /// Path Draconis's Maxima route installs TF2 to (`maxima.exe --install-path`).
+    public var maximaInstallRoot: URL {
+        PathResolver.driveC(in: prefixURL)
+            .appendingPathComponent("Program Files (x86)/Origin Games/Titanfall2")
+    }
+
+    /// Whether TF2 is fully installed. Maxima's `FInstall.txt` marker is
+    /// only required for a copy Maxima downloaded itself (its exe shows up
+    /// mid-download). A Steam / EA copy in a bottle that merely has Maxima
+    /// for auth or the CEG fix never gets a marker, and requiring one would
+    /// send onboarding back into a full re-download.
+    public var isTitanfallInstallComplete: Bool {
+        guard hasTitanfall2, let root = titanfall2InstallPath else { return false }
+        let rootURL = URL(fileURLWithPath: root).standardizedFileURL
+        guard hasMaxima, rootURL.path == maximaInstallRoot.standardizedFileURL.path else {
+            return true
+        }
+        return FileManager.default.fileExists(
+            atPath: rootURL.appendingPathComponent("FInstall.txt").path
+        )
+    }
+
     /// User's stated role for Maxima in this bottle. Read-only computed
     /// from `UserDefaults`; the launch path reads this to pick the
     /// right command. Independent from `hasMaxima` — the user can have

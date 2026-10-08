@@ -1,6 +1,6 @@
 import Foundation
 
-/// Talks to https://northstar.thunderstore.io/api/v1/package/ to list mods.
+/// Talks to https://thunderstore.io/c/northstar/api/v1/package/ to list mods.
 /// Also handles install/uninstall against a given bottle's R2Northstar tree.
 ///
 /// **Install layout — uses `R2Northstar/packages/<full_name>/`** (the modern
@@ -22,7 +22,7 @@ public actor ThunderstoreClient {
     public static let shared = ThunderstoreClient()
 
     private let packagesURL = URL(
-        string: "https://northstar.thunderstore.io/api/v1/package/"
+        string: "https://thunderstore.io/c/northstar/api/v1/package/"
     )!
 
     private let session: URLSession = {
@@ -312,6 +312,12 @@ public actor ThunderstoreClient {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(atPath: packagesRoot.path) else { return }
         for entry in entries where entry.hasPrefix(prefix) {
+            // `Author-Mod-` also prefixes other packages (`Author-Mod-Extras-1.0.0`);
+            // only a bare version number may follow.
+            let remainder = entry.dropFirst(prefix.count)
+            guard remainder.range(of: #"^\d+(\.\d+)*$"#, options: .regularExpression) != nil else {
+                continue
+            }
             let url = packagesRoot.appendingPathComponent(entry)
             try? fm.removeItem(at: url)
             Log.info("thunderstore.install", "Removed older version: \(entry)")

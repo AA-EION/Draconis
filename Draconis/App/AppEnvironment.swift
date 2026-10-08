@@ -20,8 +20,13 @@ public final class AppEnvironment: ObservableObject {
     @Published public var lastLaunchError: String?
 
     // Mods
-    @Published public private(set) var thunderstorePackages: [ThunderstorePackage] = []
-    @Published public private(set) var installedMods: [InstalledMod] = []
+    @Published public private(set) var thunderstorePackages: [ThunderstorePackage] = [] {
+        didSet { recomputeModUpdates() }
+    }
+    @Published public private(set) var installedMods: [InstalledMod] = [] {
+        didSet { recomputeModUpdates() }
+    }
+    @Published public private(set) var modUpdatesAvailable: [String: ThunderstoreVersion] = [:]
     @Published public var modsLoading: Bool = false
     @Published public var modsLoadError: String?
 
@@ -928,6 +933,15 @@ public final class AppEnvironment: ObservableObject {
         // tick and clear `launchInFlight` immediately.
         try? await Task.sleep(for: .seconds(8))
 
+        // Fallback for when CleanSpawn's responsibility disclaim is
+        // unavailable: the game tree is then attributed to Draconis, and
+        // Draconis going to App Nap behind the game window throttles it.
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Titanfall 2 is running"
+        )
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+
         while await Self.isTitanfallRunning() {
             try? await Task.sleep(for: .seconds(3))
         }
@@ -952,13 +966,10 @@ public final class AppEnvironment: ObservableObject {
         let devNull = FileHandle(forWritingAtPath: "/dev/null")
         p.standardOutput = devNull
         p.standardError = devNull
-        do {
-            try p.run()
-            p.waitUntilExit()
-        } catch {
+        guard let status = try? await ProcessRunner.runUntilExit(p) else {
             return false
         }
-        return p.terminationStatus == 0
+        return status == 0
     }
 
     /// Follow the per-bottle log file and forward each new line to
@@ -1065,9 +1076,7 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
-    /// Map of installed-mod-name → latest Thunderstore version, used by the
-    /// Installed list to flag mods with available updates.
-    public var modUpdatesAvailable: [String: ThunderstoreVersion] {
+    private func recomputeModUpdates() {
         var byModName: [String: ThunderstoreVersion] = [:]
         for pkg in thunderstorePackages {
             guard let latest = pkg.latest else { continue }
@@ -1080,7 +1089,7 @@ public final class AppEnvironment: ObservableObject {
                 out[mod.name] = latest
             }
         }
-        return out
+        modUpdatesAvailable = out
     }
 
     // MARK: - Servers

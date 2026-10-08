@@ -118,34 +118,12 @@ public final class BottleInstaller {
     /// the marker doesn't exist, so we fall back to exe-presence.
     private func detectStage() async -> Stage {
         let bottles = await CrossOverDetector.shared.bottles()
-        if let withGame = bottles.first(where: {
-            $0.hasTitanfall2 && Self.isInstallTrulyComplete(for: $0)
-        }) {
+        if let withGame = bottles.first(where: { $0.isTitanfallInstallComplete }) {
             return .done(bottleID: withGame.id)
         }
         if let withFrontend = bottles.first(where: { $0.hasLauncher || $0.hasMaxima }) {
             return .waitingForTitanfall(bottleID: withFrontend.id)
         }
         return .waitingForBottle
-    }
-
-    /// True when the install in this bottle looks truly complete:
-    ///   * For Maxima-installed bottles → require `FInstall.txt` at the
-    ///     standard install path. Maxima writes that marker only after
-    ///     `ContentManager::update` observes the download as `is_done()`,
-    ///     so it's the on-disk truth source.
-    ///   * For other launchers (Steam/EA/Epic) → no marker convention
-    ///     exists, so trust exe-presence (the caller already verified
-    ///     `hasTitanfall2`).
-    private static func isInstallTrulyComplete(for bottle: WineBottle) -> Bool {
-        if !bottle.hasMaxima { return true }
-        // Read the marker at the standard EA install path. We don't
-        // need to await MaximaService because the path translation is
-        // pure (no shared mutable state) — duplicate the small bit of
-        // logic here to keep `detectStage` synchronous-friendly.
-        let driveC = PathResolver.driveC(in: bottle.prefixURL)
-        let markerURL = driveC
-            .appendingPathComponent("Program Files (x86)/Origin Games/Titanfall2/FInstall.txt")
-        return FileManager.default.fileExists(atPath: markerURL.path)
     }
 }

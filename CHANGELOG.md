@@ -19,6 +19,10 @@ All notable changes to Draconis are documented here.
 - **`MaximaService.launchGame` / `NorthstarLauncher.launch`** return the spawned `pid_t` instead of an empty placeholder `Process`.
 - **Wrong error when CrossOver is missing** — launching without `cxstart` now reports "CrossOver (or its cxstart helper) wasn't found" instead of "Titanfall 2 wasn't found".
 - **Updating a Thunderstore mod could delete a different mod** — older-version cleanup now only removes folders named exactly `Author-Mod-<version>`, so `Author-Mod-Extras-1.0.0` is left alone.
+- **Onboarding re-downloaded Titanfall 2 for Steam bottles that had Maxima** (e.g. after the CEG fix) — Maxima's `FInstall.txt` marker is now only required for copies Maxima downloaded itself, via a single `WineBottle.isTitanfallInstallComplete` check shared by the wizard and stage detection.
+- **Server-based Maxima compatibility** — every `maxima-cli` call (library check, CEG fix, launch) now goes through `CleanSpawn`, so the in-bottle `maxima-server` it starts is never responsibility-attributed to Draconis (which would bring back the launch freeze). Output is captured via files instead of pipes, removing a deadlock on large EA libraries. "Login pending" errors from the CLI surface as "not logged in".
+- **Mod browser** follows Thunderstore's move of the Northstar API to `thunderstore.io/c/northstar/api/v1/package/`.
+- Draconis holds a user-initiated activity while Titanfall 2 runs, as a fallback against App Nap if the responsibility-disclaim API is ever unavailable.
 
 ---
 

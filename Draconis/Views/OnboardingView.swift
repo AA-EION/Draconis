@@ -490,17 +490,9 @@ struct OnboardingView: View {
     }
 
     private func nextPageForExistingBottle(_ bottle: WineBottle) -> ExistingBottleRoute {
-        // For Maxima-installed bottles the .exe can appear mid-download.
-        // Use the FInstall.txt marker (written only after the install
-        // truly completes) as the "is this a real install?" check, so
-        // we don't dismiss the wizard on a partial state.
-        let installComplete = !bottle.hasMaxima ||
-            FileManager.default.fileExists(
-                atPath: PathResolver.driveC(in: bottle.prefixURL)
-                    .appendingPathComponent("Program Files (x86)/Origin Games/Titanfall2/FInstall.txt")
-                    .path
-            )
-        if bottle.hasTitanfall2 && installComplete {
+        // For Maxima-installed bottles the .exe can appear mid-download,
+        // so this requires the FInstall.txt marker for those copies only.
+        if bottle.isTitanfallInstallComplete {
             return MaximaRole.isExplicitlySet(forBottle: bottle.id)
                 ? .dismiss
                 : .maximaRole

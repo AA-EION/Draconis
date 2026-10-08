@@ -20,8 +20,13 @@ public final class AppEnvironment: ObservableObject {
     @Published public var lastLaunchError: String?
 
     // Mods
-    @Published public private(set) var thunderstorePackages: [ThunderstorePackage] = []
-    @Published public private(set) var installedMods: [InstalledMod] = []
+    @Published public private(set) var thunderstorePackages: [ThunderstorePackage] = [] {
+        didSet { recomputeModUpdates() }
+    }
+    @Published public private(set) var installedMods: [InstalledMod] = [] {
+        didSet { recomputeModUpdates() }
+    }
+    @Published public private(set) var modUpdatesAvailable: [String: ThunderstoreVersion] = [:]
     @Published public var modsLoading: Bool = false
     @Published public var modsLoadError: String?
 
@@ -1062,9 +1067,7 @@ public final class AppEnvironment: ObservableObject {
         }
     }
 
-    /// Map of installed-mod-name → latest Thunderstore version, used by the
-    /// Installed list to flag mods with available updates.
-    public var modUpdatesAvailable: [String: ThunderstoreVersion] {
+    private func recomputeModUpdates() {
         var byModName: [String: ThunderstoreVersion] = [:]
         for pkg in thunderstorePackages {
             guard let latest = pkg.latest else { continue }
@@ -1077,7 +1080,7 @@ public final class AppEnvironment: ObservableObject {
                 out[mod.name] = latest
             }
         }
-        return out
+        modUpdatesAvailable = out
     }
 
     // MARK: - Servers

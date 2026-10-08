@@ -81,8 +81,8 @@ public enum CleanSpawn {
     ) -> Int32
 
     private static let disclaimResponsibility: DisclaimFn? = {
+        // Never dlclose: the returned pointer must outlive this closure.
         guard let handle = dlopen(nil, RTLD_LAZY) else { return nil }
-        defer { dlclose(handle) }
         guard let symbol = dlsym(handle, "responsibility_spawnattrs_setdisclaim") else {
             return nil
         }

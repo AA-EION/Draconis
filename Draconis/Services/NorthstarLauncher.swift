@@ -49,6 +49,7 @@ public actor NorthstarLauncher {
         case titanfallNotFound
         case northstarNotFound
         case eaAuthBackboneMissing
+        case crossOverNotFound
 
         public var errorDescription: String? {
             switch self {
@@ -58,6 +59,8 @@ public actor NorthstarLauncher {
                 return "NorthstarLauncher.exe wasn't found in this bottle. Install Northstar before launching in Northstar mode."
             case .eaAuthBackboneMissing:
                 return "This launch needs an EA-auth backbone — install Maxima or EA Desktop from the onboarding wizard."
+            case .crossOverNotFound:
+                return "CrossOver (or its cxstart helper) wasn't found. Install CrossOver and try again."
             }
         }
     }
@@ -67,7 +70,7 @@ public actor NorthstarLauncher {
         bottle: WineBottle,
         mode: LaunchMode,
         extraArgs: [String] = []
-    ) async throws -> Process {
+    ) async throws -> pid_t {
         Log.info(
             "northstar.launch",
             "Asked to launch \(mode.label) in '\(bottle.name)' [role=\(bottle.maximaRole.rawValue), hasNS=\(bottle.hasNorthstar)]"
@@ -143,7 +146,8 @@ public actor NorthstarLauncher {
                 throw LaunchError.eaAuthBackboneMissing
             }
             guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
-                throw LaunchError.titanfallNotFound
+                Log.error("northstar.launch", "cxstart not found")
+                throw LaunchError.crossOverNotFound
             }
             let logURL = PathResolver.bottleLogFile(for: bottle)
             try? FileManager.default.createDirectory(
@@ -165,11 +169,7 @@ public actor NorthstarLauncher {
                 stdoutPath: logURL.path
             )
             Log.info("northstar.launch", "cxstart spawned pid=\(pid)")
-            // No Foundation.Process handle (CleanSpawn returns pid_t only).
-            // AppEnvironment.pollUntilGameExits tracks lifetime via
-            // `pgrep Titanfall2.exe`, so the stub Process here is
-            // intentionally unattached.
-            return Process()
+            return pid
         }
     }
 }

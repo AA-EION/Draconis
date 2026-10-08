@@ -746,9 +746,8 @@ extension MaximaService {
     /// the install directory or the executable path; we pass the
     /// directory from `WineBottle.titanfall2InstallPath`.
     ///
-    /// Returns the detached `Process` so the caller can either
-    /// `waitUntilExit` or fire-and-forget (typically the latter —
-    /// games are GUI apps and we want App Nap to leave them alone).
+    /// Returns the spawned `cxstart` PID. Callers normally fire-and-forget
+    /// (games are GUI apps and we want App Nap to leave them alone).
     ///
     /// Why we bypass `Foundation.Process` for this path: the same
     /// `cxstart maxima-cli.exe …` invocation reaches Main Menu from
@@ -769,7 +768,7 @@ extension MaximaService {
         in bottle: WineBottle,
         gamePath: String,
         gameArgs: [String] = []
-    ) async throws -> Process {
+    ) async throws -> pid_t {
         guard let cliPath = maximaCliPath(in: bottle) else {
             throw CliError.notInstalled
         }
@@ -805,14 +804,7 @@ extension MaximaService {
         )
 
         Log.info("maxima.launch", "cxstart spawned pid=\(pid)")
-
-        // The caller's API takes a `Process` (it tracks lifetime via
-        // termination). We don't have a `Process` for a posix_spawn'd
-        // child — the PID is the only handle. Return a placeholder
-        // `Process` that's not actually used by `AppEnvironment`
-        // (which polls `pgrep Titanfall2.exe` instead). The stub stays
-        // unattached to any real child.
-        return Process()
+        return pid
     }
 
     /// Launch Maxima's graphical UI (`maxima.exe`) interactively

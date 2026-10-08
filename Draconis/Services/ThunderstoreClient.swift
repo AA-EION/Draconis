@@ -312,6 +312,12 @@ public actor ThunderstoreClient {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(atPath: packagesRoot.path) else { return }
         for entry in entries where entry.hasPrefix(prefix) {
+            // `Author-Mod-` also prefixes other packages (`Author-Mod-Extras-1.0.0`);
+            // only a bare version number may follow.
+            let remainder = entry.dropFirst(prefix.count)
+            guard remainder.range(of: #"^\d+(\.\d+)*$"#, options: .regularExpression) != nil else {
+                continue
+            }
             let url = packagesRoot.appendingPathComponent(entry)
             try? fm.removeItem(at: url)
             Log.info("thunderstore.install", "Removed older version: \(entry)")

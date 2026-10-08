@@ -933,6 +933,15 @@ public final class AppEnvironment: ObservableObject {
         // tick and clear `launchInFlight` immediately.
         try? await Task.sleep(for: .seconds(8))
 
+        // Fallback for when CleanSpawn's responsibility disclaim is
+        // unavailable: the game tree is then attributed to Draconis, and
+        // Draconis going to App Nap behind the game window throttles it.
+        let activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Titanfall 2 is running"
+        )
+        defer { ProcessInfo.processInfo.endActivity(activity) }
+
         while await Self.isTitanfallRunning() {
             try? await Task.sleep(for: .seconds(3))
         }

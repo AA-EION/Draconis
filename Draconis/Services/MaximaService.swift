@@ -610,6 +610,14 @@ extension MaximaService {
         }
     }
 
+    /// maxima-cli (v0.15+) is a thin client of an in-bottle maxima-server
+    /// that logs in on first start; when the user hasn't finished the
+    /// browser login the CLI gives up with one of these messages.
+    static func looksLikeLoginPending(_ output: String) -> Bool {
+        ["did not come up", "before it started serving", "Login failed"]
+            .contains { output.contains($0) }
+    }
+
     /// Run `maxima-cli list-games --json` inside the bottle, parse the
     /// JSON array, return what Maxima reports about the user's EA library.
     /// Requires the user to have completed OAuth at least once — Draconis
@@ -624,31 +632,33 @@ extension MaximaService {
             throw CliError.cxstartMissing
         }
 
-        let process = Process()
-        process.executableURL = cxstart
-        process.arguments = [
-            "--bottle", bottle.name,
-            "--wait",
-            cliPath,
-            "list-games",
-            "--json",
-        ]
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("draconis-list-games-\(UUID().uuidString)")
+        let stdoutURL = scratch.appendingPathExtension("out")
+        let stderrURL = scratch.appendingPathExtension("err")
+        defer {
+            try? FileManager.default.removeItem(at: stdoutURL)
+            try? FileManager.default.removeItem(at: stderrURL)
+        }
 
         Log.run("maxima.cli", "cxstart --bottle \(bottle.name) --wait \(cliPath) list-games --json")
 
-        let status = try await ProcessRunner.runUntilExit(process)
+        // Files rather than pipes: the in-bottle maxima-server that
+        // maxima-cli spawns inherits Wine's stderr and outlives this call,
+        // so a pipe would never reach EOF.
+        let status = try await CleanSpawn.spawnAndWait(
+            executable: cxstart.path,
+            arguments: ["--bottle", bottle.name, "--wait", cliPath, "list-games", "--json"],
+            stdoutPath: stdoutURL.path,
+            stderrPath: stderrURL.path
+        )
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let stdoutData = (try? Data(contentsOf: stdoutURL)) ?? Data()
         if status != 0 {
-            let stderr = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
+            let stderr = (try? String(contentsOf: stderrURL, encoding: .utf8)) ?? ""
+            if Self.looksLikeLoginPending(stderr) {
+                throw CliError.notLoggedIn
+            }
             throw CliError.cliFailed(exitCode: status, stderr: stderr)
         }
 
@@ -695,33 +705,25 @@ extension MaximaService {
             throw CliError.cxstartMissing
         }
 
-        let process = Process()
-        process.executableURL = cxstart
-        process.arguments = [
-            "--bottle", bottle.name,
-            "--wait",
-            cliPath,
-            "install",
-            "titanfall-2",
-            "--path", gamePath,
-            "--replace-files", "Titanfall2.exe,Titanfall2_trial.exe",
-            "--only-listed-files",
-        ]
-
         Log.run("maxima.ceg", "Applying CEG fix to \(gamePath) in bottle \(bottle.name)")
 
-        // Pipe output to the per-bottle log file so the user can read
+        // Output goes to the per-bottle log file so the user can read
         // exactly what maxima-cli reported if something goes wrong.
         let logURL = PathResolver.bottleLogFile(for: bottle)
-        try? FileManager.default.createFile(atPath: logURL.path, contents: nil)
-        let logHandle = try FileHandle(forWritingTo: logURL)
-        try logHandle.seekToEnd()
-        process.standardOutput = logHandle
-        process.standardError = logHandle
-
-        let status = try await ProcessRunner.runUntilExit(process)
-
-        try? logHandle.close()
+        let status = try await CleanSpawn.spawnAndWait(
+            executable: cxstart.path,
+            arguments: [
+                "--bottle", bottle.name,
+                "--wait",
+                cliPath,
+                "install",
+                "titanfall-2",
+                "--path", gamePath,
+                "--replace-files", "Titanfall2.exe,Titanfall2_trial.exe",
+                "--only-listed-files",
+            ],
+            stdoutPath: logURL.path
+        )
 
         if status != 0 {
             throw CliError.cliFailed(

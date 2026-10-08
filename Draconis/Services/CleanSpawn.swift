@@ -194,4 +194,45 @@ public enum CleanSpawn {
         }
         return pid
     }
+
+    /// `spawn` + wait for the child's exit status without blocking a
+    /// Swift Concurrency thread (`waitpid` runs on a GCD worker).
+    ///
+    /// Use this for every short-lived `cxstart maxima-cli …` call, not
+    /// just launches: maxima-cli spawns a long-lived `maxima-server.exe`
+    /// inside the bottle on first use, and every game launched later
+    /// descends from that server. If the first CLI call came from a
+    /// plain `Foundation.Process`, the server — and all its games —
+    /// would stay responsibility-attributed to Draconis.
+    public static func spawnAndWait(
+        executable: String,
+        arguments: [String],
+        environment: [String: String]? = nil,
+        stdoutPath: String = "/dev/null",
+        stderrPath: String? = nil
+    ) async throws -> Int32 {
+        let pid = try spawn(
+            executable: executable,
+            arguments: arguments,
+            environment: environment,
+            stdoutPath: stdoutPath,
+            stderrPath: stderrPath
+        )
+        return await withCheckedContinuation { (cont: CheckedContinuation<Int32, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                var status: Int32 = 0
+                var rc: pid_t
+                repeat {
+                    rc = waitpid(pid, &status, 0)
+                } while rc == -1 && errno == EINTR
+                guard rc == pid else {
+                    cont.resume(returning: -1)
+                    return
+                }
+                // WIFEXITED / WEXITSTATUS are macros Swift doesn't import.
+                let signal = status & 0x7f
+                cont.resume(returning: signal == 0 ? (status >> 8) & 0xff : 128 + signal)
+            }
+        }
+    }
 }

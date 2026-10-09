@@ -8,7 +8,7 @@ struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
 
     private enum Page {
-        case preflight     // CrossOver check / intro
+        case preflight     // Wine backend choice / intro
         case bottleChoice  // shown only when existing bottles are detected
         case sourceChoice  // pick install source (Maxima / EA / Steam / Epic)
         case progress      // installing bottle + launcher + game
@@ -32,13 +32,14 @@ struct OnboardingView: View {
     /// label can show it ("Create new bottle (Titanfall 2 (2))") and
     /// `startAutoBottleInstall` can reuse it without recomputing.
     @State private var pendingNewBottleName: String = "Titanfall 2"
+    @State private var epicCode: String = ""
 
     var body: some View {
         VStack(spacing: 18) {
             Text("DRACONIS")
                 .font(TF.hero(34))
                 .tracking(8)
-            Text("Native macOS launcher for Titanfall 2 + Northstar via CrossOver.")
+            Text("Native macOS launcher for Titanfall 2 + Northstar.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .font(TF.body(13))
@@ -120,10 +121,26 @@ struct OnboardingView: View {
     private var preflightPage: some View {
         GlassEffectContainer {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Set up Titanfall 2 in a CrossOver bottle", systemImage: "wineglass.fill")
+                Label("Set up Titanfall 2", systemImage: env.preferredBackend.symbolName)
                     .stencilLabel()
 
-                if env.crossOverInstalled {
+                Picker("Run with", selection: $env.preferredBackend) {
+                    ForEach(WineBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(backendBlurb)
+                    .font(TF.body(11))
+                    .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if env.preferredBackend == .crossover && !env.crossOverInstalled {
+                    Link("Download CrossOver →",
+                         destination: URL(string: "https://www.codeweavers.com/crossover")!)
+                        .font(TF.body(12))
+                } else {
                     Text(preflightBlurb)
                         .font(TF.body(11))
                         .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
@@ -140,18 +157,99 @@ struct OnboardingView: View {
                     .buttonStyle(.glassProminent)
                     .tint(.accentColor)
                     .padding(.top, 4)
-                } else {
-                    Text("CrossOver not detected. Install it and click Rescan.")
-                        .font(.callout)
-                        .foregroundStyle(.white.opacity(0.85))
-                    Link("Download CrossOver →",
-                         destination: URL(string: "https://www.codeweavers.com/crossover")!)
-                        .font(TF.body(12))
+                }
+
+                if env.heroicSource != nil {
+                    Button {
+                        Task {
+                            guard let bottle = await env.importFromHeroic() else { return }
+                            selectedSource = .epic
+                            useExistingBottle(bottle)
+                        }
+                    } label: {
+                        Label("Import Titanfall 2 from Heroic", systemImage: "square.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.glass)
+                }
+
+                if let err = env.setupError {
+                    errorText(err)
                 }
             }
             .padding(18)
         }
         .glassEffect(.regular.tint(Color.accentColor.opacity(DraconisTheme.Card.accent)), in: .rect(cornerRadius: 18))
+    }
+
+    @ViewBuilder
+    private func epicCard(_ bottle: WineBottle) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let account = env.epicAccount {
+                Text("Epic account: \(account)").font(.body.weight(.semibold))
+                Button {
+                    Task { await env.openEpicTitanfall(in: bottle) }
+                } label: {
+                    Label(env.epicBusy ? "Working…" : "Open Titanfall 2 in the EA app",
+                          systemImage: "arrow.down.app")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(env.epicBusy || !bottle.hasEAApp)
+                Text("The EA app links your Epic account, then downloads the game. Sign in to EA if asked.")
+                    .font(TF.body(11))
+                    .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Sign in to Epic Games").font(.body.weight(.semibold))
+                Link("1. Open the Epic sign-in page →", destination: EpicService.loginURL)
+                    .font(TF.body(12))
+                Text("2. Paste the authorizationCode it shows:")
+                    .font(TF.body(11))
+                HStack {
+                    TextField("authorizationCode", text: $epicCode)
+                        .textFieldStyle(.roundedBorder)
+                    Button(env.epicBusy ? "…" : "Sign in") {
+                        let code = epicCode
+                        Task {
+                            await env.signInToEpic(code: code)
+                            if env.epicAccount != nil, bottle.hasEAApp {
+                                await env.openEpicTitanfall(in: bottle)
+                            }
+                        }
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(env.epicBusy || epicCode.isEmpty)
+                }
+            }
+            if let err = env.epicError {
+                errorText(err)
+            }
+        }
+        .padding(12)
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var backendBlurb: String {
+        switch env.preferredBackend {
+        case .crossover:
+            return env.crossOverInstalled
+                ? "Uses your CrossOver install. Bottles show up in CrossOver too."
+                : "CrossOver isn't installed. Install it and click Rescan, or pick Draconis Wine (free)."
+        case .draconis:
+            return "Free and open source: Wine built from CodeWeavers' CrossOver sources plus DXMT (Direct3D 11 → Metal), about 450 MB, downloaded once. Each game gets its own prefix inside Draconis's folder. Needs Rosetta 2 on Apple Silicon."
+        }
+    }
+
+    private func errorText(_ message: String) -> some View {
+        Text(message)
+            .font(.callout)
+            .foregroundStyle(.red)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
     }
 
     /// Picker shown when Draconis already detected one or more
@@ -166,7 +264,7 @@ struct OnboardingView: View {
                 Label("Use an existing bottle?", systemImage: "wineglass")
                     .stencilLabel()
 
-                Text("Draconis found \(env.bottles.count == 1 ? "a CrossOver bottle" : "\(env.bottles.count) CrossOver bottles") on this Mac. Pick one to scan and pick up where the previous setup left off, or create a brand-new bottle alongside.")
+                Text("Draconis found \(env.bottles.count == 1 ? "a bottle" : "\(env.bottles.count) bottles") on this Mac. Pick one to scan and pick up where the previous setup left off, or create a brand-new bottle alongside.")
                     .font(TF.body(11))
                     .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
                     .fixedSize(horizontal: false, vertical: true)
@@ -224,6 +322,7 @@ struct OnboardingView: View {
                 ForEach(BottleInstaller.Frontend.allCases) { f in
                     FrontendRow(
                         frontend: f,
+                        enabled: f.available(on: installBackend),
                         selected: selectedSource == f,
                         onTap: { selectedSource = f }
                     )
@@ -238,13 +337,8 @@ struct OnboardingView: View {
                 }
 
                 Button {
-                    // When the user came through bottleChoice and
-                    // picked "Create new", we already have a fresh
-                    // auto-suffixed name. Otherwise fall back to
-                    // the default ("Titanfall 2") which is fine for
-                    // first-run.
-                    let name = env.bottles.isEmpty ? nil : pendingNewBottleName
-                    env.startAutoBottleInstall(frontend: selectedSource, bottleName: name)
+                    let name = selectedExistingBottle?.name ?? (env.bottles.isEmpty ? nil : pendingNewBottleName)
+                    env.startAutoBottleInstall(frontend: selectedSource, backend: installBackend, bottleName: name)
                     page = .progress
                 } label: {
                     Label("Start install", systemImage: "play.fill")
@@ -253,7 +347,7 @@ struct OnboardingView: View {
                 }
                 .buttonStyle(.glassProminent)
                 .tint(.accentColor)
-                .disabled(!selectedSource.available)
+                .disabled(!selectedSource.available(on: installBackend))
                 .padding(.top, 4)
             }
             .padding(18)
@@ -269,7 +363,9 @@ struct OnboardingView: View {
 
                 ProgressStepRow(
                     title: "Create the bottle",
-                    detail: "Draconis runs `cxbottle --create --template win10_64 --bottle \"Titanfall 2\"` to seed a fresh Wine prefix.",
+                    detail: installBackend == .crossover
+                        ? "A Windows 10 CrossOver bottle with Visual C++ and d3dcompiler_47, like CrossOver's own Titanfall 2 install."
+                        : "Draconis Wine, then a Windows 10 prefix with Visual C++ and d3dcompiler_47.",
                     state: stageState(.creatingBottle)
                 )
                 ProgressStepRow(
@@ -283,10 +379,45 @@ struct OnboardingView: View {
                     state: stageState(.done)
                 )
 
-                if let bottle = env.bottles.first(where: { $0.hasLauncher || $0.hasTitanfall2 || $0.hasMaxima }) {
-                    Text("Detected bottle: \(bottle.name)")
+                if let status = env.setupStatus {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(status).font(TF.body(11))
+                    }
+                }
+                if let p = env.engineProgress {
+                    if p.fraction >= 0 {
+                        ProgressView(value: p.fraction) { Text(p.detail).font(TF.body(11)) }
+                    } else {
+                        Text(p.detail).font(TF.body(11))
+                    }
+                }
+                if let err = env.setupError {
+                    errorText(err)
+                }
+
+                if let bottle = env.selectedBottle {
+                    Text("Bottle: \(bottle.name) (\(bottle.backend.displayName))")
                         .font(TF.body(11))
                         .foregroundStyle(.primary.opacity(0.70))
+
+                    if selectedSource == .epic {
+                        epicCard(bottle)
+                    }
+                    if bottle.hasSteam, bottle.hasTitanfall2, !bottle.hasEAApp {
+                        Button {
+                            Task { await env.runTitanfallThroughSteam(in: bottle) }
+                        } label: {
+                            Label("Run Titanfall 2 once through Steam", systemImage: "play.circle")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.glass)
+                        Text("Steam installs the EA app (Titanfall 2's sign-in) on the game's first run. Sign in to the EA app when it opens, then close the game.")
+                            .font(TF.body(11))
+                            .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 // Maxima route only: once the bottle has Maxima but
@@ -326,7 +457,8 @@ struct OnboardingView: View {
                     }
                 }
 
-                if shouldOfferMaximaRoleStep, case .done = env.autoInstallStage {
+                if shouldOfferMaximaRoleStep, env.selectedBottle?.backend == .crossover,
+                   case .done = env.autoInstallStage {
                     Button {
                         page = .maximaRole
                     } label: {
@@ -408,11 +540,11 @@ struct OnboardingView: View {
     /// step is a chooser; when none exist, the wizard creates one.
     private var preflightBlurb: String {
         if env.bottles.isEmpty {
-            return "Draconis creates a fresh win10_64 bottle, installs the launcher you pick, and walks you through getting Titanfall 2 installed inside it."
+            return "Draconis creates a fresh Windows 10 bottle, installs the launcher you pick, and walks you through getting Titanfall 2 installed inside it."
         } else if env.bottles.count == 1 {
-            return "Draconis found a CrossOver bottle already on this Mac. The next step lets you reuse it (scan + pick up where the previous setup left off) or create a new bottle alongside."
+            return "Draconis found a bottle already on this Mac. The next step lets you reuse it (scan + pick up where the previous setup left off) or create a new bottle alongside."
         } else {
-            return "Draconis found \(env.bottles.count) CrossOver bottles already on this Mac. The next step lets you reuse one (scan + pick up where the previous setup left off) or create a new bottle alongside."
+            return "Draconis found \(env.bottles.count) bottles already on this Mac. The next step lets you reuse one (scan + pick up where the previous setup left off) or create a new bottle alongside."
         }
     }
 
@@ -427,6 +559,7 @@ struct OnboardingView: View {
     /// the chooser first.
     private func advanceFromPreflight() {
         if env.bottles.isEmpty {
+            selectedExistingBottle = nil
             page = .sourceChoice
         } else {
             pendingNewBottleName = nextAvailableBottleName(from: "Titanfall 2")
@@ -446,6 +579,7 @@ struct OnboardingView: View {
     /// whichever step is still missing.
     private func useExistingBottle(_ bottle: WineBottle) {
         env.selectedBottleID = bottle.id
+        selectedExistingBottle = bottle
         if let inferred = inferredSource(for: bottle) {
             selectedSource = inferred
         }
@@ -467,9 +601,9 @@ struct OnboardingView: View {
     /// reliable on macOS first). `nil` when none of the known
     /// launchers / Maxima are present.
     private func inferredSource(for bottle: WineBottle) -> BottleInstaller.Frontend? {
-        if bottle.hasMaxima  { return .maxima }
         if bottle.hasEAApp   { return .ea }
         if bottle.hasSteam   { return .steam }
+        if bottle.hasMaxima  { return .maxima }
         if bottle.hasEpicGames { return .epic }
         return nil
     }
@@ -493,6 +627,8 @@ struct OnboardingView: View {
         // For Maxima-installed bottles the .exe can appear mid-download,
         // so this requires the FInstall.txt marker for those copies only.
         if bottle.isTitanfallInstallComplete {
+            // Steam copy without the EA app: the progress page runs it once through Steam.
+            if bottle.hasSteam, !bottle.hasEAApp, bottle.maximaRole == .none { return .progress }
             return .dismiss
         }
         if bottle.hasLauncher || bottle.hasMaxima {
@@ -511,9 +647,11 @@ struct OnboardingView: View {
     /// path when at least one bottle already exists, so the first
     /// candidate is almost always `(2)`.
     private func nextAvailableBottleName(from base: String) -> String {
-        if !WineBottleCreator.shared.bottleExists(named: base) { return base }
+        let backend = env.preferredBackend
+        let exists = { (name: String) in WineBackendManager.shared.bottleExists(named: name, backend: backend) }
+        if !exists(base) { return base }
         var n = 2
-        while WineBottleCreator.shared.bottleExists(named: "\(base) (\(n))") {
+        while exists("\(base) (\(n))") {
             n += 1
             // Defensive guard — we should never get here, but
             // refusing to loop forever beats spinning the UI.
@@ -534,6 +672,11 @@ struct OnboardingView: View {
         }
     }
 
+    /// Backend of the bottle being set up: the reused bottle's, else the picker's.
+    private var installBackend: WineBackend {
+        selectedExistingBottle?.backend ?? env.preferredBackend
+    }
+
     private var shouldOfferMaximaRoleStep: Bool {
         selectedSource == .steam || selectedSource == .ea
     }
@@ -543,20 +686,20 @@ struct OnboardingView: View {
         case .steam:  return "Install Steam, then Titanfall 2"
         case .ea:     return "Install EA app, then Titanfall 2"
         case .maxima: return "Install Maxima, then download Titanfall 2"
-        case .epic:   return "Install Epic Games Launcher, then Titanfall 2"
+        case .epic:   return "Install the EA app, sign in to Epic, then Titanfall 2"
         }
     }
 
     private var stepTwoDetail: String {
         switch selectedSource {
         case .steam:
-            return "Steam downloads inside the bottle. Log into Steam, install Titanfall 2, and wait for it to reach 100%. Then run the game once so Steam's bundled EA setup completes before continuing."
+            return "Steam opens inside the bottle on Titanfall 2's install page. Log in and install the game. When it reaches 100%, Draconis runs it once through Steam so Steam installs the EA app."
         case .ea:
-            return "EA app downloads inside the bottle. Log in, install Titanfall 2, run the game once so EA Desktop's auto-setup finishes, then continue."
+            return "The EA app opens inside the bottle. Log in and install Titanfall 2."
         case .maxima:
             return "Draconis installs Maxima into the bottle. When it's ready, click \"Open Maxima\" below to log into EA in a browser and download Titanfall 2 from your library. Requires the game to be in your EA library (purchased directly from EA, or Steam/Epic linked + synced at least once)."
         case .epic:
-            return "Epic Games path is documented but not yet wired up in the wizard. Install Epic + Titanfall 2 manually for now."
+            return "Epic's Titanfall 2 is delivered by the EA app. Sign in to Epic below and Draconis hands the game to the EA app with your Epic ownership."
         }
     }
 
@@ -668,6 +811,7 @@ private struct ExistingBottleRow: View {
                     Text(bottle.name)
                         .font(.body.weight(.semibold))
                     HStack(spacing: 6) {
+                        chip(bottle.backend.displayName, bottle.backend.symbolName)
                         if bottle.hasTitanfall2 { chip("Titanfall 2",  "gamecontroller") }
                         if bottle.hasNorthstar  { chip("Northstar",    "star.fill") }
                         if bottle.hasMaxima     { chip("Maxima",       "key.fill") }
@@ -732,21 +876,20 @@ private struct CreateNewBottleRow: View {
 
 private struct FrontendRow: View {
     let frontend: BottleInstaller.Frontend
+    let enabled: Bool
     let selected: Bool
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: { if frontend.available { onTap() } }) {
+        Button(action: { if enabled { onTap() } }) {
             HStack(spacing: 12) {
-                Image(systemName: selected && frontend.available
-                      ? "largecircle.fill.circle"
-                      : "circle")
-                    .foregroundStyle(frontend.available ? Color.accentColor : Color.primary.opacity(0.25))
+                Image(systemName: selected && enabled ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(enabled ? Color.accentColor : Color.primary.opacity(0.25))
                 Text(frontend.displayName)
                     .font(TF.title(13))
-                    .foregroundStyle(frontend.available ? Color.primary : Color.primary.opacity(0.35))
-                if !frontend.available {
-                    Text("— coming soon")
+                    .foregroundStyle(enabled ? Color.primary : Color.primary.opacity(0.35))
+                if !enabled {
+                    Text("— CrossOver only")
                         .font(TF.body(11))
                         .foregroundStyle(.primary.opacity(0.35))
                 }
@@ -756,7 +899,7 @@ private struct FrontendRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!frontend.available)
+        .disabled(!enabled)
     }
 }
 

@@ -4,6 +4,25 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Draconis Wine — play without CrossOver.** A free, open-source Wine backend: `wine-crossover` 11.0 (built from CodeWeavers' published sources) plus DXMT 0.80 (Direct3D 11 → Metal), downloaded once (~450 MB, checksum-pinned). Each game gets its own prefix under `~/Library/Application Support/Draconis/Prefixes/`; every command gets an explicit `WINEPREFIX`, never the global `~/.wine`. Pick it on the first wizard page.
+- **Epic Games copies.** Sign in to Epic in your browser (through the open-source legendary CLI). Draconis then hands Titanfall 2 to the bottle's EA app, which links the account and downloads the game. No Epic launcher needed.
+- **Import from Heroic.** If the Heroic Games Launcher already set up the Epic copy, the wizard reuses that bottle or prefix.
+- **Bottle dependencies like CrossOver's own Titanfall 2 install:** the latest Visual C++ runtimes and d3dcompiler_47. CrossOver bottles also get MSync and Titanfall 2's CrossOver profile id.
+
+### Changed
+- **Maxima is experimental.** The EA app, Steam and Epic come first in the wizard. Maxima is listed last and only works in CrossOver bottles.
+- **Steam path:** after Steam installs, Steam opens on Titanfall 2's install page. Once the game is installed, Draconis runs it once through Steam so Steam installs the EA app. A launch without the EA app does the same.
+- Launches without Maxima start the EA app if needed and wait until it's running before starting the game.
+- Northstar mode clears a `run_northstar.txt` that would silently force vanilla.
+
+### Fixed
+- **Steam install stalled during bottle creation.** `cxbottle --create` output went to pipes nobody read. Output now goes to a log file.
+
+---
+
 ## [0.12.1] — 2026-10-09
 
 Bundles MaximaHelper from [Maxima-Draconis v0.15.2](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.15.2).

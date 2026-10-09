@@ -43,31 +43,40 @@ public actor CrossOverDetector {
         return entries.compactMap { url -> WineBottle? in
             var isDir: ObjCBool = false
             guard fm.fileExists(atPath: url.path, isDirectory: &isDir),
-                  isDir.boolValue else { return nil }
-
-            // A CrossOver bottle root contains `cxbottle.conf` and `drive_c`.
-            let driveC = url.appendingPathComponent("drive_c")
-            guard fm.fileExists(atPath: driveC.path) else { return nil }
-
-            let titanfall = Self.locateTitanfall2(in: driveC)
-            let northstar = Self.locateNorthstar(in: driveC)
-            let nsVersion = titanfall.flatMap { Self.readNorthstarVersion(in: $0) }
-
-            return WineBottle(
+                  isDir.boolValue,
+                  fm.fileExists(atPath: PathResolver.driveC(in: url).path)
+            else { return nil }
+            return Self.scanBottle(
                 id: "crossover:" + url.lastPathComponent,
                 name: url.lastPathComponent,
-                prefixURL: url,
-                hasNorthstar: northstar != nil,
-                hasTitanfall2: titanfall != nil,
-                hasSteam: SteamInstaller.steamExePath(in: url) != nil,
-                hasEAApp: Self.locateEAApp(in: driveC) != nil,
-                hasEpicGames: Self.locateEpicGames(in: driveC) != nil,
-                hasMaxima: Self.locateMaximaCli(in: driveC) != nil,
-                northstarVersion: nsVersion,
-                titanfall2InstallPath: titanfall?.path
+                backend: .crossover,
+                prefixURL: url
             )
         }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// What's installed in a prefix, whichever backend owns it.
+    public nonisolated static func scanBottle(
+        id: String, name: String, backend: WineBackend, prefixURL url: URL
+    ) -> WineBottle {
+        let driveC = PathResolver.driveC(in: url)
+        let titanfall = locateTitanfall2(in: driveC)
+        let northstar = locateNorthstar(in: driveC)
+        return WineBottle(
+            id: id,
+            name: name,
+            backend: backend,
+            prefixURL: url,
+            hasNorthstar: northstar != nil,
+            hasTitanfall2: titanfall != nil,
+            hasSteam: SteamInstaller.steamExePath(in: url) != nil,
+            hasEAApp: locateEAApp(in: driveC) != nil,
+            hasEpicGames: locateEpicGames(in: driveC) != nil,
+            hasMaxima: locateMaximaCli(in: driveC) != nil,
+            northstarVersion: titanfall.flatMap { readNorthstarVersion(in: $0) },
+            titanfall2InstallPath: titanfall?.path
+        )
     }
 
     // MARK: - Cross-backend heuristics (nonisolated, pure FileManager reads)

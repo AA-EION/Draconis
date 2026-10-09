@@ -94,6 +94,11 @@ public final class WineBottleCreator {
         if let description {
             args.append(contentsOf: ["--description", description])
         }
+        // What CrossOver itself sets when it creates a Titanfall 2 bottle.
+        args += [
+            "--param", "EnvironmentVariables:WINEMSYNC=1",
+            "--param", "EnvironmentVariables:CX_BOTTLE_CREATOR_APPID=com.codeweavers.c4.17509",
+        ]
 
         DebugLog.shared.info("bottle.create", "cxbottle \(args.joined(separator: " "))")
 

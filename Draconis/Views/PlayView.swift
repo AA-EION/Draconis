@@ -41,22 +41,14 @@ struct PlayView: View {
         instructionsCard(
             title: "Set up a Titanfall 2 bottle",
             body: [
-                "1. Open Draconis's Onboarding (Settings → Reset Onboarding, then relaunch).",
-                "2. Pick how you want to install Titanfall 2 — Maxima (direct), EA app, Steam, or Epic (coming soon).",
-                "3. Draconis creates the win10_64 bottle via cxbottle and walks you through installing the launcher and the game step by step.",
+                "1. Pick CrossOver or Draconis Wine (free, no CrossOver needed).",
+                "2. Pick where the game comes from: EA app, Steam, Epic, or Maxima (experimental).",
+                "3. Draconis creates the bottle, installs what Titanfall 2 needs, and walks you through installing the game.",
                 "4. When the game is detected, Draconis takes over launching it.",
             ].joined(separator: "\n"),
-            primaryActionTitle: env.crossOverInstalled ? "Open CrossOver" : "Get CrossOver…",
+            primaryActionTitle: "Set up",
             primaryActionDisabled: false,
-            primaryAction: {
-                if env.crossOverInstalled {
-                    env.openCrossOver()
-                } else {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://www.codeweavers.com/crossover")!
-                    )
-                }
-            }
+            primaryAction: { env.showOnboarding = true }
         )
     }
 
@@ -66,7 +58,7 @@ struct PlayView: View {
             body: [
                 "Draconis sees the bottle but no Titanfall2.exe inside it.",
                 "",
-                "Run the Onboarding wizard to install Titanfall 2 — pick a source (Maxima downloads it directly with no other launcher needed, or you can install via EA app, Steam, or Epic) and Draconis walks you through the rest.",
+                "Run the setup wizard to install Titanfall 2 — pick a source (EA app, Steam, Epic, or the experimental Maxima) and Draconis walks you through the rest.",
                 "",
                 "Already installing in another launcher? Finish there and hit Rescan.",
             ].joined(separator: "\n"),

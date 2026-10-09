@@ -14,17 +14,15 @@ public final class BottleInstaller {
     public static let shared = BottleInstaller()
 
     public enum Frontend: String, CaseIterable, Identifiable, Sendable {
-        // Declaration order is the order the picker renders. Maxima
-        // first (most reliable on macOS/CrossOver, no CEG ever), then
-        // EA app (no CEG), then Steam (CEG fix needed), then Epic
-        // (coming soon).
-        case maxima, ea, steam, epic
+        // Declaration order is the order the picker renders. Maxima is
+        // experimental and goes last.
+        case ea, steam, epic, maxima
         public var id: String { rawValue }
         public var displayName: String {
             switch self {
             case .steam:  return "Steam"
             case .ea:     return "EA app"
-            case .maxima: return "Maxima (direct download)"
+            case .maxima: return "Maxima (experimental)"
             case .epic:   return "Epic Games"
             }
         }
@@ -42,11 +40,11 @@ public final class BottleInstaller {
         public var summary: String {
             switch self {
             case .steam:
-                return "Steam delivers the game. EA Desktop installs automatically on first launch and handles auth. Steam-installed binaries are CEG-signed — apply the Maxima fix afterward if you hit \"File corruption\" on macOS/CrossOver."
+                return "Steam delivers the game. Draconis starts it once through Steam so Steam installs the EA app, which handles sign-in."
             case .ea:
                 return "EA app delivers the game and handles auth natively. Simplest path on macOS/CrossOver."
             case .maxima:
-                return "Maxima downloads the game directly from EA's servers without Steam or EA Desktop. Requires the game to be in your EA library (purchased on EA, or Steam/Epic linked + synced at least once)."
+                return "Experimental — expect breakage. Maxima downloads the game directly from EA's servers without Steam or the EA app. Requires the game to be in your EA library."
             case .epic:
                 return "Coming soon — Epic's TF2 install hasn't been validated through this wizard yet."
             }

@@ -16,8 +16,8 @@ struct OnboardingView: View {
     }
 
     @State private var page: Page = .preflight
-    @State private var selectedSource: BottleInstaller.Frontend = .maxima
-    @State private var selectedRole: MaximaRole = .fullReplace
+    @State private var selectedSource: BottleInstaller.Frontend = .ea
+    @State private var selectedRole: MaximaRole = .none
 
     /// User's choice on the `bottleChoice` page. `nil` until they've
     /// either picked an existing bottle or chosen "Create new bottle".
@@ -216,7 +216,7 @@ struct OnboardingView: View {
                 Label("Where should the game come from?", systemImage: "shippingbox.fill")
                     .stencilLabel()
 
-                Text("Each option drives a different chain of installers. Steam-installed Titanfall 2 binaries are signed with Steam CEG DRM that doesn't always run cleanly under Wine; pick Maxima or EA app if you want the smoothest path on macOS.")
+                Text("Each option installs that store's launcher into the bottle, which then downloads the game and handles EA sign-in.")
                     .font(TF.body(11))
                     .foregroundStyle(.primary.opacity(DraconisTheme.Text.tertiary))
                     .fixedSize(horizontal: false, vertical: true)
@@ -493,9 +493,7 @@ struct OnboardingView: View {
         // For Maxima-installed bottles the .exe can appear mid-download,
         // so this requires the FInstall.txt marker for those copies only.
         if bottle.isTitanfallInstallComplete {
-            return MaximaRole.isExplicitlySet(forBottle: bottle.id)
-                ? .dismiss
-                : .maximaRole
+            return .dismiss
         }
         if bottle.hasLauncher || bottle.hasMaxima {
             // Includes the "partial install" case: bottle has Maxima
@@ -530,8 +528,8 @@ struct OnboardingView: View {
     /// page entirely).
     private var availableRoles: [MaximaRole] {
         switch selectedSource {
-        case .steam: return [.fullReplace, .authOnly, .none]
-        case .ea:    return [.authOnly, .none]
+        case .steam: return [.none, .authOnly, .fullReplace]
+        case .ea:    return [.none, .authOnly]
         default:     return []
         }
     }

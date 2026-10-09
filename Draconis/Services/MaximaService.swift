@@ -614,8 +614,11 @@ extension MaximaService {
     /// that logs in on first start; when the user hasn't finished the
     /// browser login the CLI gives up with one of these messages.
     static func looksLikeLoginPending(_ output: String) -> Bool {
-        ["did not come up", "before it started serving", "Login failed"]
-            .contains { output.contains($0) }
+        let text = output.lowercased()
+        return [
+            "did not come up", "before it started serving", "login failed",
+            "ea login didn't finish", "stopped before the login finished",
+        ].contains { text.contains($0) }
     }
 
     /// Run `maxima-cli list-games --json` inside the bottle, parse the
@@ -670,7 +673,7 @@ extension MaximaService {
             // No bracket usually means OAuth wasn't completed and the
             // login flow printed an interactive prompt that never got
             // resolved — surface that as a distinct, actionable error.
-            if text.contains("Login failed") || text.contains("paste") || text.isEmpty {
+            if Self.looksLikeLoginPending(text) || text.contains("paste") || text.isEmpty {
                 throw CliError.notLoggedIn
             }
             throw CliError.invalidOutput(text)

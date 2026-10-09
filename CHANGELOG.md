@@ -4,7 +4,9 @@ All notable changes to Draconis are documented here.
 
 ---
 
-## [Unreleased]
+## [0.12.0] — 2026-10-09
+
+Built for [Maxima-Draconis v0.15.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.15.0), where `maxima-cli` starts a long-lived `maxima-server` inside the bottle; still works with v0.14.0.
 
 ### Added
 - **Withdraw Consent** button in Settings → About. Shows a confirmation alert, clears the stored privacy consent via `ConsentManager.revoke()`, then quits; the privacy notice is shown again on next launch.
@@ -22,6 +24,7 @@ All notable changes to Draconis are documented here.
 - **Onboarding re-downloaded Titanfall 2 for Steam bottles that had Maxima** (e.g. after the CEG fix) — Maxima's `FInstall.txt` marker is now only required for copies Maxima downloaded itself, via a single `WineBottle.isTitanfallInstallComplete` check shared by the wizard and stage detection.
 - **Server-based Maxima compatibility** — every `maxima-cli` call (library check, CEG fix, launch) now goes through `CleanSpawn`, so the in-bottle `maxima-server` it starts is never responsibility-attributed to Draconis (which would bring back the launch freeze). Output is captured via files instead of pipes, removing a deadlock on large EA libraries. "Login pending" errors from the CLI surface as "not logged in".
 - **Mod browser** follows Thunderstore's move of the Northstar API to `thunderstore.io/c/northstar/api/v1/package/`.
+- **"Not logged in" detection** recognises Maxima-Draconis v0.15's login messages ("login failed or was cancelled", "the EA login didn't finish"), so an unfinished EA login shows the login prompt instead of a generic CLI error.
 - Draconis holds a user-initiated activity while Titanfall 2 runs, as a fallback against App Nap if the responsibility-disclaim API is ever unavailable.
 
 ---

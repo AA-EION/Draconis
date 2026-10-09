@@ -4,6 +4,15 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.12.1] — 2026-10-09
+
+Bundles MaximaHelper from [Maxima-Draconis v0.15.2](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.15.2).
+
+### Fixed
+- **EA login never finished after logging in through the browser** — the bundled MaximaHelper registered for `qrc://` links too late: when macOS launched it for the login redirect, the link arrived before the helper was listening and was dropped, so Maxima never received the login. The helper now registers before launch completes and exits on its own if no link arrives.
+
+---
+
 ## [0.12.0] — 2026-10-09
 
 Built for [Maxima-Draconis v0.15.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.15.0), where `maxima-cli` starts a long-lived `maxima-server` inside the bottle; still works with v0.14.0.

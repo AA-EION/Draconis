@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  # Same release, started by hand: creates the tag on the commit it runs on.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. v0.12.0)'
+        required: true
 
 permissions:
   contents: write
@@ -15,6 +21,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="$INPUT_TAG"; else TAG="$GITHUB_REF_NAME"; fi
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "error: '$TAG' is not a vX.Y.Z tag" >&2; exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: brew install xcodegen create-dmg
@@ -36,7 +52,7 @@ jobs:
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
-            MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
+            MARKETING_VERSION="${TAG#v}" \
             clean build
 
       - name: Create DMG
@@ -50,13 +66,13 @@ jobs:
             --icon "Draconis.app" 180 170 \
             --app-drop-link 480 170 \
             --hide-extension "Draconis.app" \
-            "Draconis-${GITHUB_REF_NAME}.dmg" \
+            "Draconis-${TAG}.dmg" \
             dmg-staging/
 
       - name: Extract changelog section for this version
         id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           # Pull the lines between the matching `## [X.Y.Z]` heading and the
           # next `## [` heading. If the section isn't found we fall back to a
           # blank body so the install instructions still render below.
@@ -73,7 +89,7 @@ jobs:
           ---
 
           ### Installation
-          1. Download `Draconis-${{ github.ref_name }}.dmg` below
+          1. Download `Draconis-${{ env.TAG }}.dmg` below
           2. Open the DMG and drag **Draconis.app** to Applications
           3. Draconis isn't notarised, so clear the download flag once (macOS Tahoe 26.6+ otherwise only offers *Move to Trash*):
              `xattr -dr com.apple.quarantine /Applications/Draconis.app`
@@ -85,9 +101,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Draconis ${{ github.ref_name }}"
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: "Draconis ${{ env.TAG }}"
           body_path: release-notes.md
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.TAG, '-') }}
           files: |
-            Draconis-${{ github.ref_name }}.dmg
+            Draconis-${{ env.TAG }}.dmg

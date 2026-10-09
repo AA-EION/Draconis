@@ -81,6 +81,14 @@ jobs:
             flag && /^## \[/ { exit }
             flag { print }
           ' CHANGELOG.md > release-notes.md
+          # Prereleases (vX.Y.Z-tag) fall back to the Unreleased section.
+          if [ ! -s release-notes.md ] && [ "${VERSION#*-}" != "$VERSION" ]; then
+            awk '
+              /^## \[Unreleased\]/ { flag = 1; next }
+              flag && /^## \[/ { exit }
+              flag { print }
+            ' CHANGELOG.md > release-notes.md
+          fi
           if [ ! -s release-notes.md ]; then
             echo "warning: no CHANGELOG section found for $VERSION" >&2
           fi

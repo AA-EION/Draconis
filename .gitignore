@@ -32,6 +32,8 @@ Package.resolved
 
 # Fetched at build time by Scripts/fetch-maxima-helper.sh
 Draconis/Resources/.maxima_helper_version
+# Built by Scripts/build-steam-wrapper.sh
+Draconis/Resources/steamwebhelper.exe
 
 # --- Editor noise ---
 .vscode/

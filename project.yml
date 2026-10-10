@@ -56,6 +56,9 @@ targets:
       # `xcodegen generate` runs. bootstrap.sh and the CI workflows handle
       # this for the developer.
       - path: Draconis/Resources/MaximaHelper.app
+      # Built by Scripts/build-steam-wrapper.sh when mingw-w64 is available.
+      - path: Draconis/Resources/steamwebhelper.exe
+        optional: true
     # NOTE: no top-level `info:` directive — XcodeGen would rewrite the
     # plist with hardcoded literals on every `xcodegen generate`, blowing
     # away the `$(MARKETING_VERSION)` placeholders and shipping every

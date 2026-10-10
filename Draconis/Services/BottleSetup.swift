@@ -64,7 +64,7 @@ public actor BottleSetup {
             Log.info("bottle.setup", "Installing \(redist.file)…")
             let status = try await WineBackendManager.shared.launchAndWait(
                 executable: exe.path,
-                arguments: ["/install", "/quiet", "/norestart"],
+                arguments: ["/install", "/passive", "/norestart"],
                 in: bottle
             )
             // 1638: a newer version is already installed; 3010: reboot requested.

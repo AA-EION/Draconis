@@ -19,6 +19,8 @@ All notable changes to Draconis are documented here.
 - Northstar mode clears a `run_northstar.txt` that would silently force vanilla.
 
 ### Fixed
+- **Steam's window stayed empty with Draconis Wine** (Dock icon, no window). Steam now runs its built-in browser without the GPU through a small wrapper, the fix from [steam-on-m1-wine](https://github.com/notpop/steam-on-m1-wine) (MIT). The EA app's browser also runs without the GPU there.
+- Visual C++ installs now show their progress windows instead of running invisibly.
 - **Steam install stalled during bottle creation.** `cxbottle --create` output went to pipes nobody read. Output now goes to a log file.
 
 ---

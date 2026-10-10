@@ -200,12 +200,16 @@ public actor WineEngine {
         let inherited = ProcessInfo.processInfo.environment
         var env: [String: String] = [
             "WINEPREFIX": try validated(prefix).path,
-            "WINEDEBUG": "-all",
+            "WINEDEBUG": "fixme-all",
             "WINEMSYNC": "1",
             "WINEESYNC": "0",
             "ROSETTA_ADVERTISE_AVX": "1",
-            // No Launchpad / Dock shortcuts for apps installed into the prefix.
-            "WINEDLLOVERRIDES": "winemenubuilder.exe=d",
+            // No Launchpad shortcuts; builtin bcrypt/ncrypt for Chromium's
+            // BoringSSL; no Steam overlay (it deadlocks DXMT games).
+            "WINEDLLOVERRIDES": "winemenubuilder.exe=d;bcrypt,ncrypt=b;gameoverlayrenderer,gameoverlayrenderer64=d",
+            // The EA app's Chromium (Qt WebEngine) draws nothing on the GPU path here.
+            "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu",
+            "QTWEBENGINE_DISABLE_SANDBOX": "1",
             "PATH": wineRoot.appendingPathComponent("bin").path + ":/usr/bin:/bin:/usr/sbin:/sbin",
         ]
         for key in ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL"] {

@@ -241,6 +241,7 @@ public actor WineEngine {
         try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
         try Self.createDriveLinks(in: prefix)
         let log = PathResolver.launchLogs.appendingPathComponent("prefix-\(name).log").path
+        try? FileManager.default.removeItem(atPath: log)
 
         do {
             try await check(["wineboot", "-u"], prefix: prefix, log: log, what: "Creating the Wine prefix")

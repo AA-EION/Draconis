@@ -105,12 +105,12 @@ struct ContentView: View {
                     )
                     .foregroundStyle(env.crossOverInstalled ? AnyShapeStyle(.white) : AnyShapeStyle(.tertiary))
                 }
-                if !env.crossOverInstalled {
-                    Link(
-                        "Get CrossOver…",
-                        destination: URL(string: "https://www.codeweavers.com/crossover")!
-                    )
-                    .font(TF.body(11))
+                HStack {
+                    Label("Draconis Wine", systemImage: "flame.fill")
+                        .font(TF.body(12))
+                    Spacer()
+                    Image(systemName: WineEngine.isInstalled ? "checkmark.circle.fill" : "circle.dashed")
+                        .foregroundStyle(WineEngine.isInstalled ? AnyShapeStyle(.white) : AnyShapeStyle(.tertiary))
                 }
             } header: {
                 Text("Backend").stencilLabel()

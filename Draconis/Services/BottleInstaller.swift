@@ -1,54 +1,42 @@
 import Foundation
 import AppKit
 
-/// Polls CrossOver's bottles directory and reports progress through the
-/// Titanfall 2 setup stages.
-///
-/// Strategy changed in the wizard rewrite: bottle creation is no longer
-/// handed off to a CrossTie file (which forced Steam to be the launcher).
-/// `WineBottleCreator` creates the bottle programmatically via `cxbottle
-/// --create`, then this class watches the bottle's contents to drive the
-/// next step (install launcher, install game, done).
+/// Watches a bottle (CrossOver) or prefix (Draconis Wine) through the
+/// Titanfall 2 setup stages: launcher installed, then game installed.
 @MainActor
 public final class BottleInstaller {
     public static let shared = BottleInstaller()
 
     public enum Frontend: String, CaseIterable, Identifiable, Sendable {
-        // Declaration order is the order the picker renders. Maxima
-        // first (most reliable on macOS/CrossOver, no CEG ever), then
-        // EA app (no CEG), then Steam (CEG fix needed), then Epic
-        // (coming soon).
-        case maxima, ea, steam, epic
+        // Declaration order is the order the picker renders. Maxima is
+        // experimental and goes last.
+        case ea, steam, epic, maxima
         public var id: String { rawValue }
         public var displayName: String {
             switch self {
             case .steam:  return "Steam"
             case .ea:     return "EA app"
-            case .maxima: return "Maxima (direct download)"
+            case .maxima: return "Maxima (experimental)"
             case .epic:   return "Epic Games"
             }
         }
 
-        /// True when this path is fully implemented end-to-end. Epic is
-        /// off until someone with an Epic copy of TF2 tests the flow.
-        public var available: Bool {
-            switch self {
-            case .steam, .ea, .maxima: return true
-            case .epic:                return false
-            }
+        /// Maxima drives `cxstart`, so it only works in CrossOver bottles.
+        public func available(on backend: WineBackend) -> Bool {
+            self != .maxima || backend == .crossover
         }
 
         /// One-line summary shown next to the option in the picker.
         public var summary: String {
             switch self {
             case .steam:
-                return "Steam delivers the game. EA Desktop installs automatically on first launch and handles auth. Steam-installed binaries are CEG-signed — apply the Maxima fix afterward if you hit \"File corruption\" on macOS/CrossOver."
+                return "Steam delivers the game. Draconis starts it once through Steam so Steam installs the EA app, which handles sign-in."
             case .ea:
-                return "EA app delivers the game and handles auth natively. Simplest path on macOS/CrossOver."
+                return "EA app delivers the game and handles sign-in natively. Simplest path."
             case .maxima:
-                return "Maxima downloads the game directly from EA's servers without Steam or EA Desktop. Requires the game to be in your EA library (purchased on EA, or Steam/Epic linked + synced at least once)."
+                return "Experimental — expect breakage. Maxima downloads the game directly from EA's servers without Steam or the EA app. Requires the game to be in your EA library."
             case .epic:
-                return "Coming soon — Epic's TF2 install hasn't been validated through this wizard yet."
+                return "Sign in to Epic in your browser; the EA app then downloads your Epic copy. No Epic launcher needed."
             }
         }
     }
@@ -65,10 +53,10 @@ public final class BottleInstaller {
 
     private var pollTask: Task<Void, Never>?
 
-    /// Start polling every `interval` seconds. `onStage` fires on the main
-    /// actor whenever the detected stage advances. Cancel the returned task
-    /// (or call `stopWatching`) to stop polling.
+    /// Poll `bottleID` every `interval` seconds; `onStage` fires on the main
+    /// actor whenever the detected stage changes.
     public func startWatching(
+        bottleID: String,
         interval: TimeInterval = 5,
         onStage: @escaping @MainActor (Stage) -> Void
     ) {
@@ -77,7 +65,7 @@ public final class BottleInstaller {
         pollTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                let stage = await self.detectStage()
+                let stage = await self.detectStage(bottleID: bottleID)
                 if stage != lastStage {
                     lastStage = stage
                     onStage(stage)
@@ -93,37 +81,14 @@ public final class BottleInstaller {
         pollTask = nil
     }
 
-    /// Snapshot today's bottles and pick the most relevant one to report on.
-    /// Preference order:
-    ///   1. A bottle that already has Titanfall 2 **AND** the install
-    ///      looks truly complete → `.done`
-    ///   2. A bottle that has any launcher (Steam, EA App, Epic Games) OR
-    ///      has Maxima installed → `.waitingForTitanfall` (the user is past
-    ///      the bottle/launcher step and now needs to drive the game install
-    ///      from whichever frontend landed)
-    ///   3. Nothing matching → `.waitingForBottle`
-    ///
-    /// Maxima is treated as a launcher for stage purposes even though it
-    /// isn't part of `WineBottle.hasLauncher` — the Maxima route in the
-    /// wizard installs Maxima as its frontend equivalent, and from the
-    /// progress page's POV step 1 is complete once Maxima is in place.
-    ///
-    /// **Why the FInstall.txt check matters:** Maxima writes the game's
-    /// .exe early in the manifest sequence (Titanfall2.exe lands within
-    /// the first few hundred MB of a ~25 GB download). Advancing to
-    /// `.done` on exe-presence alone causes the wizard to flip to
-    /// "Ready to launch" while the actual download is still running.
-    /// The marker (written by `ContentManager` only after `is_done()`)
-    /// is the truth source. For non-Maxima paths (Steam, EA, Epic),
-    /// the marker doesn't exist, so we fall back to exe-presence.
-    private func detectStage() async -> Stage {
-        let bottles = await CrossOverDetector.shared.bottles()
-        if let withGame = bottles.first(where: { $0.isTitanfallInstallComplete }) {
-            return .done(bottleID: withGame.id)
+    /// `.done` once the game is fully installed (Maxima installs need the
+    /// `FInstall.txt` marker, since the exe lands early in the download).
+    private func detectStage(bottleID: String) async -> Stage {
+        guard let bottle = await WineBackendManager.shared.allBottles().first(where: { $0.id == bottleID }) else {
+            return .waitingForBottle
         }
-        if let withFrontend = bottles.first(where: { $0.hasLauncher || $0.hasMaxima }) {
-            return .waitingForTitanfall(bottleID: withFrontend.id)
-        }
+        if bottle.isTitanfallInstallComplete { return .done(bottleID: bottle.id) }
+        if bottle.hasLauncher || bottle.hasMaxima { return .waitingForTitanfall(bottleID: bottle.id) }
         return .waitingForBottle
     }
 }

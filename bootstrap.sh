@@ -33,6 +33,9 @@ require_xcodegen
 echo "→ Fetching MaximaHelper.app …"
 bash Scripts/fetch-maxima-helper.sh
 
+echo "→ Building the Steam webhelper wrapper …"
+bash Scripts/build-steam-wrapper.sh
+
 echo "→ Generating Draconis.xcodeproj …"
 xcodegen generate --spec project.yml
 

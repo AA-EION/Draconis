@@ -8,7 +8,7 @@ import Sentry
 @MainActor
 public final class AppEnvironment: ObservableObject {
 
-    // Discovered CrossOver bottles
+    // CrossOver bottles and Draconis Wine prefixes
     @Published public private(set) var bottles: [WineBottle] = []
     @Published public var selectedBottleID: String?
 
@@ -62,6 +62,21 @@ public final class AppEnvironment: ObservableObject {
 
     // Auto bottle install (from Onboarding)
     @Published public var autoInstallStage: BottleInstaller.Stage?
+    @Published public var setupStatus: String?
+    @Published public var setupError: String?
+    @Published public var engineProgress: NorthstarUpdater.Progress?
+    private var setupTask: Task<Void, Never>?
+
+    /// Where new bottles go. Defaults to CrossOver when it's installed.
+    @Published public var preferredBackend: WineBackend =
+        WineBackend(rawValue: UserDefaults.standard.string(forKey: "preferredBackend") ?? "") ?? .crossover {
+        didSet { UserDefaults.standard.set(preferredBackend.rawValue, forKey: "preferredBackend") }
+    }
+
+    @Published public var epicAccount: String?
+    @Published public var epicBusy = false
+    @Published public var epicError: String?
+    @Published public private(set) var heroicSource: HeroicImporter.Source?
 
     // Maxima
     @Published public var maximaInstalled: Bool = false
@@ -176,6 +191,7 @@ public final class AppEnvironment: ObservableObject {
         await refreshMaximaState()
         await checkMaximaForUpdate()
         await checkDraconisForUpdate()
+        await refreshEpicAccount()
 
         // Defer Northstar's auto-update when a Draconis update is pending.
         // Running both simultaneously means two progress bars, two downloads
@@ -224,6 +240,10 @@ public final class AppEnvironment: ObservableObject {
 
     public func refreshCrossOverState() async {
         crossOverInstalled = await WineBackendManager.shared.isCrossOverAvailable()
+        if !crossOverInstalled, UserDefaults.standard.string(forKey: "preferredBackend") == nil {
+            preferredBackend = .draconis
+        }
+        heroicSource = HeroicImporter.detect()
         DebugLog.shared.info(
             "app",
             crossOverInstalled
@@ -233,7 +253,7 @@ public final class AppEnvironment: ObservableObject {
     }
 
     public func refreshBottles() async {
-        DebugLog.shared.info("app", "Scanning CrossOver bottles…")
+        DebugLog.shared.info("app", "Scanning bottles…")
         bottles = await WineBackendManager.shared.allBottles()
         if let id = selectedBottleID, !bottles.contains(where: { $0.id == id }) {
             selectedBottleID = bottles.first?.id
@@ -252,130 +272,188 @@ public final class AppEnvironment: ObservableObject {
 
     // MARK: - Auto bottle install
 
-    /// Create a fresh "Titanfall 2" bottle via `cxbottle --create`, then
-    /// start polling CrossOver's bottle directory every 5 s for progress
-    /// updates as the user installs their chosen launcher and the game
-    /// inside it. UI observes `autoInstallStage`.
-    ///
-    /// The wizard drives each step explicitly:
-    ///   1. Bottle creation (this method handles).
-    ///   2. Launcher install (Steam / EA Desktop / Maxima) — user-driven
-    ///      via the wizard's source picker; not all paths are wired up
-    ///      yet in this PR.
-    ///   3. Game install — user-driven through whichever launcher was
-    ///      chosen.
+    /// Create the bottle (CrossOver) or prefix (Draconis Wine), install the
+    /// shared dependencies and the chosen launcher, then watch the bottle
+    /// until Titanfall 2 lands. UI observes `autoInstallStage` / `setupStatus`.
     public func startAutoBottleInstall(
         frontend: BottleInstaller.Frontend,
+        backend: WineBackend,
         bottleName: String? = nil
     ) {
-        guard frontend.available else {
-            DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) frontend not implemented yet")
+        guard frontend.available(on: backend) else {
+            DebugLog.shared.warn("bottle.auto", "\(frontend.displayName) isn't available with \(backend.displayName)")
             return
         }
+        let bottleName = bottleName ?? "Titanfall 2"
+        setupError = nil
         autoInstallStage = .waitingForBottle
-        // Kick off bottle creation off-thread. The polling watcher is
-        // started in parallel so the UI shows live progress (it will
-        // initially report `.waitingForBottle` until the new directory
-        // appears, then transition through the launcher / game stages
-        // as the user installs the chosen launcher and Titanfall 2).
-        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
+        setupTask?.cancel()
+        setupTask = Task { [weak self] in
             guard let self else { return }
-            self.autoInstallStage = stage
-            Task { await self.refreshBottles() }
-            if case .waitingForTitanfall(let id) = stage {
-                self.selectedBottleID = id
-            }
-            if case .done(let id) = stage {
-                self.selectedBottleID = id
+            do {
+                if backend == .draconis, !WineEngine.isInstalled {
+                    self.setupStatus = "Downloading Draconis Wine…"
+                    try await WineEngine.shared.install { p in
+                        Task { @MainActor in self.engineProgress = p }
+                    }
+                    self.engineProgress = nil
+                }
+
+                self.setupStatus = "Creating “\(bottleName)”…"
+                do {
+                    try await WineBackendManager.shared.createBottle(
+                        name: bottleName, backend: backend,
+                        description: "Titanfall 2 / Northstar — created by Draconis (\(frontend.displayName))")
+                } catch WineBottleCreator.CreatorError.bottleAlreadyExists(_), WineEngine.EngineError.prefixExists(_) {
+                    DebugLog.shared.info("bottle.auto", "Reusing existing bottle \"\(bottleName)\"")
+                }
+
+                await self.refreshBottles()
+                guard let bottle = self.bottles.first(where: { $0.name == bottleName && $0.backend == backend }) else {
+                    throw WineBackendManager.BackendError.launchFailed("Couldn't find “\(bottleName)” after creating it")
+                }
+                self.selectedBottleID = bottle.id
+                self.watchSetup(of: bottle)
+
+                self.setupStatus = "Installing Visual C++ and DirectX components…"
+                do {
+                    try await BottleSetup.shared.prepare(bottle)
+                } catch {
+                    DebugLog.shared.warn("bottle.auto", "Dependency setup incomplete: \(error.localizedDescription)")
+                }
+
+                try await self.installFrontend(frontend, into: bottle)
+                self.setupStatus = nil
+                await self.refreshBottles()
+            } catch is CancellationError {
+                self.setupStatus = nil
+            } catch {
+                DebugLog.shared.error("bottle.auto", "Setup failed: \(error.localizedDescription)")
+                self.setupError = error.localizedDescription
+                self.setupStatus = nil
+                if case .waitingForBottle = self.autoInstallStage { self.autoInstallStage = nil }
             }
         }
-        Task { [weak self] in
+    }
+
+    private func installFrontend(_ frontend: BottleInstaller.Frontend, into bottle: WineBottle) async throws {
+        switch frontend {
+        case .steam:
+            if !(await SteamInstaller.shared.isSteamInstalled(in: bottle)) {
+                setupStatus = "Installing Steam…"
+                try await SteamInstaller.shared.install(into: bottle)
+            }
+            if !bottle.hasTitanfall2 {
+                setupStatus = "Opening Titanfall 2 in Steam…"
+                try await SteamInstaller.shared.openTitanfallInstall(in: bottle)
+            }
+        case .ea, .epic:
+            if !(await EAInstaller.shared.isEAInstalled(in: bottle)) {
+                setupStatus = "Installing the EA app…"
+                try await EAInstaller.shared.install(into: bottle, silent: true)
+            }
+            if frontend == .epic, epicAccount != nil {
+                setupStatus = "Handing Titanfall 2 to the EA app…"
+                try await EpicService.shared.openInEAApp(bottle: bottle)
+            } else if let exe = CrossOverDetector.locateEAApp(in: PathResolver.driveC(in: bottle.prefixURL)) {
+                try await WineBackendManager.shared.spawn(
+                    executable: exe.path, in: bottle, wineEnvironment: WineEngine.eaAppEnvironment)
+            }
+        case .maxima:
+            if await !MaximaService.shared.isInstalled(in: bottle) {
+                setupStatus = "Installing Maxima…"
+                try await MaximaService.shared.downloadAndInstall(into: bottle) { p in
+                    Task { @MainActor in self.maximaProgress = p }
+                }
+            }
+        }
+    }
+
+    private func watchSetup(of bottle: WineBottle) {
+        BottleInstaller.shared.startWatching(bottleID: bottle.id, interval: 5) { [weak self] stage in
             guard let self else { return }
-            // 1. Create the bottle if it doesn't already exist.
-            //    Caller may pass a custom name (used by the wizard's
-            //    "Create new bottle" branch when an existing bottle
-            //    already owns "Titanfall 2" — auto-suffixed there to
-            //    avoid the `bottleAlreadyExists` no-op path).
-            let bottleName = bottleName ?? "Titanfall 2"
-            do {
-                try await WineBottleCreator.shared.createBottle(
-                    name: bottleName,
-                    description: "Titanfall 2 / Northstar — created by Draconis (\(frontend.displayName))"
-                )
-            } catch WineBottleCreator.CreatorError.bottleAlreadyExists(let name) {
-                DebugLog.shared.info("bottle.auto", "Reusing existing bottle \"\(name)\"")
-            } catch {
-                DebugLog.shared.error("bottle.auto", "Bottle creation failed: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.autoInstallStage = nil
-                    BottleInstaller.shared.stopWatching()
-                }
-                return
-            }
-
-            // 2. Find the bottle we just created (or are reusing) so we
-            //    can pass it to the launcher installer.
-            await self.refreshBottles()
-            guard let bottle = await MainActor.run(body: {
-                self.bottles.first(where: { $0.name == bottleName })
-            }) else {
-                DebugLog.shared.error("bottle.auto", "Couldn't locate \"\(bottleName)\" after creation")
-                return
-            }
-
-            // 3. Install the launcher the user chose. Each path runs the
-            //    relevant installer (synchronous from the user's POV —
-            //    they'll watch progress in the per-bottle log pane).
-            //    `.maxima` doesn't need its own launcher install here;
-            //    the wizard flow expects the user to click "Install
-            //    Maxima" via the Settings / Maxima section after the
-            //    bottle exists.
-            do {
-                switch frontend {
-                case .steam:
-                    if !(await SteamInstaller.shared.isSteamInstalled(in: bottle)) {
-                        try await SteamInstaller.shared.install(into: bottle)
-                    } else {
-                        DebugLog.shared.info("bottle.auto", "Steam already installed in bottle, skipping")
-                    }
-                case .ea:
-                    if !(await EAInstaller.shared.isEAInstalled(in: bottle)) {
-                        try await EAInstaller.shared.install(into: bottle, silent: false)
-                    } else {
-                        DebugLog.shared.info("bottle.auto", "EA Desktop already installed in bottle, skipping")
-                    }
-                case .maxima:
-                    // Maxima route: install MaximaSetup.exe into the
-                    // bottle now (analogous to how the Steam and EA
-                    // branches above install their launchers) so the
-                    // user has `maxima-cli.exe` + `maxima.exe` ready
-                    // to use for the interactive game-install step.
-                    // The user still does the OAuth login + game
-                    // download themselves inside Maxima — there's no
-                    // way to script EA's qrc:// flow from here — but
-                    // at least the binaries are in place.
-                    if await !MaximaService.shared.isInstalled(in: bottle) {
-                        DebugLog.shared.info("bottle.auto", "Installing Maxima into bottle…")
-                        try await MaximaService.shared.downloadAndInstall(into: bottle) { p in
-                            Task { @MainActor in
-                                self.maximaProgress = p
-                            }
-                        }
-                    } else {
-                        DebugLog.shared.info("bottle.auto", "Maxima already installed in bottle, skipping")
-                    }
-                case .epic:
-                    DebugLog.shared.warn("bottle.auto", "Epic Games path not implemented yet")
-                }
+            self.autoInstallStage = stage
+            Task {
                 await self.refreshBottles()
-            } catch {
-                DebugLog.shared.error("bottle.auto", "Launcher install failed: \(error.localizedDescription)")
+                if case .done(let id) = stage { await self.finishSteamSetupIfNeeded(bottleID: id) }
             }
+        }
+    }
+
+    /// A Steam copy of Titanfall 2 only gets the EA app (its sign-in) the
+    /// first time Steam runs the game, so do that run for the user.
+    private func finishSteamSetupIfNeeded(bottleID: String) async {
+        guard let bottle = bottles.first(where: { $0.id == bottleID }),
+              bottle.hasSteam, bottle.hasTitanfall2, !bottle.hasEAApp, bottle.maximaRole == .none
+        else { return }
+        await runTitanfallThroughSteam(in: bottle)
+    }
+
+    public func runTitanfallThroughSteam(in bottle: WineBottle) async {
+        DebugLog.shared.info("steam", "Starting Titanfall 2 once through Steam so it installs the EA app…")
+        setupStatus = "Steam is installing the EA app for Titanfall 2…"
+        do {
+            try await SteamInstaller.shared.launchTitanfallThroughSteam(in: bottle)
+        } catch {
+            setupError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Epic / Heroic
+
+    public func refreshEpicAccount() async {
+        epicAccount = await EpicService.shared.account()
+    }
+
+    public func signInToEpic(code: String) async {
+        epicBusy = true
+        defer { epicBusy = false }
+        epicError = nil
+        do {
+            epicAccount = try await EpicService.shared.signIn(code: code)
+        } catch {
+            epicError = error.localizedDescription
+        }
+    }
+
+    public func signOutOfEpic() async {
+        await EpicService.shared.signOut()
+        epicAccount = nil
+    }
+
+    /// Let the bottle's EA app install / run the Epic copy of Titanfall 2.
+    public func openEpicTitanfall(in bottle: WineBottle) async {
+        epicBusy = true
+        defer { epicBusy = false }
+        epicError = nil
+        do {
+            if !(await EAInstaller.shared.isEAInstalled(in: bottle)) {
+                try await EAInstaller.shared.install(into: bottle, silent: true)
+            }
+            try await EpicService.shared.openInEAApp(bottle: bottle)
+        } catch {
+            epicError = error.localizedDescription
+        }
+    }
+
+    public func importFromHeroic() async -> WineBottle? {
+        do {
+            let name = try HeroicImporter.importTitanfall()
+            await refreshBottles()
+            let bottle = bottles.first(where: { $0.name == name })
+            selectedBottleID = bottle?.id ?? selectedBottleID
+            return bottle
+        } catch {
+            setupError = error.localizedDescription
+            return nil
         }
     }
 
     public func cancelAutoBottleInstall() {
         BottleInstaller.shared.stopWatching()
+        setupTask?.cancel()
+        setupTask = nil
+        setupStatus = nil
         autoInstallStage = nil
         // Tear down the maxima-route install/poll loop too — if the
         // user closes the wizard mid-install, we don't want a 2-hour
@@ -397,22 +475,12 @@ public final class AppEnvironment: ObservableObject {
     /// rest manually inside the existing launcher).
     public func resumeAutoWatching(forBottle bottle: WineBottle) {
         selectedBottleID = bottle.id
-        autoInstallStage = bottle.hasTitanfall2
+        autoInstallStage = bottle.isTitanfallInstallComplete
             ? .done(bottleID: bottle.id)
-            : (bottle.hasLauncher
+            : (bottle.hasLauncher || bottle.hasMaxima
                 ? .waitingForTitanfall(bottleID: bottle.id)
                 : .waitingForBottle)
-        BottleInstaller.shared.startWatching(interval: 5) { [weak self] stage in
-            guard let self else { return }
-            self.autoInstallStage = stage
-            Task { await self.refreshBottles() }
-            if case .waitingForTitanfall(let id) = stage {
-                self.selectedBottleID = id
-            }
-            if case .done(let id) = stage {
-                self.selectedBottleID = id
-            }
-        }
+        watchSetup(of: bottle)
     }
 
     // MARK: - Maxima CLI integration

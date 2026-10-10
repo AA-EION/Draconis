@@ -94,35 +94,38 @@ public final class WineBottleCreator {
         if let description {
             args.append(contentsOf: ["--description", description])
         }
+        // What CrossOver itself sets when it creates a Titanfall 2 bottle.
+        args += [
+            "--param", "EnvironmentVariables:WINEMSYNC=1",
+            "--param", "EnvironmentVariables:CX_BOTTLE_CREATOR_APPID=com.codeweavers.c4.17509",
+        ]
 
         DebugLog.shared.info("bottle.create", "cxbottle \(args.joined(separator: " "))")
+
+        // Output goes to a file, not a pipe: wineboot starts a wineserver that
+        // inherits the descriptors and outlives cxbottle, and wine is chatty
+        // enough to fill an undrained pipe and stall the creation.
+        let logURL = PathResolver.launchLogs.appendingPathComponent("cxbottle-\(name).log")
+        try? FileManager.default.createDirectory(
+            at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        defer { try? logHandle.close() }
 
         let process = Process()
         process.executableURL = cxbottle
         process.arguments = args
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = logHandle
+        process.standardError = logHandle
 
-        let stderrPipe = Pipe()
-        let stdoutPipe = Pipe()
-        process.standardError = stderrPipe
-        process.standardOutput = stdoutPipe
-
-        // Suspends instead of blocking a thread while Wine sets up the
-        // prefix (~3-10 seconds the first time on a cold disk).
         let status = try await ProcessRunner.runUntilExit(process)
 
         if status != 0 {
-            let stderr = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            DebugLog.shared.error(
-                "bottle.create",
-                "cxbottle exit=\(status) stderr=\(stderr)"
-            )
-            throw CreatorError.creationFailed(
-                exitCode: status,
-                stderr: stderr
-            )
+            let output = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
+            let tail = String(output.suffix(2000))
+            DebugLog.shared.error("bottle.create", "cxbottle exit=\(status) — see \(logURL.path)")
+            throw CreatorError.creationFailed(exitCode: status, stderr: tail)
         }
 
         DebugLog.shared.ok("bottle.create", "Bottle \"\(name)\" created (template: \(template))")

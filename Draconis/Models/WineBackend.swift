@@ -1,28 +1,30 @@
 import Foundation
 
-/// Identifies which Wine/translation layer a given bottle/prefix belongs to.
-///
-/// **Draconis currently only supports CrossOver.** Other backends (GPTK,
-/// Whisky, Sikarugir, custom prefixes) were prototyped earlier but none
-/// were stable enough to keep around — running Titanfall 2 + Northstar +
-/// Maxima end-to-end has only been validated on CrossOver. The enum still
-/// exists as a single-case enum so call sites can keep their `bottle.backend`
-/// reads, and to leave room for adding more later without a wider refactor.
+/// Which Wine runs a bottle: CrossOver, or Draconis's own open-source Wine
+/// (`WineEngine`) for players without CrossOver.
 public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, Sendable {
     case crossover
+    case draconis
 
     public var id: String { rawValue }
-    public var displayName: String { "CrossOver" }
-    public var symbolName: String { "wineglass.fill" }
+    public var displayName: String {
+        switch self {
+        case .crossover: return "CrossOver"
+        case .draconis:  return "Draconis Wine"
+        }
+    }
+    public var symbolName: String {
+        switch self {
+        case .crossover: return "wineglass.fill"
+        case .draconis:  return "flame.fill"
+        }
+    }
 
-    /// Custom decoder so any persisted value other than "crossover" (e.g. an
-    /// old setting from when Draconis tried to support GPTK / Whisky /
-    /// Sikarugir / Kegworks) decodes to crossover instead of failing the
-    /// whole settings load.
+    /// Unknown values from older settings (GPTK / Whisky / Sikarugir) decode
+    /// to CrossOver instead of failing the whole settings load.
     public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        _ = try? container.decode(String.self)
-        self = .crossover
+        let raw = try? decoder.singleValueContainer().decode(String.self)
+        self = raw.flatMap(WineBackend.init(rawValue:)) ?? .crossover
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -31,7 +33,7 @@ public enum WineBackend: String, Codable, Hashable, CaseIterable, Identifiable, 
     }
 }
 
-/// A concrete CrossOver bottle Draconis can launch Titanfall 2 from.
+/// A bottle (CrossOver) or prefix (Draconis Wine) Draconis can launch Titanfall 2 from.
 public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     public var id: String           // stable, derived from backend + prefixURL
     public var name: String

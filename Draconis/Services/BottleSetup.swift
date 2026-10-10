@@ -59,17 +59,16 @@ public actor BottleSetup {
     public func prepare(_ bottle: WineBottle) async throws {
         if Self.isPrepared(bottle) { return }
 
+        var complete = true
         for redist in Self.vcRedists {
             let exe = try await download(redist.url, as: redist.file)
             Log.info("bottle.setup", "Installing \(redist.file)…")
-            let status = try await WineBackendManager.shared.launchAndWait(
-                executable: exe.path,
-                arguments: ["/install", "/passive", "/norestart"],
-                in: bottle
-            )
+            let status = await runInstaller(exe.path, in: bottle)
             // 1638: a newer version is already installed; 3010: reboot requested.
-            guard [0, 1638, 3010].contains(status) else {
-                throw SetupError.installer(redist.file, status)
+            if ![0, 1638, 3010].contains(status) {
+                // Wine ships its own VC++ runtime, so carry on without this one.
+                Log.warn("bottle.setup", "\(redist.file) didn't finish (\(status.map { "exit \($0)" } ?? "timed out")); continuing")
+                complete = false
             }
         }
 
@@ -82,8 +81,31 @@ public actor BottleSetup {
             try FileManager.default.copyItem(at: dll, to: dest)
         }
 
+        guard complete else { return }
         FileManager.default.createFile(atPath: Self.markerURL(for: bottle).path, contents: Data())
         Log.ok("bottle.setup", "Dependencies installed in “\(bottle.name)”")
+    }
+
+    /// Exit code, or nil when the installer hung (it can stall in Wine's MSI)
+    /// and was stopped after `timeout`.
+    private func runInstaller(_ path: String, in bottle: WineBottle, timeout: Duration = .seconds(600)) async -> Int32? {
+        await withTaskGroup(of: Int32?.self) { group in
+            group.addTask {
+                (try? await WineBackendManager.shared.launchAndWait(
+                    executable: path, arguments: ["/install", "/passive", "/norestart"], in: bottle)) ?? -1
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            if first == nil {
+                // Stopping the bottle's processes makes the installer task return too.
+                await WineBackendManager.shared.killAll(in: bottle)
+            }
+            group.cancelAll()
+            return first
+        }
     }
 
     private func download(_ url: URL, as name: String, sha256: String? = nil) async throws -> URL {

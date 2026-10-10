@@ -20,7 +20,7 @@ All notable changes to Draconis are documented here.
 
 ### Fixed
 - **Steam's window stayed empty with Draconis Wine** (Dock icon, no window). Steam now runs its built-in browser without the GPU through a small wrapper, the fix from [steam-on-m1-wine](https://github.com/notpop/steam-on-m1-wine) (MIT). The EA app's browser also runs without the GPU there.
-- Visual C++ installs now show their progress windows instead of running invisibly.
+- Visual C++ installs now show their progress windows instead of running invisibly. One that stalls (Wine's installer can hang) is stopped after 10 minutes and setup carries on; Wine has its own copy of those libraries.
 - **Creating a Draconis Wine prefix failed (exit 53)** when a disk image was mounted, such as the Draconis DMG: Wine gave drive C: to that volume instead of the prefix. Draconis now links C: and Z: before Wine's first start, and recreates a prefix left broken by this. Steam's and the EA app's Wine settings also apply only to those programs now.
 - **Steam install stalled during bottle creation.** `cxbottle --create` output went to pipes nobody read. Output now goes to a log file.
 

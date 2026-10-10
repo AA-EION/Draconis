@@ -356,7 +356,8 @@ public final class AppEnvironment: ObservableObject {
                 setupStatus = "Handing Titanfall 2 to the EA app…"
                 try await EpicService.shared.openInEAApp(bottle: bottle)
             } else if let exe = CrossOverDetector.locateEAApp(in: PathResolver.driveC(in: bottle.prefixURL)) {
-                try await WineBackendManager.shared.spawn(executable: exe.path, in: bottle)
+                try await WineBackendManager.shared.spawn(
+                    executable: exe.path, in: bottle, wineEnvironment: WineEngine.eaAppEnvironment)
             }
         case .maxima:
             if await !MaximaService.shared.isInstalled(in: bottle) {

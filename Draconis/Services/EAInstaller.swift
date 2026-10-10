@@ -139,7 +139,8 @@ public actor EAInstaller {
             throw InstallError.launchFailed("The EA app isn't installed in “\(bottle.name)”")
         }
         Log.info("ea.app", "Starting the EA app…")
-        try await WineBackendManager.shared.spawn(executable: exe.path, in: bottle)
+        try await WineBackendManager.shared.spawn(
+            executable: exe.path, in: bottle, wineEnvironment: WineEngine.eaAppEnvironment)
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             if Self.isLSXListening() {

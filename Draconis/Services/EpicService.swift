@@ -123,7 +123,7 @@ public actor EpicService {
         else {
             throw EpicError.failed(Self.lastLine(result.stderr) ?? "couldn't get a launch link from Epic")
         }
-        try await WineBackendManager.shared.open(url: uri, in: bottle)
+        try await WineBackendManager.shared.open(url: uri, in: bottle, wineEnvironment: WineEngine.eaAppEnvironment)
     }
 
     private static func lastLine(_ text: String) -> String? {

@@ -46,7 +46,7 @@ public actor WineEngine {
             case .checksumMismatch(let file):
                 return "\(file) didn't match its expected checksum; the download was discarded."
             case .commandFailed(let what, let code):
-                return "\(what) failed (exit \(code)). See the Draconis logs."
+                return "\(what) failed (exit \(code)). See ~/Library/Application Support/Draconis/Logs."
             case .notInstalled:
                 return "Draconis Wine isn't installed yet."
             case .invalidPrefix(let path):
@@ -196,7 +196,19 @@ public actor WineEngine {
 
     /// Environment for any Wine command against `prefix`. Built from scratch
     /// rather than inherited so a user's WINEPREFIX can never leak in.
-    public nonisolated static func environment(prefix: URL) throws -> [String: String] {
+    /// Extra environment for Steam: builtin bcrypt/ncrypt for Chromium's
+    /// BoringSSL, no overlay (it deadlocks DXMT games).
+    /// Steam also starts the EA app, so it gets that app's settings too.
+    public static let steamEnvironment = eaAppEnvironment.merging([
+        "WINEDLLOVERRIDES": "winemenubuilder.exe=d;bcrypt,ncrypt=b;gameoverlayrenderer,gameoverlayrenderer64=d",
+    ]) { $1 }
+    /// The EA app's Chromium (Qt WebEngine) draws nothing on the GPU path here.
+    public static let eaAppEnvironment = [
+        "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu",
+        "QTWEBENGINE_DISABLE_SANDBOX": "1",
+    ]
+
+    public nonisolated static func environment(prefix: URL, extra: [String: String] = [:]) throws -> [String: String] {
         let inherited = ProcessInfo.processInfo.environment
         var env: [String: String] = [
             "WINEPREFIX": try validated(prefix).path,
@@ -204,34 +216,42 @@ public actor WineEngine {
             "WINEMSYNC": "1",
             "WINEESYNC": "0",
             "ROSETTA_ADVERTISE_AVX": "1",
-            // No Launchpad shortcuts; builtin bcrypt/ncrypt for Chromium's
-            // BoringSSL; no Steam overlay (it deadlocks DXMT games).
-            "WINEDLLOVERRIDES": "winemenubuilder.exe=d;bcrypt,ncrypt=b;gameoverlayrenderer,gameoverlayrenderer64=d",
-            // The EA app's Chromium (Qt WebEngine) draws nothing on the GPU path here.
-            "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu",
-            "QTWEBENGINE_DISABLE_SANDBOX": "1",
+            // No Launchpad / Dock shortcuts for apps installed into the prefix.
+            "WINEDLLOVERRIDES": "winemenubuilder.exe=d",
             "PATH": wineRoot.appendingPathComponent("bin").path + ":/usr/bin:/bin:/usr/sbin:/sbin",
         ]
         for key in ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL"] {
             if let value = inherited[key] { env[key] = value }
         }
+        env.merge(extra) { $1 }
         return env
     }
 
     public func createPrefix(named name: String) async throws -> URL {
         guard Self.isInstalled else { throw EngineError.notInstalled }
         let prefix = try Self.validated(Self.prefixURL(named: name))
-        guard !FileManager.default.fileExists(atPath: prefix.path) else {
-            throw EngineError.prefixExists(name)
+        if FileManager.default.fileExists(atPath: prefix.path) {
+            // No system.reg: a creation that failed before this cleanup existed.
+            guard !FileManager.default.fileExists(atPath: prefix.appendingPathComponent("system.reg").path) else {
+                throw EngineError.prefixExists(name)
+            }
+            try FileManager.default.removeItem(at: prefix)
         }
         try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
         let log = PathResolver.launchLogs.appendingPathComponent("prefix-\(name).log").path
 
-        try await check(["wineboot", "-u"], prefix: prefix, log: log, what: "Creating the Wine prefix")
-        try await check(["winecfg", "-v", "win10"], prefix: prefix, log: log, what: "Setting Windows 10")
-        try await check(["reg", "add", "HKCU\\Software\\Wine\\Mac Driver", "/v", "RetinaMode", "/t", "REG_SZ",
-                         "/d", "n", "/f"], prefix: prefix, log: log, what: "Writing display settings")
-        try await wineserverWait(prefix: prefix)
+        do {
+            try await check(["wineboot", "-u"], prefix: prefix, log: log, what: "Creating the Wine prefix")
+            try await check(["winecfg", "-v", "win10"], prefix: prefix, log: log, what: "Setting Windows 10")
+            try await check(["reg", "add", "HKCU\\Software\\Wine\\Mac Driver", "/v", "RetinaMode", "/t", "REG_SZ",
+                             "/d", "n", "/f"], prefix: prefix, log: log, what: "Writing display settings")
+            try await wineserverWait(prefix: prefix)
+        } catch {
+            // A half-made prefix would be reused (and stay broken) on the next try.
+            try? await killAll(prefix: prefix)
+            try? FileManager.default.removeItem(at: prefix)
+            throw error
+        }
         Log.ok("engine", "Created prefix \(prefix.path)")
         return prefix
     }
@@ -242,14 +262,15 @@ public actor WineEngine {
         _ arguments: [String],
         prefix: URL,
         log: String? = nil,
-        currentDirectory: String? = nil
+        currentDirectory: String? = nil,
+        environment extra: [String: String] = [:]
     ) async throws -> Int32 {
         guard Self.isInstalled else { throw EngineError.notInstalled }
         Log.run("engine", "wine \(arguments.joined(separator: " "))")
         return try await CleanSpawn.spawnAndWait(
             executable: Self.wineBinary.path,
             arguments: arguments,
-            environment: try Self.environment(prefix: prefix),
+            environment: try Self.environment(prefix: prefix, extra: extra),
             stdoutPath: log ?? "/dev/null",
             currentDirectory: currentDirectory
         )
@@ -265,14 +286,15 @@ public actor WineEngine {
         _ arguments: [String],
         prefix: URL,
         log: String,
-        currentDirectory: String? = nil
+        currentDirectory: String? = nil,
+        environment extra: [String: String] = [:]
     ) throws -> pid_t {
         guard Self.isInstalled else { throw EngineError.notInstalled }
         Log.run("engine", "wine \(arguments.joined(separator: " "))")
         return try CleanSpawn.spawn(
             executable: Self.wineBinary.path,
             arguments: arguments,
-            environment: try Self.environment(prefix: prefix),
+            environment: try Self.environment(prefix: prefix, extra: extra),
             stdoutPath: log,
             currentDirectory: currentDirectory
         )

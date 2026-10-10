@@ -21,6 +21,7 @@ All notable changes to Draconis are documented here.
 ### Fixed
 - **Steam's window stayed empty with Draconis Wine** (Dock icon, no window). Steam now runs its built-in browser without the GPU through a small wrapper, the fix from [steam-on-m1-wine](https://github.com/notpop/steam-on-m1-wine) (MIT). The EA app's browser also runs without the GPU there.
 - Visual C++ installs now show their progress windows instead of running invisibly.
+- **Creating a Draconis Wine prefix failed (exit 53) in beta.2.** Steam's and the EA app's Wine settings now apply only to those programs, and a prefix whose creation failed is removed so the next try starts clean.
 - **Steam install stalled during bottle creation.** `cxbottle --create` output went to pipes nobody read. Output now goes to a log file.
 
 ---

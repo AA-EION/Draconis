@@ -63,7 +63,8 @@ public actor WineBackendManager {
         executable: String,
         arguments: [String] = [],
         in bottle: WineBottle,
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        wineEnvironment: [String: String] = [:]
     ) async throws -> Int32 {
         let log = Self.prepareLog(for: bottle)
         switch bottle.backend {
@@ -84,7 +85,8 @@ public actor WineBackendManager {
                 [executable] + arguments,
                 prefix: bottle.prefixURL,
                 log: log,
-                currentDirectory: workingDirectory
+                currentDirectory: workingDirectory,
+                environment: wineEnvironment
             )
         }
     }
@@ -97,7 +99,8 @@ public actor WineBackendManager {
         executable: String,
         arguments: [String] = [],
         in bottle: WineBottle,
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        wineEnvironment: [String: String] = [:]
     ) async throws -> pid_t {
         let log = Self.prepareLog(for: bottle)
         switch bottle.backend {
@@ -118,14 +121,16 @@ public actor WineBackendManager {
                 [executable] + arguments,
                 prefix: bottle.prefixURL,
                 log: log,
-                currentDirectory: workingDirectory
+                currentDirectory: workingDirectory,
+                environment: wineEnvironment
             )
         }
     }
 
     /// Hand a URL (`link2ea://`, `steam://`) to whatever the bottle registered for it.
-    public func open(url: String, in bottle: WineBottle) async throws {
-        try await spawn(executable: "C:\\windows\\system32\\start.exe", arguments: [url], in: bottle)
+    public func open(url: String, in bottle: WineBottle, wineEnvironment: [String: String] = [:]) async throws {
+        try await spawn(executable: "C:\\windows\\system32\\start.exe", arguments: [url], in: bottle,
+                        wineEnvironment: wineEnvironment)
     }
 
     /// Stop every Wine process in the bottle.

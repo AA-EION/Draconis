@@ -122,7 +122,8 @@ public actor SteamInstaller {
         Self.installWebHelperWrapper(steamRoot: steamRoot)
         Self.purgeBrowserLocks(in: bottle)
         try await WineBackendManager.shared.spawn(
-            executable: steam, arguments: Self.wineArguments + arguments, in: bottle)
+            executable: steam, arguments: Self.wineArguments + arguments, in: bottle,
+                wineEnvironment: WineEngine.steamEnvironment)
         watchWebHelper(steam: steam, steamRoot: steamRoot, arguments: arguments, in: bottle)
     }
 
@@ -198,10 +199,12 @@ public actor SteamInstaller {
                 guard Self.installWebHelperWrapper(steamRoot: steamRoot) else { continue }
                 Log.info("steam", "Restarting Steam so its window can draw")
                 _ = try? await WineBackendManager.shared.launchAndWait(
-                    executable: steam, arguments: ["-shutdown"], in: bottle)
+                    executable: steam, arguments: ["-shutdown"], in: bottle,
+                    wineEnvironment: WineEngine.steamEnvironment)
                 try? await Task.sleep(for: .seconds(10))
                 _ = try? await WineBackendManager.shared.spawn(
-                    executable: steam, arguments: Self.wineArguments + arguments, in: bottle)
+                    executable: steam, arguments: Self.wineArguments + arguments, in: bottle,
+                wineEnvironment: WineEngine.steamEnvironment)
                 return
             }
         }

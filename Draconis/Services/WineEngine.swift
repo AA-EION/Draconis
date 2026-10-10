@@ -231,13 +231,15 @@ public actor WineEngine {
         guard Self.isInstalled else { throw EngineError.notInstalled }
         let prefix = try Self.validated(Self.prefixURL(named: name))
         if FileManager.default.fileExists(atPath: prefix.path) {
-            // No system.reg: a creation that failed before this cleanup existed.
-            guard !FileManager.default.fileExists(atPath: prefix.appendingPathComponent("system.reg").path) else {
+            // No kernel32: an earlier creation failed (e.g. C: mapped to a mounted volume).
+            let kernel32 = PathResolver.driveC(in: prefix).appendingPathComponent("windows/system32/kernel32.dll")
+            guard !FileManager.default.fileExists(atPath: kernel32.path) else {
                 throw EngineError.prefixExists(name)
             }
             try FileManager.default.removeItem(at: prefix)
         }
         try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        try Self.createDriveLinks(in: prefix)
         let log = PathResolver.launchLogs.appendingPathComponent("prefix-\(name).log").path
 
         do {
@@ -254,6 +256,21 @@ public actor WineEngine {
         }
         Log.ok("engine", "Created prefix \(prefix.path)")
         return prefix
+    }
+
+    /// Wine assigns drive letters to mounted volumes as it boots; on a fresh
+    /// prefix C: can go to whatever is mounted (e.g. the Draconis DMG) before
+    /// Wine links it to drive_c. Link C: and Z: first.
+    static func createDriveLinks(in prefix: URL) throws {
+        let fm = FileManager.default
+        let dosdevices = prefix.appendingPathComponent("dosdevices", isDirectory: true)
+        try fm.createDirectory(at: PathResolver.driveC(in: prefix), withIntermediateDirectories: true)
+        try fm.createDirectory(at: dosdevices, withIntermediateDirectories: true)
+        for (drive, target) in [("c:", "../drive_c"), ("z:", "/")] {
+            let link = dosdevices.appendingPathComponent(drive)
+            try? fm.removeItem(at: link)
+            try fm.createSymbolicLink(atPath: link.path, withDestinationPath: target)
+        }
     }
 
     /// Run a Windows program in `prefix` and return its exit code. Always via

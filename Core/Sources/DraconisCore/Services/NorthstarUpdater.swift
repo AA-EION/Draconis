@@ -144,6 +144,24 @@ public actor NorthstarUpdater {
         }
         progress?(Progress(phase: .extracting, fraction: -1, detail: "Unpacking…"))
         Log.run("northstar.update", "unzip \(zipURL.lastPathComponent) → \(gameRoot.path)")
+        // As Northstar's own install steps: drop the old core mods so removed
+        // files don't linger, and keep the user's startup arguments.
+        let fm = FileManager.default
+        for mod in GameFiles.coreMods {
+            let dir = gameRoot.appendingPathComponent("R2Northstar/mods/\(mod)")
+            if fm.fileExists(atPath: dir.appendingPathComponent("mod.json").path) {
+                try? fm.removeItem(at: dir)
+            }
+        }
+        let argsFiles = ["ns_startup_args.txt", "ns_startup_args_dedi.txt"]
+        let savedArgs = argsFiles.compactMap { name in
+            (try? Data(contentsOf: gameRoot.appendingPathComponent(name))).map { (name, $0) }
+        }
+        defer {
+            for (name, data) in savedArgs {
+                try? data.write(to: gameRoot.appendingPathComponent(name), options: .atomic)
+            }
+        }
         do {
             try ZipExtractor.extract(zipURL, to: gameRoot)
         } catch {

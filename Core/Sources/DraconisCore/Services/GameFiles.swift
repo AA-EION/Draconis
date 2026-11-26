@@ -10,8 +10,19 @@ public enum GameFiles {
         FileManager.default.fileExists(atPath: root.appendingPathComponent("NorthstarLauncher.exe").path)
     }
 
-    /// `ns_version.txt`, written by Northstar's release zip.
+    /// Northstar's core mods, stamped with the release version.
+    public static let coreMods = ["Northstar.Client", "Northstar.Custom", "Northstar.CustomServers"]
+
+    /// Installed Northstar version: `Version` in Northstar.Client's mod.json
+    /// (releases don't ship `ns_version.txt`; older Draconis builds wrote it).
     public static func northstarVersion(in root: URL) -> String? {
+        let manifest = root.appendingPathComponent("R2Northstar/mods/Northstar.Client/mod.json")
+        struct Manifest: Decodable { let Version: String? }
+        if let data = try? Data(contentsOf: manifest),
+           let version = (try? JSONDecoder().decode(Manifest.self, from: data))?.Version,
+           !version.isEmpty {
+            return version
+        }
         guard let raw = try? String(contentsOf: root.appendingPathComponent("ns_version.txt"), encoding: .utf8)
         else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

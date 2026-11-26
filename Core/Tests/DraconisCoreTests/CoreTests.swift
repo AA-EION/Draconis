@@ -86,3 +86,33 @@ import ZIPFoundation
         #expect(servers.first?.requiredMods.first?.name == "M")
     }
 }
+
+@Suite struct NorthstarFilesTests {
+    @Test func versionFromCoreModManifest() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let client = root.appendingPathComponent("R2Northstar/mods/Northstar.Client")
+        try FileManager.default.createDirectory(at: client, withIntermediateDirectories: true)
+        try #"{"Name":"Northstar.Client","Version":"1.31.16"}"#.write(to: client.appendingPathComponent("mod.json"), atomically: true, encoding: .utf8)
+        #expect(GameFiles.northstarVersion(in: root) == "1.31.16")
+    }
+
+    @Test func enabledModsBothFormats() throws {
+        let legacy = EnabledMods.parse(Data(#"{"A":false}"#.utf8))
+        #expect(legacy.isEnabled("A", version: "1.0") == false)
+        let v1 = EnabledMods.parse(Data(#"{"Version":1,"A":{"1.0":true,"0.9":false}}"#.utf8))
+        #expect(v1.isEnabled("A", version: "1.0") == true)
+        #expect(v1.isEnabled("B", version: "1.0") == nil)
+    }
+
+    @Test func enabledModsWritesVersionedFormat() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        var mods = EnabledMods.parse(Data(#"{"A":false}"#.utf8))
+        mods.migrateLegacy(using: [InstalledMod(id: "A", name: "A", version: "2.0", enabled: false, folderURL: file)])
+        mods.set("B", version: "1.0", enabled: true)
+        try mods.write(to: file)
+        let back = EnabledMods.read(from: file)
+        #expect(back.versioned == ["A": ["2.0": false], "B": ["1.0": true]])
+        let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
+        #expect((raw?["Version"] as? NSNumber)?.intValue == 1)
+    }
+}

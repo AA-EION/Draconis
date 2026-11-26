@@ -166,7 +166,7 @@ public actor ThunderstoreClient {
 
     private nonisolated static func readMod(
         at folder: URL,
-        enabledMap: [String: Bool],
+        enabledMap: EnabledMods,
         packageID: String?
     ) -> InstalledMod? {
         let name = folder.lastPathComponent
@@ -180,39 +180,22 @@ public actor ThunderstoreClient {
         let manifest = try? JSONDecoder().decode(ModManifest.self, from: data)
         let modName = manifest?.Name ?? name
 
-        // Enabled status:
-        //   1. enabledmods.json wins if it has an entry for this Name
-        //   2. otherwise, dot-prefix folder is treated as disabled (legacy)
-        //   3. default: enabled
-        let isEnabled: Bool
-        if let explicit = enabledMap[modName] {
-            isEnabled = explicit
-        } else {
-            isEnabled = !name.hasPrefix(".")
-        }
+        // enabledmods.json wins; otherwise a dot-prefixed folder (legacy) is off.
+        let version = manifest?.Version ?? "—"
+        let isEnabled = enabledMap.isEnabled(modName, version: version) ?? !name.hasPrefix(".")
 
         return InstalledMod(
             id: packageID.map { "\($0)/\(name)" } ?? name,
             name: modName,
-            version: manifest?.Version ?? "—",
+            version: version,
             enabled: isEnabled,
             folderURL: folder,
             thunderstoreID: packageID
         )
     }
 
-    /// Read `R2Northstar/enabledmods.json` — silent fallback to empty if missing/corrupt.
-    private nonisolated func readEnabledMods(in gameRoot: URL) -> [String: Bool] {
-        guard let data = try? Data(contentsOf: Self.enabledModsFile(in: gameRoot)),
-              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return [:] }
-
-        var out: [String: Bool] = [:]
-        for (k, v) in raw {
-            if let b = v as? Bool { out[k] = b }
-            else if let n = v as? NSNumber { out[k] = n.boolValue }
-        }
-        return out
+    private nonisolated func readEnabledMods(in gameRoot: URL) -> EnabledMods {
+        EnabledMods.read(from: Self.enabledModsFile(in: gameRoot))
     }
 
     // MARK: - Install / extract
@@ -396,28 +379,16 @@ public actor ThunderstoreClient {
 
     // MARK: - Enable / disable / uninstall
 
-    /// Toggle a mod's enabled state by writing to `R2Northstar/enabledmods.json`
-    /// (Northstar's standard file). We never rename folders any more — that was
-    /// a holdover that fought with the in-game mods menu.
+    /// Toggle a mod in `R2Northstar/enabledmods.json`, in Northstar's current
+    /// versioned format; a legacy flat file is migrated on the way.
     public nonisolated func setEnabled(_ enabled: Bool, mod: InstalledMod, in gameRoot: URL) throws {
         let file = Self.enabledModsFile(in: gameRoot)
-
         try FileManager.default.createDirectory(
-            at: file.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-
-        var map: [String: Any] = [:]
-        if let data = try? Data(contentsOf: file),
-           let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            map = raw
-        }
-        map[mod.name] = enabled
-
-        let data = try JSONSerialization.data(
-            withJSONObject: map, options: [.prettyPrinted, .sortedKeys]
-        )
-        try data.write(to: file, options: .atomic)
+            at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var map = EnabledMods.read(from: file)
+        map.migrateLegacy(using: installedMods(in: gameRoot))
+        map.set(mod.name, version: mod.version, enabled: enabled)
+        try map.write(to: file)
 
         // Heal legacy dot-prefixed folders left over from earlier Draconis builds.
         let current = mod.folderURL.lastPathComponent

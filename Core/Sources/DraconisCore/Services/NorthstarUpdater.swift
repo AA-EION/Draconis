@@ -1,12 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Pulls releases from `R2Northstar/Northstar` on GitHub and extracts them on
-/// top of the Titanfall 2 install directory inside a bottle.
-///
-/// We expose a streaming progress channel so the UI can show a live bar; we
-/// extract with macOS's native `/usr/bin/ditto` (the Apple-recommended archive
-/// tool — handles resource forks, extended attributes, and Unicode names
-/// correctly) rather than reaching for `unzip` or a third-party library.
+/// top of a Titanfall 2 install folder, with streamed progress for the UI.
 public actor NorthstarUpdater {
     public static let shared = NorthstarUpdater()
 
@@ -29,7 +27,7 @@ public actor NorthstarUpdater {
         case badResponse(Int)
         case downloadFailed(String)
         case extractFailed(String)
-        case bottleMissingTitanfall
+        case titanfallMissing
 
         public var errorDescription: String? {
             switch self {
@@ -37,7 +35,7 @@ public actor NorthstarUpdater {
             case .badResponse(let code):    return "GitHub returned HTTP \(code)."
             case .downloadFailed(let s):    return "Download failed: \(s)"
             case .extractFailed(let s):     return "Extraction failed: \(s)"
-            case .bottleMissingTitanfall:   return "Titanfall 2 isn't installed in that bottle. Install Titanfall 2 first, then come back."
+            case .titanfallMissing:         return "Titanfall 2 isn't installed there. Install Titanfall 2 first, then come back."
             }
         }
     }
@@ -111,7 +109,7 @@ public actor NorthstarUpdater {
         _ release: NorthstarRelease,
         progress: ProgressHandler? = nil
     ) async throws -> URL {
-        let dest = PathResolver.downloadsCache.appendingPathComponent(
+        let dest = CorePaths.downloads.appendingPathComponent(
             "Northstar-\(release.tagName).zip"
         )
         if FileManager.default.fileExists(atPath: dest.path) {
@@ -133,106 +131,51 @@ public actor NorthstarUpdater {
         return dest
     }
 
-    // MARK: - Extract
+    // MARK: - Install
 
-    /// Extract the zip into the Titanfall 2 root using macOS's native `ditto`.
+    /// Extract the release zip on top of the Titanfall 2 folder.
     public func install(
-        zipURL: URL, into bottle: WineBottle,
+        zipURL: URL, into gameRoot: URL,
         progress: ProgressHandler? = nil
     ) async throws {
-        // Re-resolve the install path — when the user just created the bottle,
-        // the WineBottle struct from a stale scan may not have it set.
-        let resolvedRoot = bottle.titanfall2InstallPath
-            ?? CrossOverDetector.locateTitanfall2(
-                in: PathResolver.driveC(in: bottle.prefixURL)
-            )?.path
-
-        guard let target = resolvedRoot else {
-            Log.error("northstar.update",
-                      "No Titanfall 2 root in “\(bottle.name)” (\(bottle.prefixURL.path))")
-            throw UpdateError.bottleMissingTitanfall
+        guard GameFiles.isTitanfallRoot(gameRoot) else {
+            Log.error("northstar.update", "No Titanfall2.exe in \(gameRoot.path)")
+            throw UpdateError.titanfallMissing
         }
-
-        // Make sure the target directory exists (it should, but defensively).
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: target, isDirectory: &isDir),
-              isDir.boolValue else {
-            Log.error("northstar.update", "Target dir doesn't exist: \(target)")
-            throw UpdateError.extractFailed("Target dir doesn't exist: \(target)")
+        progress?(Progress(phase: .extracting, fraction: -1, detail: "Unpacking…"))
+        Log.run("northstar.update", "unzip \(zipURL.lastPathComponent) → \(gameRoot.path)")
+        do {
+            try ZipExtractor.extract(zipURL, to: gameRoot)
+        } catch {
+            Log.error("northstar.update", error.localizedDescription)
+            throw UpdateError.extractFailed(error.localizedDescription)
         }
-
-        progress?(Progress(phase: .extracting, fraction: -1,
-                           detail: "Unpacking with ditto…"))
-        Log.run("northstar.update",
-                "ditto -x -k \"\(zipURL.path)\" \"\(target)\"")
-
-        let result = try await ProcessRunner.shared.capture(
-            URL(fileURLWithPath: "/usr/bin/ditto"),
-            arguments: ["-x", "-k", zipURL.path, target]
-        )
-        guard result.ok else {
-            Log.error("northstar.update", result.stderr)
-            throw UpdateError.extractFailed(
-                result.stderr.isEmpty ? "ditto exited \(result.terminationStatus)" : result.stderr
-            )
-        }
-
-        Log.ok("northstar.update", "Northstar files extracted into \(target)")
+        Log.ok("northstar.update", "Northstar files extracted into \(gameRoot.path)")
         progress?(Progress(phase: .done, fraction: 1.0, detail: "Installed"))
     }
 
     // MARK: - Uninstall
 
-    /// Removes Northstar files and folders from the Titanfall 2 install directory,
-    /// leaving Titanfall2.exe and the base game intact.
-    ///
-    /// The set of paths is derived from what the Northstar release zip places in
-    /// the TF2 root. Only known Northstar-owned paths are touched; game files are
-    /// never deleted.
-    public func uninstall(from bottle: WineBottle) async throws {
-        let resolvedRoot = bottle.titanfall2InstallPath
-            ?? CrossOverDetector.locateTitanfall2(
-                in: PathResolver.driveC(in: bottle.prefixURL)
-            )?.path
-
-        guard let target = resolvedRoot else {
-            throw UpdateError.bottleMissingTitanfall
-        }
-
+    /// Remove only the files Northstar's release adds; the game stays intact.
+    public func uninstall(from gameRoot: URL) async throws {
+        guard GameFiles.isTitanfallRoot(gameRoot) else { throw UpdateError.titanfallMissing }
         let fm = FileManager.default
-        let root = URL(fileURLWithPath: target)
-
-        let northstarPaths: [String] = [
-            "NorthstarLauncher.exe",
-            "Northstar.dll",
-            "r2_nsmod_loader.dll",
-            "ns_version.txt",
-            "ns_startup_args.txt",
-            "ns_startup_args_dedi.txt",
-            "R2Northstar",
-            "bin/x64_retail/wsock32.dll",
-        ]
-
         var errors: [String] = []
-        for rel in northstarPaths {
-            let url = root.appendingPathComponent(rel)
+        for rel in GameFiles.northstarPaths {
+            let url = gameRoot.appendingPathComponent(rel)
             guard fm.fileExists(atPath: url.path) else { continue }
             do {
                 try fm.removeItem(at: url)
                 Log.ok("northstar.uninstall", "Removed \(rel)")
             } catch {
-                Log.error("northstar.uninstall",
-                          "Could not remove \(rel): \(error.localizedDescription)")
+                Log.error("northstar.uninstall", "Could not remove \(rel): \(error.localizedDescription)")
                 errors.append(rel)
             }
         }
-
         if !errors.isEmpty {
-            throw UpdateError.extractFailed(
-                "Could not remove: \(errors.joined(separator: ", "))"
-            )
+            throw UpdateError.extractFailed("Could not remove: \(errors.joined(separator: ", "))")
         }
-        Log.ok("northstar.uninstall", "Northstar removed from \(target)")
+        Log.ok("northstar.uninstall", "Northstar removed from \(gameRoot.path)")
     }
 
     // MARK: -

@@ -74,56 +74,20 @@ public actor CrossOverDetector {
             hasEAApp: locateEAApp(in: driveC) != nil,
             hasEpicGames: locateEpicGames(in: driveC) != nil,
             hasMaxima: locateMaximaCli(in: driveC) != nil,
-            northstarVersion: titanfall.flatMap { readNorthstarVersion(in: $0) },
+            northstarVersion: titanfall.flatMap { GameFiles.northstarVersion(in: $0) },
             titanfall2InstallPath: titanfall?.path
         )
     }
 
     // MARK: - Cross-backend heuristics (nonisolated, pure FileManager reads)
 
-    /// Walks `drive_c` looking for Titanfall2.exe. Tries the well-known install
-    /// roots first; if nothing matches it does a depth-limited recursive sweep
-    /// so unusual installs (custom folder names, EA App's new layout) still get
-    /// detected.
     public nonisolated static func locateTitanfall2(in driveC: URL) -> URL? {
-        let knownRoots = [
-            "Program Files (x86)/Origin Games/Titanfall2",
-            "Program Files (x86)/Steam/steamapps/common/Titanfall2",
-            "Program Files (x86)/EA Games/Titanfall2",
-            "Program Files/Origin Games/Titanfall2",
-            "Program Files/EA Games/Titanfall2",
-            "Program Files/Titanfall2",
-            "Games/Titanfall2",
-            "Titanfall2",
-        ]
-        let fm = FileManager.default
-        for sub in knownRoots {
-            let root = driveC.appendingPathComponent(sub)
-            let exe  = root.appendingPathComponent("Titanfall2.exe")
-            if fm.fileExists(atPath: exe.path) { return root }
-        }
-
-        return recursiveSearch(
-            for: "Titanfall2.exe",
-            startingAt: driveC,
-            maxDepth: 5
-        )?.deletingLastPathComponent()
+        GameFiles.locateTitanfall2(under: driveC)
     }
 
-    /// Northstar is present when NorthstarLauncher.exe sits next to Titanfall2.exe.
     public nonisolated static func locateNorthstar(in driveC: URL) -> URL? {
-        guard let tf2 = locateTitanfall2(in: driveC) else { return nil }
-        let launcher = tf2.appendingPathComponent("NorthstarLauncher.exe")
-        return FileManager.default.fileExists(atPath: launcher.path) ? launcher : nil
-    }
-
-    /// Reads the installed Northstar version from ns_version.txt written by the installer.
-    /// Returns a tag string like "v1.28.0", or nil if the file is absent or unreadable.
-    public nonisolated static func readNorthstarVersion(in tf2Root: URL) -> String? {
-        let versionFile = tf2Root.appendingPathComponent("ns_version.txt")
-        guard let raw = try? String(contentsOf: versionFile, encoding: .utf8) else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        guard let tf2 = locateTitanfall2(in: driveC), GameFiles.hasNorthstar(in: tf2) else { return nil }
+        return tf2.appendingPathComponent("NorthstarLauncher.exe")
     }
 
     /// EA App / EA Desktop inside the bottle. Checks both 32-bit and 64-bit Program Files.
@@ -169,40 +133,6 @@ public actor CrossOverDetector {
         for path in candidates {
             let url = driveC.appendingPathComponent(path)
             if fm.fileExists(atPath: url.path) { return url }
-        }
-        return nil
-    }
-
-    /// Depth-limited recursive search using FileManager.enumerator with a cap
-    /// so even a pathological prefix returns within a couple of seconds.
-    private nonisolated static func recursiveSearch(
-        for filename: String,
-        startingAt root: URL,
-        maxDepth: Int,
-        nodeCap: Int = 50_000
-    ) -> URL? {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return nil }
-
-        var visited = 0
-        let rootDepth = root.pathComponents.count
-
-        for case let url as URL in enumerator {
-            visited += 1
-            if visited > nodeCap { return nil }
-
-            let depth = url.pathComponents.count - rootDepth
-            if depth > maxDepth {
-                enumerator.skipDescendants()
-                continue
-            }
-            if url.lastPathComponent == filename {
-                return url
-            }
         }
         return nil
     }

@@ -1,16 +1,23 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// URLSessionDownloadDelegate bridge that exposes per-chunk progress to an
-/// async caller. Used by NorthstarUpdater (and anywhere else we need progress
-/// during a long download).
-final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+/// async caller.
+public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
 
-    typealias Progress = NorthstarUpdater.Progress
-    typealias ProgressHandler = @Sendable (Progress) -> Void
+    public typealias Progress = NorthstarUpdater.Progress
+    public typealias ProgressHandler = @Sendable (Progress) -> Void
 
-    enum DLError: Error {
+    public enum DLError: Error, LocalizedError {
         case badResponse(Int)
-        case missingFile
+
+        public var errorDescription: String? {
+            switch self {
+            case .badResponse(let code): return "The server returned HTTP \(code)."
+            }
+        }
     }
 
     private let url: URL
@@ -23,8 +30,8 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
     }
 
     /// One-shot async download with progress.
-    static func download(
-        from url: URL, progress: ProgressHandler?
+    public static func download(
+        from url: URL, progress: ProgressHandler? = nil
     ) async throws -> URL {
         let coordinator = DownloadCoordinator(url: url, progress: progress)
         let config = URLSessionConfiguration.default
@@ -43,7 +50,7 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
 
     // MARK: - URLSessionDownloadDelegate
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didWriteData bytesWritten: Int64,
@@ -70,11 +77,16 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
         }
     }
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
+        if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            continuation?.resume(throwing: DLError.badResponse(http.statusCode))
+            continuation = nil
+            return
+        }
         // We have to move the file out of the temp location BEFORE returning,
         // because URLSession deletes it immediately after this delegate returns.
         let tmp = FileManager.default.temporaryDirectory
@@ -88,7 +100,7 @@ final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecke
         continuation = nil
     }
 
-    func urlSession(
+    public func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         didCompleteWithError error: Error?

@@ -6,6 +6,8 @@
 name: Draconis
 
 packages:
+  DraconisCore:
+    path: Core
   sentry-cocoa:
     url: https://github.com/getsentry/sentry-cocoa
     minorVersion: "9.14.0"
@@ -65,6 +67,8 @@ targets:
     # release as "1.0" in the About panel. Instead we point INFOPLIST_FILE
     # at the hand-managed plist in settings.base below.
     dependencies:
+      - package: DraconisCore
+        product: DraconisCore
       - package: sentry-cocoa
         product: Sentry
     entitlements:

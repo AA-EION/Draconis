@@ -40,3 +40,6 @@ Draconis/Resources/steamwebhelper.exe
 .idea/
 *.swp
 .claude/
+
+# SwiftPM
+Core/.build/

@@ -51,6 +51,14 @@ public struct WineBottle: Identifiable, Hashable, Codable, Sendable {
     /// True when any game-store launcher (Steam, EA App, or Epic Games) is present.
     public var hasLauncher: Bool { hasSteam || hasEAApp || hasEpicGames }
 
+    /// The Titanfall 2 folder inside the prefix, or drive_c when there is none
+    /// (core calls then report Titanfall 2 missing).
+    public var gameRoot: URL {
+        if let titanfall2InstallPath { return URL(fileURLWithPath: titanfall2InstallPath) }
+        let driveC = PathResolver.driveC(in: prefixURL)
+        return GameFiles.locateTitanfall2(under: driveC) ?? driveC
+    }
+
     /// Path Draconis's Maxima route installs TF2 to (`maxima.exe --install-path`).
     public var maximaInstallRoot: URL {
         PathResolver.driveC(in: prefixURL)

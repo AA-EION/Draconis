@@ -211,7 +211,7 @@ public final class AppEnvironment: ObservableObject {
         if let bottle = selectedBottle, bottle.hasNorthstar,
            let latest = northstarReleases.first {
             let installed = bottle.northstarVersion
-            if Self.northstarVersionMatches(installed: installed, releaseTag: latest.tagName) {
+            if GameFiles.versionsMatch(installed: installed, releaseTag: latest.tagName) {
                 DebugLog.shared.ok("app", "Northstar is up to date (\(latest.tagName))")
             } else {
                 DebugLog.shared.info("app",
@@ -219,23 +219,6 @@ public final class AppEnvironment: ObservableObject {
                 await installLatestNorthstar()
             }
         }
-    }
-
-    /// Northstar writes the *unprefixed* semver into `ns_version.txt` (e.g.
-    /// `1.30.0`), while GitHub releases are tagged with a `v` prefix (e.g.
-    /// `v1.30.0`). Compare after stripping the prefix from both so the
-    /// auto-updater doesn't re-extract the same release every launch.
-    nonisolated static func northstarVersionMatches(installed: String?, releaseTag: String) -> Bool {
-        guard let installed else { return false }
-        return stripV(installed) == stripV(releaseTag)
-    }
-
-    private nonisolated static func stripV(_ s: String) -> String {
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("v") {
-            return String(trimmed.dropFirst())
-        }
-        return trimmed
     }
 
     public func refreshCrossOverState() async {
@@ -1101,14 +1084,14 @@ public final class AppEnvironment: ObservableObject {
             modsLoadError = error.localizedDescription
         }
         if let bottle = selectedBottle {
-            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle.gameRoot)
         }
     }
 
     public func installMod(_ version: ThunderstoreVersion) async throws {
         guard let bottle = selectedBottle else { return }
-        try await ThunderstoreClient.shared.install(version, into: bottle)
-        installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+        try await ThunderstoreClient.shared.install(version, into: bottle.gameRoot)
+        installedMods = ThunderstoreClient.shared.installedMods(in: bottle.gameRoot)
     }
 
     /// Install a `.zip` from the user's disk (drag-and-drop in the Mods view).
@@ -1116,8 +1099,8 @@ public final class AppEnvironment: ObservableObject {
         guard let bottle = selectedBottle else { return }
         modsLoadError = nil
         do {
-            try await ThunderstoreClient.shared.installLocalZip(at: url, into: bottle)
-            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+            try await ThunderstoreClient.shared.installLocalZip(at: url, into: bottle.gameRoot)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle.gameRoot)
         } catch {
             modsLoadError = error.localizedDescription
             DebugLog.shared.error("thunderstore", error.localizedDescription)
@@ -1127,8 +1110,8 @@ public final class AppEnvironment: ObservableObject {
     public func setMod(_ mod: InstalledMod, enabled: Bool) {
         guard let bottle = selectedBottle else { return }
         do {
-            try ThunderstoreClient.shared.setEnabled(enabled, mod: mod, in: bottle)
-            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+            try ThunderstoreClient.shared.setEnabled(enabled, mod: mod, in: bottle.gameRoot)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle.gameRoot)
         } catch {
             DebugLog.shared.error("thunderstore", "Couldn't toggle \(mod.name): \(error.localizedDescription)")
         }
@@ -1138,7 +1121,7 @@ public final class AppEnvironment: ObservableObject {
         guard let bottle = selectedBottle else { return }
         do {
             try ThunderstoreClient.shared.uninstall(mod)
-            installedMods = ThunderstoreClient.shared.installedMods(in: bottle)
+            installedMods = ThunderstoreClient.shared.installedMods(in: bottle.gameRoot)
         } catch {
             DebugLog.shared.error("thunderstore", "Couldn't uninstall \(mod.name): \(error.localizedDescription)")
         }
@@ -1209,7 +1192,7 @@ public final class AppEnvironment: ObservableObject {
                                detail: "Removing Northstar files…")
         defer { updating = false; updateProgress = nil }
         do {
-            try await NorthstarUpdater.shared.uninstall(from: bottle)
+            try await NorthstarUpdater.shared.uninstall(from: bottle.gameRoot)
             await refreshBottles()
         } catch {
             DebugLog.shared.error("app", error.localizedDescription)
@@ -1271,7 +1254,7 @@ public final class AppEnvironment: ObservableObject {
                 Task { @MainActor in self.updateProgress = progress }
             }
             try await NorthstarUpdater.shared.install(
-                zipURL: zip, into: bottle
+                zipURL: zip, into: bottle.gameRoot
             ) { @Sendable progress in
                 Task { @MainActor in self.updateProgress = progress }
             }

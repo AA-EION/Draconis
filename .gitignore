@@ -43,3 +43,5 @@ Draconis/Resources/steamwebhelper.exe
 
 # SwiftPM
 Core/.build/
+CrossPlatform/.build/
+CrossPlatform/.swiftpm/

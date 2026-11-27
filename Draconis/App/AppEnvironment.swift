@@ -1254,7 +1254,7 @@ public final class AppEnvironment: ObservableObject {
                 Task { @MainActor in self.updateProgress = progress }
             }
             try await NorthstarUpdater.shared.install(
-                zipURL: zip, into: bottle.gameRoot
+                zipURL: zip, into: bottle.gameRoot, zipRoot: latest.zipRoot
             ) { @Sendable progress in
                 Task { @MainActor in self.updateProgress = progress }
             }

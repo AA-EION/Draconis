@@ -16,7 +16,9 @@ public enum ZipExtractor {
         }
     }
 
-    public static func extract(_ zip: URL, to destination: URL) throws {
+    /// `stripping`: a top-level folder to drop from every entry (Thunderstore
+    /// wraps Northstar in `Northstar/`); entries outside it are skipped.
+    public static func extract(_ zip: URL, to destination: URL, stripping prefix: String? = nil) throws {
         let archive: Archive
         do {
             archive = try Archive(url: zip, accessMode: .read)
@@ -28,7 +30,12 @@ public enum ZipExtractor {
         let root = destination.standardizedFileURL.path
 
         for entry in archive {
-            let relative = entry.path.replacingOccurrences(of: "\\", with: "/")
+            var relative = entry.path.replacingOccurrences(of: "\\", with: "/")
+            if let prefix {
+                guard relative.hasPrefix(prefix + "/") else { continue }
+                relative.removeFirst(prefix.count + 1)
+                if relative.isEmpty { continue }
+            }
             let target = destination.appendingPathComponent(relative).standardizedFileURL
             guard target.path == root || target.path.hasPrefix(root + "/") else {
                 throw ExtractError.unsafeEntry(entry.path)

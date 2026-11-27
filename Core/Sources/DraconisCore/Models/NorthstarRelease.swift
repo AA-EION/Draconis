@@ -9,11 +9,14 @@ public struct NorthstarRelease: Identifiable, Hashable, Codable, Sendable {
     public var publishedAt: Date
     public var prerelease: Bool
     public var zipURL: URL
+    /// Top-level folder inside the zip (Thunderstore packages wrap Northstar).
+    public var zipRoot: String? = nil
 
     public init(
         tagName: String, name: String, body: String,
-        publishedAt: Date, prerelease: Bool, zipURL: URL
+        publishedAt: Date, prerelease: Bool, zipURL: URL, zipRoot: String? = nil
     ) {
+        self.zipRoot = zipRoot
         self.tagName = tagName
         self.name = name
         self.body = body

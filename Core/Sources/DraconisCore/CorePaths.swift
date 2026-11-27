@@ -29,9 +29,17 @@ public enum CorePaths {
         return url
     }
 
+    /// The user's home: `$HOME` when set (Linux tools and Flatpak expect it to
+    /// win), else the account's home directory.
+    public static var home: URL {
+        if let env = ProcessInfo.processInfo.environment["HOME"], !env.isEmpty {
+            return URL(fileURLWithPath: env, isDirectory: true)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
     static func defaultDataDirectory() -> URL {
         let env = ProcessInfo.processInfo.environment
-        let home = FileManager.default.homeDirectoryForCurrentUser
         #if os(macOS)
         return home.appendingPathComponent("Library/Application Support/Draconis", isDirectory: true)
         #elseif os(Windows)

@@ -35,7 +35,7 @@ public struct SteamInstall: Hashable, Sendable {
     /// Flatpak Steam records its own in-sandbox home path for the default library.
     func translate(_ url: URL) -> URL {
         guard kind == .flatpak else { return url }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let home = CorePaths.home.path
         let inner = home + "/.local/share/Steam"
         if url.path == inner || url.path.hasPrefix(inner + "/") {
             return URL(fileURLWithPath: root.path + url.path.dropFirst(inner.count), isDirectory: true)
@@ -83,7 +83,7 @@ public enum SteamLocator {
     public static let titanfallAppID = "1237970"
 
     /// Every Steam install on this machine, native before sandboxed ones.
-    public static func installs(home: URL = FileManager.default.homeDirectoryForCurrentUser,
+    public static func installs(home: URL = CorePaths.home,
                                 environment: [String: String] = ProcessInfo.processInfo.environment) -> [SteamInstall] {
         var candidates: [(String, SteamInstall.Kind)] = []
         #if os(Windows)

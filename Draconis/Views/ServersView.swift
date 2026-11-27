@@ -66,7 +66,7 @@ private struct ServerRow: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(server.name)
+                    Text(server.displayName)
                         .font(TF.title(15))
                         .lineLimit(1)
                     if server.hasPassword {
@@ -75,8 +75,8 @@ private struct ServerRow: View {
                             .foregroundStyle(.white.opacity(0.65))
                     }
                 }
-                if !server.description.isEmpty {
-                    Text(server.description)
+                if !server.displayDescription.isEmpty {
+                    Text(server.displayDescription)
                         .font(TF.body(12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

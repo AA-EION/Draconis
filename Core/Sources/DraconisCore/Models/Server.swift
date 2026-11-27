@@ -80,6 +80,15 @@ public struct NorthstarServer: Identifiable, Hashable, Codable, Sendable {
         try c.encode(ModInfoWrapper(Mods: requiredMods), forKey: .requiredMods)
     }
 
+    /// Names and descriptions use Source colour codes (`^RRGGBBAA`); strip them.
+    public var displayName: String { Self.stripColors(name) }
+    public var displayDescription: String { Self.stripColors(description) }
+
+    public static func stripColors(_ text: String) -> String {
+        text.replacingOccurrences(of: #"\^[0-9A-Fa-f]{8}"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     private struct ModInfoWrapper: Codable {
         var Mods: [RequiredMod]
     }

@@ -94,10 +94,34 @@ public actor NorthstarUpdater {
         return releases
     }
 
+    /// Latest release from GitHub, or from Thunderstore's `northstar-Northstar`
+    /// package when GitHub is unreachable or rate-limited (60 requests/hour).
     public func latestRelease(includePrerelease: Bool = false) async throws -> NorthstarRelease {
-        let all = try await availableReleases(includePrerelease: includePrerelease)
-        guard let first = all.first else { throw UpdateError.noReleases }
-        return first
+        do {
+            let all = try await availableReleases(includePrerelease: includePrerelease)
+            guard let first = all.first else { throw UpdateError.noReleases }
+            return first
+        } catch {
+            Log.warn("northstar.update", "GitHub: \(error.localizedDescription); asking Thunderstore")
+            return try await thunderstoreRelease()
+        }
+    }
+
+    func thunderstoreRelease() async throws -> NorthstarRelease {
+        var request = URLRequest(url: URL(string: "https://thunderstore.io/api/v1/package-metrics/northstar/Northstar/")!)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw UpdateError.badResponse((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        struct Metrics: Decodable { let latest_version: String }
+        let version = try JSONDecoder().decode(Metrics.self, from: data).latest_version
+        guard let zip = URL(string: "https://thunderstore.io/package/download/northstar/Northstar/\(version)/") else {
+            throw UpdateError.noReleases
+        }
+        return NorthstarRelease(
+            tagName: "v" + version, name: "Northstar v\(version)", body: "",
+            publishedAt: Date(), prerelease: false, zipURL: zip, zipRoot: "Northstar")
     }
 
     // MARK: - Download with progress
@@ -110,7 +134,7 @@ public actor NorthstarUpdater {
         progress: ProgressHandler? = nil
     ) async throws -> URL {
         let dest = CorePaths.downloads.appendingPathComponent(
-            "Northstar-\(release.tagName).zip"
+            "Northstar-\(release.tagName)\(release.zipRoot == nil ? "" : "-thunderstore").zip"
         )
         if FileManager.default.fileExists(atPath: dest.path) {
             Log.info("northstar.update", "Using cached zip at \(dest.path)")
@@ -135,7 +159,7 @@ public actor NorthstarUpdater {
 
     /// Extract the release zip on top of the Titanfall 2 folder.
     public func install(
-        zipURL: URL, into gameRoot: URL,
+        zipURL: URL, into gameRoot: URL, zipRoot: String? = nil,
         progress: ProgressHandler? = nil
     ) async throws {
         guard GameFiles.isTitanfallRoot(gameRoot) else {
@@ -163,7 +187,7 @@ public actor NorthstarUpdater {
             }
         }
         do {
-            try ZipExtractor.extract(zipURL, to: gameRoot)
+            try ZipExtractor.extract(zipURL, to: gameRoot, stripping: zipRoot)
         } catch {
             Log.error("northstar.update", error.localizedDescription)
             throw UpdateError.extractFailed(error.localizedDescription)

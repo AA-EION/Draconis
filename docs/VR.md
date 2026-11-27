@@ -58,7 +58,15 @@ WINEDLLOVERRIDES="wsock32=n,b" PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1 "<data
   Draconis wrote to `TF2VR/tools/draconis-launch-args.txt`.
 
 `PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1` lets the container see the host's OpenXR runtimes
-(WiVRn, Monado); SteamVR is visible either way. Steam rewrites `localconfig.vdf` when it quits, so
+(WiVRn, Monado); SteamVR is visible either way. Monado's and WiVRn's IPC sockets
+(`$XDG_RUNTIME_DIR/monado_comp_ipc`, `$XDG_RUNTIME_DIR/wivrn/comp_ipc`) aren't, so for a VR launch
+the wrapper adds the ones that exist to `PRESSURE_VESSEL_FILESYSTEMS_RW` before Steam's container starts.
+
+"Launch in VR" (`VRRuntimeStatus.plan`): with no runtime running it starts SteamVR (`steam://run/250820`)
+and waits for it, unless the active OpenXR runtime is another one, which the player has to start. It
+then follows the wrapper's `launch.log` (EA app starting, signed in, VR launcher starting) and counts
+the game as started once `Titanfall2VRLauncher.exe` runs: Steam's own processes carry
+`Titanfall2.exe`'s path from the beginning. Steam's Play button starts the normal game. Steam rewrites `localconfig.vdf` when it quits, so
 Draconis closes Steam once before changing the options (backup: `localconfig.vdf.draconis-backup`).
 
 Two Linux-only fixes, both from [MWGIH/TF2SteamFrame](https://github.com/MWGIH/TF2SteamFrame) (GPL-3.0):
@@ -71,7 +79,8 @@ Two Linux-only fixes, both from [MWGIH/TF2SteamFrame](https://github.com/MWGIH/T
 - **VC++ runtime:** the mod needs `msvcp140.dll` 14.40+, newer than what the EA app puts in the
   prefix. `VCRuntime` unpacks Microsoft's `vc_redist.x64.exe` (with `cabextract` or `bsdtar`, no
   Windows program runs) into `compatdata/1237970/pfx/drive_c/windows/system32`, and restores it
-  before each VR launch.
+  before each VR launch. The install checks for one of those tools before it starts; the deb and
+  rpm recommend `cabextract`.
 
 Runtimes (the Play screen shows which one is running):
 

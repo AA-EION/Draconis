@@ -180,10 +180,12 @@ struct PlayView: View {
 
     var vrHelp: String {
         #if os(Windows)
-        return "Meta Quest 3: open Steam Link on the headset and connect to this PC; it starts SteamVR. Quest Link, Air Link, Virtual Desktop and other OpenXR runtimes work too: start yours first."
+        let runtime = "Meta Quest 3: open Steam Link on the headset and connect to this PC. Quest Link, Air Link and Virtual Desktop work too: start yours first."
         #else
-        return "Meta Quest 3: open Steam Link on the headset and connect to this PC; it starts SteamVR. Without SteamVR: WiVRn streams to Quest and Pico, Monado runs wired headsets. Start your runtime first."
+        let runtime = "Meta Quest 3: open Steam Link on the headset and connect to this PC. WiVRn (Quest, Pico) and Monado work too: start yours first."
         #endif
+        guard model.vrRecord != nil else { return runtime }
+        return "1. \(runtime) If no VR runtime is running, Launch in VR starts SteamVR for you.\n2. Click Launch in VR. The EA app opens first (sign in if it asks), then the game appears in the headset.\nSteam's own Play button starts the normal, flat game, not VR."
     }
 
     var launchCard: some View {

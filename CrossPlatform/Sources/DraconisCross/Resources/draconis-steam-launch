@@ -127,6 +127,16 @@ if [ "$exe_i" -lt 0 ] || [ "$runner_i" -lt 0 ]; then
   log "ERROR: couldn't find Titanfall2.exe and Proton in Steam's command line; starting the game normally."
   exec "${cmd[@]}"
 fi
+if [ "$mode" = vr ]; then # Monado's and WiVRn's sockets aren't visible in Steam's container otherwise
+  run_dir=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+  rw=()
+  for s in "$run_dir/monado_comp_ipc" "$run_dir/wivrn/comp_ipc" "$run_dir/wivrn_comp_ipc"; do [ -e "$s" ] && rw+=("$s"); done
+  if [ ${#rw[@]} -gt 0 ]; then
+    shared=$(IFS=:; echo "${rw[*]}")
+    export PRESSURE_VESSEL_FILESYSTEMS_RW="${PRESSURE_VESSEL_FILESYSTEMS_RW:+$PRESSURE_VESSEL_FILESYSTEMS_RW:}$shared"
+    log "Sharing VR runtime sockets with Steam's container: $shared"
+  fi
+fi
 pre=("${cmd[@]:0:runner_i}")
 runner=("${cmd[@]:runner_i:exe_i-runner_i}")
 exec "${pre[@]}" "$SELF" --inner "$mode" "${#runner[@]}" "${runner[@]}" "${cmd[$exe_i]}" "${cmd[@]:exe_i+1}"

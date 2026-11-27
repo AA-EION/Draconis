@@ -43,6 +43,10 @@ extension AppModel {
         vrError = nil
         defer { vrBusy = false; vrPhase = nil; vrProgress = nil }
         do {
+            #if !os(Windows)
+            let prefix = gameSteam?.compatData(appID: SteamLocator.titanfallAppID)?.appendingPathComponent("pfx")
+            guard VCRuntime.canInstall(prefix: prefix) else { throw LaunchFailure(VCRuntime.missingTool) }
+            #endif
             vrPhase = "Checking the latest release…"
             let release = try await TitanfallVR.latest()
             vrLatest = release
@@ -121,33 +125,82 @@ extension AppModel {
             guard replacements.isEmpty else {
                 throw LaunchFailure("Another mod replaced DirectX files, which breaks VR rendering. Remove these and launch again: \(replacements.map(\.path).joined(separator: ", "))")
             }
-            await refreshVR()
             #if os(Windows)
+            try await ensureVRRuntime()
             try WindowsVR.launch(gameRoot: game.root)
-            status = "Starting Titanfall 2 VR…"
+            status = "Starting Titanfall 2 VR… put on your headset."
+            try await awaitGameStart("Titanfall 2 VR")
             #else
             guard case .steam(let steamRoot, let kind, _) = game.source else { return }
             try prepareWrapper()
+            // Changing launch options can close Steam (and SteamVR with it), so first.
             try await addNorthstarLaunchOption(root: steamRoot, kind: kind, wrapper: LinuxSteamVR.wrapper.path)
+            try await ensureVRRuntime()
             if let prefix = gameSteam?.compatData(appID: SteamLocator.titanfallAppID)?.appendingPathComponent("pfx") {
                 status = "Checking the VC++ runtime…"
                 try await VCRuntime.ensure(prefix: prefix)
             }
             try LinuxSteamVR.writeLaunchArguments(gameRoot: game.root)
             guard let steam = LaunchPlanner.steamCommand(kind: kind) else { throw LaunchPlanner.PlanError.noSteam }
+            let logStart = LinuxSteamVR.launchLogSize()
             try Spawner.launch(steam[0], Array(steam.dropFirst()) + ["-applaunch", SteamLocator.titanfallAppID, LinuxSteamVR.launchFlag],
                                log: gameLog)
-            status = "Steam is starting Titanfall 2 VR (the EA app signs in first)…"
+            status = "Steam is starting Titanfall 2 VR…"
+            try await awaitVRStart(logStart: logStart)
             #endif
-            if vrRuntime?.anyRunning == false {
-                status = (status ?? "") + " No VR runtime is running yet: start SteamVR or Steam Link on the headset."
-            }
-            try await awaitGameStart("Titanfall 2 VR")
         } catch {
             vrError = error.localizedDescription
             fail(error)
         }
     }
+
+    /// Start SteamVR when no VR runtime is running, and wait for it.
+    func ensureVRRuntime() async throws {
+        await refreshVR()
+        guard let runtime = vrRuntime else { return }
+        switch runtime.plan {
+        case .ready:
+            return
+        case .startActive(let name):
+            throw LaunchFailure("\(name) is your active OpenXR runtime but it isn't running. Start it (or switch to SteamVR), then launch again.")
+        case .noRuntime:
+            throw LaunchFailure("No VR runtime found. Install SteamVR (Steam → Library → Tools), or start WiVRn or Monado, then launch again.")
+        case .startSteamVR:
+            startSteamVR()
+            status = "Starting SteamVR… Meta Quest 3: open Steam Link on the headset and connect to this PC."
+            for _ in 0..<60 {
+                try await Task.sleep(for: .seconds(2))
+                await refreshVR()
+                if vrRuntime?.steamVRRunning == true { return }
+            }
+            throw LaunchFailure("SteamVR didn't start within 2 minutes. Start it from Steam (or connect with Steam Link), then launch again.")
+        }
+    }
+
+    #if !os(Windows)
+    /// Follow the wrapper's log: the EA app signs in first, then the VR launcher starts.
+    func awaitVRStart(logStart: UInt64) async throws {
+        for _ in 0..<180 {
+            try await Task.sleep(for: .seconds(2))
+            // Steam's own processes carry Titanfall2.exe's path from the start;
+            // only the VR launcher's means the game is really starting.
+            if HostProcesses.anyCommandLine(containing: [TitanfallVR.launcher]) {
+                gameRunning = true
+                Log.ok("launch", "Titanfall 2 VR is running")
+                Task { await watchUntilExit() }
+                return
+            }
+            switch LinuxSteamVR.launchStep(since: logStart) {
+            case .startingEA: status = "Starting the EA app in the game's prefix. Sign in if it asks…"
+            case .signedIn: status = "EA app signed in. Starting Titanfall 2 VR…"
+            case .starting: status = "Starting Titanfall 2 VR… put on your headset."
+            case .failed(let message): throw LaunchFailure(message)
+            case nil: break
+            }
+        }
+        throw LaunchFailure("Titanfall 2 VR didn't start within 6 minutes. See \(LinuxSteamVR.state.path)/launch.log.")
+    }
+    #endif
 
     func startSteamVR() {
         guard let steam = gameSteam else { return }

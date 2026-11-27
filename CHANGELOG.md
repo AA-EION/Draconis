@@ -8,6 +8,19 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.14.3] — 2026-11-27
+
+### Changed
+- **One-click VR launch.** "Launch in VR" starts SteamVR when no VR runtime is running and waits for it. The VR card then shows each step: Steam starting the game, the EA app starting and signing in, the VR launcher starting. Once installed, the card lists the steps and notes that Steam's own Play button starts the normal game.
+
+### Fixed
+- **VR install no longer fails at the end without cabextract.** It checks for cabextract (or bsdtar) first and says how to install it. The deb and rpm now recommend cabextract.
+- **Monado and WiVRn on Linux.** Steam's container couldn't reach their sockets. A VR launch now shares them with it.
+- **Launch in VR said "Running" too early,** while Steam was still starting the EA app.
+- A Proton prefix that was never set up now gets a clear message instead of "The file doesn't exist".
+
+---
+
 ## [0.14.2] — 2026-11-27
 
 ### Fixed

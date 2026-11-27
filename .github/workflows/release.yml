@@ -20,7 +20,7 @@ jobs:
     runs-on: macos-26
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve release tag
         env:
@@ -124,7 +124,7 @@ jobs:
           EOF
 
       - name: Upload DMG and notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: macos
           path: |
@@ -135,7 +135,7 @@ jobs:
     name: Linux
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve release tag
         env:
@@ -154,7 +154,7 @@ jobs:
       - name: Build packages
         run: bash Scripts/package-linux.sh "${TAG#v}" --flatpak
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: linux
           path: build/linux/dist/*
@@ -163,7 +163,7 @@ jobs:
     name: Windows
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: compnerd/gha-setup-swift@v0.5.1
         with:
@@ -178,7 +178,7 @@ jobs:
           $tag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_TAG } else { $env:GITHUB_REF_NAME }
           ./Scripts/package-windows.ps1 -Version $tag.TrimStart('v')
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows
           path: build/windows/dist/*
@@ -195,7 +195,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="$INPUT_TAG"; else TAG="$GITHUB_REF_NAME"; fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: artifacts
 

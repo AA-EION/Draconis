@@ -1,6 +1,8 @@
 import Foundation
 import Testing
+#if canImport(ZIPFoundation)
 import ZIPFoundation
+#endif
 @testable import DraconisCore
 
 @Suite struct CoreTests {
@@ -10,6 +12,7 @@ import ZIPFoundation
         return url
     }
 
+    #if canImport(ZIPFoundation)
     func makeZip(_ files: [String: String], at url: URL) throws {
         let archive = try Archive(url: url, accessMode: .create)
         for (path, body) in files {
@@ -49,6 +52,7 @@ import ZIPFoundation
         try makeZip(["manifest.json": #"{"name":"Mod","version_number":"1.2.3"}"#], at: zip)
         #expect(ThunderstoreClient.manifestFolderName(in: zip) == "Mod-1.2.3")
     }
+    #endif
 
     @Test func versionMatching() {
         #expect(GameFiles.versionsMatch(installed: "1.30.0", releaseTag: "v1.30.0"))

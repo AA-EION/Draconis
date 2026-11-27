@@ -74,7 +74,7 @@ enum NativeStyle {
         guard let dir = resources else { return }
         for font in ["Orbitron-Black.ttf", "Orbitron-Bold.ttf"] {
             let path = dir.appendingPathComponent(font).path
-            _ = path.withCString(encodedAs: UTF16.self) { AddFontResourceExW($0, DWORD(FR_PRIVATE), nil) }
+            _ = path.withCString(encodedAs: UTF16.self) { AddFontResourceExW($0, DWORD(0x10), nil) } // FR_PRIVATE
         }
     }
     #else
@@ -105,7 +105,7 @@ extension View {
         #elseif canImport(WinUIBackend)
         self.inspectWindow { window in
             NativeStyle.install()
-            window.systemBackdrop = MicaBackdrop()
+            window.systemBackdrop = WinUI.MicaBackdrop()
         }
         #else
         self

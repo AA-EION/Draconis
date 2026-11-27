@@ -108,6 +108,13 @@ public enum RunnerLocator {
 public enum Executables {
     /// First match for `name` on PATH.
     public static func find(_ name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+        #if os(Linux)
+        if Spawner.inFlatpak {
+            let path = (try? Spawner.capture("/usr/bin/flatpak-spawn", ["--host", "sh", "-c", "command -v \(name)"]))?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return path.hasPrefix("/") ? URL(fileURLWithPath: path) : nil
+        }
+        #endif
         #if os(Windows)
         let separator: Character = ";"
         let names = [name, name + ".exe"]

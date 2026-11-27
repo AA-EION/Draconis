@@ -13,9 +13,14 @@ let package = Package(
     targets: [
         .target(
             name: "DraconisCore",
-            dependencies: [.product(name: "ZIPFoundation", package: "ZIPFoundation")],
+            // Windows has no zlib headers; it unpacks with its bundled tar.exe.
+            dependencies: [.product(name: "ZIPFoundation", package: "ZIPFoundation",
+                                    condition: .when(platforms: [.macOS, .linux]))],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        .testTarget(name: "DraconisCoreTests", dependencies: ["DraconisCore"]),
+        .testTarget(name: "DraconisCoreTests", dependencies: [
+            "DraconisCore",
+            .product(name: "ZIPFoundation", package: "ZIPFoundation", condition: .when(platforms: [.macOS, .linux])),
+        ]),
     ]
 )

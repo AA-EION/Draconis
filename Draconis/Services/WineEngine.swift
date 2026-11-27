@@ -3,7 +3,7 @@ import Foundation
 
 /// Draconis's own Wine, for players without CrossOver: Wine built from
 /// CodeWeavers' published CrossOver sources, plus DXMT (Direct3D 11 → Metal).
-/// Both are open source (LGPL / MIT) and downloaded on demand, checksum-pinned.
+/// Both are LGPL-2.1-or-later and downloaded on demand, checksum-pinned.
 ///
 /// Every prefix lives under `Draconis/Prefixes/<name>` and every command gets
 /// an explicit WINEPREFIX — nothing ever touches the global `~/.wine`.

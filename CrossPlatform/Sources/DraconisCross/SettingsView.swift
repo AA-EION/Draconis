@@ -114,7 +114,7 @@ struct SettingsView: View {
                 OpenLinkButton(title: "Report a bug", url: AppInfo.issuesPage)
                 Button("Check for updates") { Task { await model.checkForDraconisUpdate() } }.fixedSize()
             }
-            Text("Open-source components: SwiftCrossUI (MIT), ZIPFoundation (MIT), swift-crypto (Apache-2.0), Orbitron font (SIL OFL 1.1). Linux runners: umu-launcher (GPL-3.0) and GE-Proton (BSD-3/various), downloaded on request.")
+            Text("Draconis is free software under the GPL-3.0-or-later. It uses SwiftCrossUI (MIT), ZIPFoundation (MIT), swift-crypto (Apache-2.0) and the Orbitron font (SIL OFL 1.1); see THIRD-PARTY-NOTICES.md. umu-launcher (GPL-3.0) and GE-Proton are downloaded only when you ask.")
                 .foregroundColor(Theme.faint)
         }
         .glassCard()

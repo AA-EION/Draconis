@@ -19,6 +19,23 @@ public enum Spawner {
         "WINEPREFIX", "WINEDLLOVERRIDES", "WINEDEBUG", "PROTONPATH", "GAMEID",
     ]
 
+    /// Running as a Flatpak: host tools (Steam, umu-run, Proton, Wine) are
+    /// reached through `flatpak-spawn --host`.
+    public static let inFlatpak: Bool = {
+        ProcessInfo.processInfo.environment["FLATPAK_ID"] != nil
+            || FileManager.default.fileExists(atPath: "/.flatpak-info")
+    }()
+
+    /// Wrap a command so it runs on the host when sandboxed.
+    static func hostCommand(_ executable: String, _ arguments: [String], _ environment: [String: String],
+                            _ workingDirectory: URL?) -> (String, [String], [String: String]) {
+        guard inFlatpak else { return (executable, arguments, cleanEnvironment(adding: environment)) }
+        var args = ["--host", "--watch-bus"]
+        if let workingDirectory { args.append("--directory=\(workingDirectory.path)") }
+        args += environment.sorted { $0.key < $1.key }.map { "--env=\($0.key)=\($0.value)" }
+        return ("/usr/bin/flatpak-spawn", args + [executable] + arguments, ProcessInfo.processInfo.environment)
+    }
+
     public static func cleanEnvironment(adding extra: [String: String] = [:]) -> [String: String] {
         var env = ProcessInfo.processInfo.environment.filter { !leakingVariables.contains($0.key) }
         env.merge(extra) { $1 }
@@ -32,10 +49,11 @@ public enum Spawner {
                               workingDirectory: URL? = nil,
                               log: URL? = nil) throws -> Process {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = cleanEnvironment(adding: environment)
-        if let workingDirectory { process.currentDirectoryURL = workingDirectory }
+        let (exe, args, env) = hostCommand(executable, arguments, environment, workingDirectory)
+        process.executableURL = URL(fileURLWithPath: exe)
+        process.arguments = args
+        process.environment = env
+        if let workingDirectory, !inFlatpak { process.currentDirectoryURL = workingDirectory }
         process.standardInput = FileHandle.nullDevice
         if let log, let handle = appendHandle(log) {
             process.standardOutput = handle
@@ -67,10 +85,11 @@ public enum Spawner {
         return try await withCheckedThrowingContinuation { cont in
             process.terminationHandler = { cont.resume(returning: $0.terminationStatus) }
             do {
-                process.executableURL = URL(fileURLWithPath: executable)
-                process.arguments = arguments
-                process.environment = cleanEnvironment(adding: environment)
-                if let workingDirectory { process.currentDirectoryURL = workingDirectory }
+                let (exe, args, env) = hostCommand(executable, arguments, environment, workingDirectory)
+                process.executableURL = URL(fileURLWithPath: exe)
+                process.arguments = args
+                process.environment = env
+                if let workingDirectory, !inFlatpak { process.currentDirectoryURL = workingDirectory }
                 process.standardInput = FileHandle.nullDevice
                 if let log, let handle = appendHandle(log) {
                     process.standardOutput = handle

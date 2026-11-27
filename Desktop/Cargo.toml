@@ -1,0 +1,25 @@
+[package]
+name = "draconis-desktop"
+version = "0.15.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Draconis for Linux and Windows: Liquid Glass UI (liquid-rust + egui on wgpu)"
+publish = false
+
+[[bin]]
+name = "draconis"
+path = "src/main.rs"
+
+[dependencies]
+liquid-rust = "0.2.6"
+wgpu = "30.0.1"
+egui = "0.37"
+egui-wgpu = "0.37"
+egui-winit = "0.37"
+winit = "0.30"
+image = { version = "0.25", default-features = false, features = ["png"] }
+pollster = "1"
+
+[profile.release]
+lto = "thin"
+strip = true

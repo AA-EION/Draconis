@@ -36,8 +36,8 @@ enum CrashReports {
         _ = prctl(0x5961_6D61, UInt.max, 0, 0, 0) // PR_SET_PTRACER, PR_SET_PTRACER_ANY
     }
 
-    /// Started from a desktop launcher, stderr goes nowhere useful; keep it
-    /// (Swift's fatal error messages, the console) in Logs/draconis.log.
+    /// The UI reads stdout (the protocol); stderr (Swift's fatal error
+    /// messages, the console) goes to Logs/draconis.log.
     static func captureOutput() {
         let logs = CorePaths.logs
         let log = logs.appendingPathComponent("draconis.log")
@@ -46,7 +46,6 @@ enum CrashReports {
         try? FileManager.default.moveItem(at: log, to: previous)
         let fd = open(log.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o644)
         guard fd >= 0 else { return }
-        dup2(fd, STDOUT_FILENO)
         dup2(fd, STDERR_FILENO)
         close(fd)
     }

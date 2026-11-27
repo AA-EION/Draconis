@@ -1,0 +1,84 @@
+name: Look comparison
+
+# Screenshots the macOS app and the Linux/Windows UI over the same wallpaper,
+# with the same sample install, so the Linux/Windows look can be matched to
+# the macOS one. Nothing is published; the images are workflow artifacts.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['Desktop/**', '.github/workflows/look.yml']
+  pull_request:
+    paths: ['Desktop/**', '.github/workflows/look.yml']
+
+jobs:
+  macos:
+    name: macOS app
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build Draconis.app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          brew install xcodegen mingw-w64
+          bash Scripts/fetch-maxima-helper.sh
+          bash Scripts/build-steam-wrapper.sh
+          xcodegen generate
+          xcodebuild -project Draconis.xcodeproj -scheme Draconis -configuration Debug \
+            -derivedDataPath build CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO ENABLE_TESTABILITY=NO \
+            build -quiet
+
+      - name: Wallpaper and a sample install
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p shots
+          python3 Desktop/look/wallpaper.py "$PWD/shots/wallpaper.png"
+          osascript -e "tell application \"System Events\" to tell every desktop to set picture to \"$PWD/shots/wallpaper.png\"" || echo "couldn't set the wallpaper"
+          # A Draconis Wine prefix with Steam, Titanfall 2 and the latest Northstar (so no update starts).
+          tag=$(gh api repos/R2Northstar/Northstar/releases/latest --jq .tag_name)
+          game="$HOME/Library/Application Support/Draconis/Prefixes/Titanfall 2/drive_c/Program Files (x86)/Steam/steamapps/common/Titanfall2"
+          mkdir -p "$game/R2Northstar/mods/Northstar.Client"
+          touch "$game/Titanfall2.exe" "$game/NorthstarLauncher.exe" "$game/../../../steam.exe"
+          echo "{\"Name\":\"Northstar.Client\",\"Version\":\"${tag#v}\"}" > "$game/R2Northstar/mods/Northstar.Client/mod.json"
+          defaults write org.draconis.launcher privacyConsentAccepted -bool true
+
+      - name: Screenshot
+        run: |
+          open build/Build/Products/Debug/Draconis.app
+          sleep 30
+          screencapture -x shots/macos.png
+          osascript -e 'tell application "System Events" to get {position, size} of window 1 of process "Draconis"' > shots/macos-window.txt 2>&1 || true
+          osascript -e 'tell application "Draconis" to activate' || true
+          sleep 2
+          screencapture -x shots/macos-active.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: look-macos
+          path: shots/
+
+  linux:
+    name: Linux/Windows UI
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Software Vulkan
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libxkbcommon-dev libwayland-dev
+      - name: Render
+        run: |
+          mkdir -p shots
+          python3 Desktop/look/wallpaper.py shots/wallpaper.png 1400 900
+          cargo build --release --manifest-path Desktop/Cargo.toml
+          for page in play mods servers console settings; do
+            Desktop/target/release/draconis --snapshot "shots/linux-$page.png" 1400x900 $page --backdrop shots/wallpaper.png
+          done
+          Desktop/target/release/draconis --snapshot shots/linux-play-dark.png 1400x900 play
+      - uses: actions/upload-artifact@v4
+        with:
+          name: look-linux
+          path: shots/

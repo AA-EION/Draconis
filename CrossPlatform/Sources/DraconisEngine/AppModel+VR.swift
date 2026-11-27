@@ -220,7 +220,7 @@ extension AppModel {
     }
 
     func prepareWrapper() throws {
-        guard let bundled = NativeStyle.resources?.appendingPathComponent("draconis-steam-launch") else {
+        guard let bundled = Bundle.module.resourceURL?.appendingPathComponent("draconis-steam-launch") else {
             throw LaunchFailure("Draconis's Steam launch wrapper is missing from the app.")
         }
         try LinuxSteamVR.installWrapper(from: bundled)

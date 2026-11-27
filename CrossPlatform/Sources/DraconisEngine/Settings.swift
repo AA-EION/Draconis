@@ -30,42 +30,15 @@ struct Settings: Codable, Equatable {
 
 enum AppInfo {
     static let appID = "io.github.aa_eion.Draconis"
-    static let version = "0.14.3"
+    static let version = "0.15.0"
     static let releasesAPI = URL(string: "https://api.github.com/repos/AA-EION/Draconis/releases/latest")!
     static let releasesPage = URL(string: "https://github.com/AA-EION/Draconis/releases/latest")!
     static let issuesPage = URL(string: "https://github.com/AA-EION/Draconis/issues/new")!
 }
 
-struct ConsoleLine: Identifiable, Hashable {
-    let id = UUID()
+struct ConsoleLine: Codable, Hashable {
     let time: Date
     let level: LogLevel
     let scope: String
     let message: String
-}
-
-enum AppSection: String, CaseIterable, Identifiable, CustomStringConvertible {
-    case play, mods, servers, console, settings
-    var id: String { rawValue }
-    var description: String {
-        switch self {
-        case .play: return "Play"
-        case .mods: return "Mods"
-        case .servers: return "Servers"
-        case .console: return "Console"
-        case .settings: return "Settings"
-        }
-    }
-}
-
-extension AppSection {
-    var icon: String {
-        switch self {
-        case .play: return "play"
-        case .mods: return "puzzle"
-        case .servers: return "server"
-        case .console: return "terminal"
-        case .settings: return "settings"
-        }
-    }
 }

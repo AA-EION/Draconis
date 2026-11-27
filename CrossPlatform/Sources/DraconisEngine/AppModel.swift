@@ -13,7 +13,6 @@ final class AppModel {
     var settings = Settings.load() {
         didSet { if settings != oldValue { settings.save() } }
     }
-    var section: AppSection? = .play
 
     // Games and runners
     var games: [GameInstall] = []
@@ -49,7 +48,8 @@ final class AppModel {
     var toolProgress: NorthstarUpdater.Progress?
 
     // Console
-    var console: [ConsoleLine] = []
+    /// Every console line, as it happens (the engine sends them to the UI).
+    @ObservationIgnored var logSink: ((ConsoleLine) -> Void)?
 
     // Draconis updates
     var newerVersion: String?
@@ -121,7 +121,6 @@ final class AppModel {
     func bootstrap() async {
         Log.info("app", "Draconis \(AppInfo.version) starting")
         await rescan()
-        if games.isEmpty { section = .settings }
         await refreshNorthstar()
         await refreshVR(fetchLatest: true)
         await checkForDraconisUpdate()
@@ -450,11 +449,8 @@ final class AppModel {
 
     func append(_ level: LogLevel, _ scope: String, _ message: String) {
         let line = ConsoleLine(time: Date(), level: level, scope: scope, message: message)
-        console.append(line)
-        #if os(Linux)
+        logSink?(line)
         FileHandle.standardError.write(Data("\(line.time.formatted(date: .omitted, time: .standard)) \(level.rawValue.uppercased()) \(scope): \(message)\n".utf8))
-        #endif
-        if console.count > 2000 { console.removeFirst(console.count - 2000) }
     }
 
     func fail(_ error: Error) {

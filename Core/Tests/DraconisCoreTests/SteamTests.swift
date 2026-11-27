@@ -65,6 +65,53 @@ import Testing
     }
 }
 
+
+@Suite struct SteamLaunchOptionsTests {
+    @Test func addsOverrideOnce() {
+        let o = SteamLaunchOptions.override
+        #expect(SteamLaunchOptions.withNorthstarOverride("") == "\(o) %command%")
+        #expect(SteamLaunchOptions.withNorthstarOverride("-novid") == "\(o) %command% -novid")
+        #expect(SteamLaunchOptions.withNorthstarOverride("gamemoderun %command% -novid") == "\(o) gamemoderun %command% -novid")
+        #expect(SteamLaunchOptions.withNorthstarOverride("\(o) %command%") == nil)
+    }
+
+    @Test func writesLocalConfigKeepingEverythingElse() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let config = root.appendingPathComponent("userdata/12345/config")
+        try fm.createDirectory(at: config, withIntermediateDirectories: true)
+        let file = config.appendingPathComponent("localconfig.vdf")
+        try """
+        "UserLocalConfigStore"
+        {
+        \t"friends" { "PersonaName" "a \\"quoted\\" name" }
+        \t"Software" { "Valve" { "Steam" { "apps" {
+        \t\t"1237970" { "LastPlayed" "1700000000" "LaunchOptions" "-novid" }
+        \t\t"440" { "LaunchOptions" "-x" }
+        \t} } } }
+        }
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let install = SteamInstall(root: root, kind: .native)
+        #expect(install.configsNeedingNorthstarOverride(appID: "1237970").count == 1)
+        #expect(try install.addNorthstarOverride(appID: "1237970") == 1)
+        let vdf = try #require(VDF.load(file))
+        let apps = ["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"]
+        #expect(vdf[apps + ["1237970", "LaunchOptions"]]?.string == "\(SteamLaunchOptions.override) %command% -novid")
+        #expect(vdf[apps + ["1237970", "LastPlayed"]]?.string == "1700000000")
+        #expect(vdf[apps + ["440", "LaunchOptions"]]?.string == "-x")
+        #expect(vdf[["UserLocalConfigStore", "friends", "PersonaName"]]?.string == "a \"quoted\" name")
+        #expect(install.configsNeedingNorthstarOverride(appID: "1237970").isEmpty)
+        #expect(fm.fileExists(atPath: file.path + ".draconis-backup"))
+    }
+
+    @Test func createsMissingAppEntry() throws {
+        var vdf = try #require(VDF.parse(#""UserLocalConfigStore" { "Software" { } }"#))
+        vdf.set(["UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "1237970", "LaunchOptions"], "x")
+        let again = try #require(VDF.parse(vdf.serialized()))
+        #expect(again[["UserLocalConfigStore", "Software", "Valve", "Steam", "apps", "1237970", "LaunchOptions"]]?.string == "x")
+    }
+}
+
 #if os(Windows)
 let isWindows = true
 #else

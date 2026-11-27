@@ -69,10 +69,6 @@ import Testing
         #expect(try String(contentsOf: file, encoding: .utf8) == "1")
     }
 
-    @Test func steamWarningOnlyWithoutGEProton() {
-        #expect(LaunchPlanner.steamNorthstarWarning(compatTool: "GE-Proton11-14") == nil)
-        #expect(LaunchPlanner.steamNorthstarWarning(compatTool: "proton_experimental") != nil)
-    }
 
     @Test func prefixDetection() {
         let folder = URL(fileURLWithPath: "/home/u/Games/pfx/drive_c/Program Files/EA Games/Titanfall2")

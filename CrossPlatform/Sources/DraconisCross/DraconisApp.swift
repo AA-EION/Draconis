@@ -84,7 +84,7 @@ struct RootView: View {
             }
             .errorCard()
         }
-        if let status = model.status {
+        if let status = model.status, !model.launching {
             Text(status).foregroundColor(Theme.secondary)
         }
     }

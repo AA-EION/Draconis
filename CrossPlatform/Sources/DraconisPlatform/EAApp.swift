@@ -44,22 +44,76 @@ public enum EAApp {
     }
 }
 
-/// Is the game running? (Draconis doesn't own the game process: Steam or
-/// Proton spawns it.)
-public enum GameProcess {
-    public static func isRunning() -> Bool {
+/// Processes on this machine, also from inside the Flatpak sandbox
+/// (Draconis doesn't own the game: Steam or Proton spawns it).
+public enum HostProcesses {
+    /// Does any process's command line contain one of these names?
+    public static func anyCommandLine(containing names: [String]) -> Bool {
         #if os(Linux)
+        if Spawner.inFlatpak {
+            let out = (try? Spawner.capture("/usr/bin/flatpak-spawn", ["--host", "ps", "-eo", "args"])) ?? ""
+            return names.contains { out.contains($0) }
+        }
         let fm = FileManager.default
         for pid in (try? fm.contentsOfDirectory(atPath: "/proc")) ?? [] where pid.allSatisfy(\.isNumber) {
             guard let data = fm.contents(atPath: "/proc/\(pid)/cmdline") else { continue }
-            if String(decoding: data, as: UTF8.self).contains("Titanfall2.exe") { return true }
+            let line = String(decoding: data, as: UTF8.self)
+            if names.contains(where: line.contains) { return true }
         }
         return false
-        #elseif os(Windows)
-        let out = (try? Spawner.capture(#"C:\Windows\System32\tasklist.exe"#, ["/FI", "IMAGENAME eq Titanfall2.exe", "/NH"])) ?? ""
-        return out.contains("Titanfall2.exe")
         #else
         return false
         #endif
+    }
+
+    /// Is a process with exactly this name (`comm`) running?
+    public static func named(_ name: String) -> Bool {
+        #if os(Linux)
+        if Spawner.inFlatpak {
+            let out = (try? Spawner.capture("/usr/bin/flatpak-spawn", ["--host", "ps", "-eo", "comm"])) ?? ""
+            return out.split(separator: "\n").contains { $0.trimmingCharacters(in: .whitespaces) == name }
+        }
+        let fm = FileManager.default
+        for pid in (try? fm.contentsOfDirectory(atPath: "/proc")) ?? [] where pid.allSatisfy(\.isNumber) {
+            guard let data = fm.contents(atPath: "/proc/\(pid)/comm") else { continue }
+            if String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) == name { return true }
+        }
+        return false
+        #else
+        return false
+        #endif
+    }
+}
+
+/// Is the game running? Steam starts `Titanfall2.exe`; prefix launches run
+/// `NorthstarLauncher.exe`, which loads the game in its own process.
+public enum GameProcess {
+    public static func isRunning() -> Bool {
+        #if os(Windows)
+        for exe in ["Titanfall2.exe", "NorthstarLauncher.exe"] {
+            let out = (try? Spawner.capture(#"C:\Windows\System32\tasklist.exe"#, ["/FI", "IMAGENAME eq \(exe)", "/NH"])) ?? ""
+            if out.contains(exe) { return true }
+        }
+        return false
+        #else
+        return HostProcesses.anyCommandLine(containing: ["Titanfall2.exe", "NorthstarLauncher.exe"])
+        #endif
+    }
+}
+
+/// The Steam client, so its config can be edited while it's closed.
+public enum SteamClient {
+    public static func isRunning() -> Bool { HostProcesses.named("steam") }
+
+    /// Ask Steam to quit and wait for it; false if it's still running.
+    public static func shutdown(kind: String) async -> Bool {
+        guard isRunning() else { return true }
+        guard let steam = LaunchPlanner.steamCommand(kind: kind) else { return false }
+        try? Spawner.launch(steam[0], Array(steam.dropFirst()) + ["-shutdown"], environment: [:])
+        for _ in 0..<45 {
+            try? await Task.sleep(for: .seconds(1))
+            if !isRunning() { return true }
+        }
+        return !isRunning()
     }
 }

@@ -24,16 +24,24 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("DRACONIS").hero(22).padding(.bottom, 6)
-                List(AppSection.allCases, id: \.self, selection: $model.section) { section in
-                    Text(section.description).font(.system(size: 15, weight: .semibold))
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    if let icon = NativeStyle.resources?.appendingPathComponent("icon.png") {
+                        Image(icon).resizable().frame(width: 30, height: 30)
+                    }
+                    Text(tracked("DRACONIS", 2)).hero(18)
+                }
+                .padding(.bottom, 14)
+                ForEach(AppSection.allCases) { section in
+                    SidebarItem(section: section, selected: (model.section ?? .play) == section) {
+                        model.section = section
+                    }
                 }
                 Spacer()
                 gamePicker
             }
             .padding(16)
-            .frame(minWidth: 220, maxWidth: 260)
+            .frame(minWidth: 220, maxWidth: 250)
         } detail: {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -72,7 +80,7 @@ struct RootView: View {
             HStack {
                 Text(error)
                 Spacer()
-                Button("Dismiss") { model.error = nil }.fixedSize()
+                GlassButton(title: "Dismiss", icon: "x", size: 13) { model.error = nil }
             }
             .errorCard()
         }
@@ -83,7 +91,7 @@ struct RootView: View {
 
     var gamePicker: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("GAME").stencil()
+            Stencil("Game", size: 10)
             if model.games.isEmpty {
                 Text("No Titanfall 2 found").foregroundColor(Theme.faint)
             } else {
@@ -92,7 +100,9 @@ struct RootView: View {
                     set: { model.settings.selectedGame = $0?.id; model.refreshInstalledMods() }
                 ))
             }
-            Button(model.scanning ? "Scanning…" : "Rescan") { Task { await model.rescan() } }.fixedSize()
+            GlassButton(title: model.scanning ? "Scanning…" : "Rescan", icon: "refresh-cw", size: 13) {
+                Task { await model.rescan() }
+            }
         }
     }
 }
@@ -101,12 +111,35 @@ struct OpenLinkButton: View {
     @Environment(\.openURL) var openURL
     var title: String
     var url: URL
+    var icon = "download"
 
     var body: some View {
-        Button(title) { openURL(url) }.fixedSize()
+        GlassButton(title: title, icon: icon, size: 13) { openURL(url) }
     }
 }
 
 extension GameInstall: @retroactive CustomStringConvertible {
     public var description: String { "\(name) · \(root.lastPathComponent)" }
+}
+
+struct SidebarItem: View {
+    var section: AppSection
+    var selected: Bool
+    var action: @MainActor @Sendable () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            IconView(name: section.icon, size: 17)
+            Text(section.description).titleFont(16)
+                .foregroundColor(selected ? Theme.primary : Theme.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity)
+        .background(Capsule().fill(Color(white: 1, opacity: selected ? 0.14 : hovering ? 0.07 : 0)))
+        .onHover { hovering = $0 }
+        .onTapGesture { action() }
+    }
 }

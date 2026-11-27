@@ -421,6 +421,7 @@ final class AppModel {
     }
 
     func fail(_ error: Error) {
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
         let message = error.localizedDescription
         self.error = message
         Log.error("app", message)

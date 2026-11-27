@@ -8,9 +8,9 @@ struct ConsoleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("CONSOLE").stencil()
+                Stencil("Console")
                 Spacer()
-                Button("Clear") { model.console.removeAll() }.fixedSize()
+                GlassButton(title: "Clear", icon: "x", size: 13) { model.console.removeAll() }
             }
             ForEach(model.console.suffix(400)) { line in
                 Text("\(Self.time(line.time))  \(line.level.rawValue.uppercased())  \(line.scope): \(line.message)")

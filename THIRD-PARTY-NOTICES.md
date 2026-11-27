@@ -8,7 +8,10 @@ downloads the following third-party software.
 | Component | Used by | Licence |
 |---|---|---|
 | [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) | all | MIT |
-| [Orbitron](https://github.com/theleagueof/orbitron) font | all | SIL Open Font License 1.1 (`OFL.txt` / `OFL-Orbitron.txt`) |
+| [Orbitron](https://github.com/theleagueof/orbitron) font | macOS, Linux | SIL Open Font License 1.1 (`OFL.txt` / `OFL-Orbitron.txt`) |
+| [Inter](https://github.com/rsms/inter) font | Linux | SIL Open Font License 1.1 (`OFL-Inter.txt`) |
+| [Barlow Condensed](https://github.com/jpt/barlow) font | Linux | SIL Open Font License 1.1 (`OFL-BarlowCondensed.txt`) |
+| [Lucide](https://lucide.dev) icons | Linux, Windows | ISC (`LICENSE-Lucide.txt`) |
 | [sentry-cocoa](https://github.com/getsentry/sentry-cocoa) | macOS | MIT |
 | MaximaHelper from [Maxima-Draconis](https://github.com/AA-EION/Maxima-Draconis) | macOS | GPL-3.0 |
 | [SwiftCrossUI](https://github.com/moreSwift/swift-cross-ui) and its image libraries (swift-image-formats, libpng, libjpeg-turbo, libwebp, zlib) | Linux, Windows | MIT; libpng, zlib, BSD-3 (libwebp) |

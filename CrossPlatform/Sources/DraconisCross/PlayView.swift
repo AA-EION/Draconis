@@ -5,23 +5,20 @@ import SwiftCrossUI
 
 struct PlayView: View {
     @Bindable var model: AppModel
+    @State var mode: LaunchMode = .northstar
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             hero
             if let game = model.selectedGame {
-                launchCard(game)
-                northstarCard(game)
+                pills(game)
+                actions(game)
+                if model.northstarBusy || model.toolBusy != nil { progressCard }
                 if let warning = model.steamWarning {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("STEAM AND NORTHSTAR").stencil()
-                        Text(warning)
-                    }
-                    .glassCard(tinted: true)
+                    notice("STEAM AND NORTHSTAR", warning)
                 }
                 if model.needsRunner && model.selectedRunner == nil {
-                    Text("This copy runs through Wine or Proton. Pick or download one in Settings.")
-                        .glassCard(tinted: true)
+                    notice("RUNNER", "This copy runs through Wine or Proton. Pick or download one in Settings.")
                 }
             } else {
                 setupCard
@@ -30,89 +27,119 @@ struct PlayView: View {
     }
 
     var hero: some View {
-        HStack(spacing: 18) {
+        VStack(spacing: 8) {
             if let icon = NativeStyle.resources?.appendingPathComponent("icon.png") {
-                Image(icon).resizable().frame(width: 84, height: 84)
+                Image(icon).resizable().frame(width: 96, height: 96)
             }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("DRACONIS").hero(36)
-                Text("Titanfall 2 + Northstar").foregroundColor(Theme.secondary)
-            }
-            Spacer()
-            if model.gameRunning {
-                Text("● RUNNING").stencil()
+            Text(tracked("DRACONIS", 3)).hero(46).foregroundColor(Theme.primary)
+            Text("Titanfall 2 + Northstar").titleFont(17).foregroundColor(Theme.secondary)
+            if let game = model.selectedGame {
+                Text(game.description).foregroundColor(Theme.faint)
             }
         }
-        .glassCard()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
     }
 
-    func launchCard(_ game: GameInstall) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("LAUNCH").stencil()
-            ButtonRow {
-                Button(model.launching ? "Starting…" : "Launch Northstar") {
-                    Task { await model.launch(.northstar) }
-                }
-                .prominent()
-                .fixedSize()
-                .disabled(model.launching || model.gameRunning || !game.hasNorthstar)
-                Button("Launch Vanilla") { Task { await model.launch(.vanilla) } }
-                    .fixedSize()
-                    .disabled(model.launching || model.gameRunning)
-            }
-            Text(game.hasNorthstar
-                 ? "Vanilla uses Northstar's vanilla-compatible mode, which can join official servers."
-                 : "Northstar isn't installed yet: vanilla starts the unmodified game.")
-                .foregroundColor(Theme.faint)
+    func pills(_ game: GameInstall) -> some View {
+        HStack(spacing: 12) {
+            StatusPill(label: "Titanfall 2", value: "Installed", icon: "gamepad-2", active: true)
+            StatusPill(label: "Launcher", value: launcher(game), icon: "shield-check", active: launcherReady(game))
+            StatusPill(label: "Northstar", value: game.northstarVersion.map { "v\($0)" } ?? "Missing",
+                       icon: "zap", active: game.hasNorthstar)
         }
-        .glassCard()
     }
 
-    func northstarCard(_ game: GameInstall) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("NORTHSTAR").stencil()
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(game.northstarVersion.map { "Installed: \($0)" } ?? "Not installed")
-                        .font(.system(size: 16, weight: .semibold))
-                    if let latest = model.latestRelease {
-                        Text("Latest: \(latest.tagName)").foregroundColor(Theme.faint)
+    func launcher(_ game: GameInstall) -> String {
+        switch game.source {
+        case .steam: return "Steam"
+        case .native(let origin): return origin
+        case .prefix: return model.selectedRunner?.name ?? "No runner"
+        }
+    }
+
+    func launcherReady(_ game: GameInstall) -> Bool {
+        !model.needsRunner || model.selectedRunner != nil
+    }
+
+    func actions(_ game: GameInstall) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Segmented(options: [(LaunchMode.northstar, "Northstar"), (.vanilla, "Vanilla")], selection: $mode)
+            GlassButton(title: launchTitle(game), icon: "play", kind: .prominent, fullWidth: true, size: 18,
+                        disabled: model.launching || model.gameRunning || (mode == .northstar && !game.hasNorthstar)) {
+                let mode = mode
+                Task { await model.launch(mode) }
+            }
+            Text(caption(game)).foregroundColor(Theme.faint)
+            HStack(spacing: 10) {
+                if !game.hasNorthstar {
+                    GlassButton(title: "Install Northstar", icon: "download", disabled: model.northstarBusy) {
+                        Task { await model.installNorthstar() }
+                    }
+                } else {
+                    if !model.northstarUpToDate, let latest = model.latestRelease {
+                        GlassButton(title: "Update to \(latest.tagName)", icon: "refresh-cw", disabled: model.northstarBusy) {
+                            Task { await model.installNorthstar() }
+                        }
+                    }
+                    GlassButton(title: "Uninstall NS", icon: "trash", disabled: model.northstarBusy) {
+                        Task { await model.uninstallNorthstar() }
                     }
                 }
                 Spacer()
-                if model.northstarBusy {
-                    ProgressView(value: model.northstarProgress.map { $0.fraction >= 0 ? $0.fraction : 0 } ?? 0)
-                        .frame(width: 160)
-                } else {
-                    Button(game.hasNorthstar ? (model.northstarUpToDate ? "Reinstall" : "Update") : "Install") {
-                        Task { await model.installNorthstar() }
-                    }
-                    if game.hasNorthstar {
-                        Button("Remove") { Task { await model.uninstallNorthstar() } }.fixedSize()
-                    }
-                }
+                Toggle("Auto-update", isOn: $model.settings.autoUpdateNorthstar).toggleStyle(.switch)
             }
-            if let detail = model.northstarProgress?.detail {
-                Text(detail).foregroundColor(Theme.faint)
-            }
-            Toggle("Keep Northstar up to date", isOn: $model.settings.autoUpdateNorthstar)
-                .toggleStyle(.switch)
         }
-        .glassCard()
+        .glassCard(radius: 24, padding: 22)
+    }
+
+    func launchTitle(_ game: GameInstall) -> String {
+        if model.gameRunning { return "Running" }
+        if model.launching { return "Starting…" }
+        return mode == .northstar ? "Launch Northstar" : "Launch"
+    }
+
+    func caption(_ game: GameInstall) -> String {
+        switch mode {
+        case .northstar:
+            return game.hasNorthstar ? "Modded Titanfall 2 with Northstar's community servers."
+                : "Install Northstar to play on community servers."
+        case .vanilla:
+            return game.hasNorthstar ? "Northstar's vanilla-compatible mode: joins official servers."
+                : "The unmodified game on official servers."
+        }
+    }
+
+    var progressCard: some View {
+        let progress = model.northstarProgress ?? model.toolProgress
+        return VStack(alignment: .leading, spacing: 8) {
+            Stencil(model.toolBusy ?? "Northstar", size: 11)
+            if let detail = progress?.detail { Text(detail).foregroundColor(Theme.secondary) }
+            ProgressView(value: progress.map { $0.fraction >= 0 ? $0.fraction : 0 } ?? 0)
+        }
+        .glassCard(radius: 18, padding: 16)
+    }
+
+    func notice(_ title: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Stencil(title)
+            Text(text).foregroundColor(Theme.secondary)
+        }
+        .glassCard(tinted: true, radius: 18, padding: 16)
     }
 
     var setupCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("SET UP TITANFALL 2").stencil()
+        VStack(alignment: .leading, spacing: 12) {
+            Stencil("Set up Titanfall 2")
             Text("Draconis didn't find Titanfall 2. Install it with Steam, or open Settings to pick its folder or create a Wine prefix with the EA app.")
-            ButtonRow {
-                Button("Open Settings") { model.section = .settings }
-                    .prominent()
-                    .fixedSize()
-                Button("Rescan") { Task { await model.rescan() } }.fixedSize()
+                .foregroundColor(Theme.secondary)
+            HStack(spacing: 10) {
+                GlassButton(title: "Open Settings", icon: "settings", kind: .prominent) { model.section = .settings }
+                GlassButton(title: model.scanning ? "Scanning…" : "Rescan", icon: "refresh-cw") {
+                    Task { await model.rescan() }
+                }
             }
         }
-        .glassCard(tinted: true)
+        .glassCard(tinted: true, radius: 24, padding: 22)
     }
 }
-

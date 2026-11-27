@@ -8,9 +8,9 @@ struct ServersView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 TextField("Search servers, maps, playlists…", text: $model.serverFilter).frame(width: 320)
-                Button(model.serversLoading ? "Loading…" : "Refresh") { Task { await model.refreshServers() } }.fixedSize()
+                GlassButton(title: model.serversLoading ? "Loading…" : "Refresh", icon: "refresh-cw", size: 13) { Task { await model.refreshServers() } }
                 Spacer()
-                Text("\(model.filteredServers.count) SERVERS").stencil()
+                Stencil("\(model.filteredServers.count) servers")
             }
             if model.serversLoading && model.servers.isEmpty {
                 ProgressView("Querying the master server…")
@@ -27,7 +27,7 @@ struct ServersView: View {
                             .foregroundColor(Theme.faint)
                     }
                     Spacer()
-                    Text("\(server.playerCount)/\(server.maxPlayers)").font(.system(size: 18, weight: .bold))
+                    Text("\(server.playerCount)/\(server.maxPlayers)").display(17)
                 }
                 .glassCard(radius: 14)
             }

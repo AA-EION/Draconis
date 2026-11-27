@@ -56,3 +56,15 @@ enum AppSection: String, CaseIterable, Identifiable, CustomStringConvertible {
         }
     }
 }
+
+extension AppSection {
+    var icon: String {
+        switch self {
+        case .play: return "play"
+        case .mods: return "puzzle"
+        case .servers: return "server"
+        case .console: return "terminal"
+        case .settings: return "settings"
+        }
+    }
+}

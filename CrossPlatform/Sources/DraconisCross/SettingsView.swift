@@ -20,7 +20,7 @@ struct SettingsView: View {
 
     var gameCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("TITANFALL 2").stencil()
+            Stencil("Titanfall 2")
             Text("Draconis finds Steam copies (native, Flatpak, Snap), EA app and Epic copies\(os == "Windows" ? "" : " in Draconis or Heroic prefixes"), and folders you add.")
                 .foregroundColor(Theme.secondary)
             ForEach(model.games) { game in
@@ -31,14 +31,14 @@ struct SettingsView: View {
                     }
                     Spacer()
                     if game.id == model.selectedGame?.id {
-                        Text("SELECTED").stencil()
+                        Stencil("Selected")
                     } else {
-                        Button("Use") { model.settings.selectedGame = game.id; model.refreshInstalledMods() }.fixedSize()
+                        GlassButton(title: "Use", icon: "circle-check", size: 13) { model.settings.selectedGame = game.id; model.refreshInstalledMods() }
                     }
                 }
             }
             ButtonRow {
-                Button("Add a game folder…") {
+                GlassButton(title: "Add a game folder…", icon: "folder-plus", size: 13) {
                     Task {
                         if let url = await chooseFile(title: "Titanfall 2 folder", defaultButtonLabel: "Add",
                                                       allowSelectingFiles: false, allowSelectingDirectories: true) {
@@ -46,7 +46,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Button("Rescan") { Task { await model.rescan() } }.fixedSize()
+                GlassButton(title: "Rescan", icon: "refresh-cw", size: 13) { Task { await model.rescan() } }
             }
         }
         .glassCard()
@@ -55,7 +55,7 @@ struct SettingsView: View {
     #if !os(Windows)
     var runnerCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("RUNNER").stencil()
+            Stencil("Runner")
             Text("Steam copies run with the Proton you pick in Steam. Copies in a Wine prefix run with the build below; Proton goes through umu-launcher.")
                 .foregroundColor(Theme.secondary)
             if model.runners.isEmpty {
@@ -68,10 +68,10 @@ struct SettingsView: View {
             Text(model.umuRun.map { "umu-launcher: \($0.path)" } ?? "umu-launcher: not installed")
                 .foregroundColor(Theme.faint)
             ButtonRow {
-                Button("Download GE-Proton") { Task { await model.installGEProton() } }.fixedSize()
+                GlassButton(title: "Download GE-Proton", icon: "download", size: 13) { Task { await model.installGEProton() } }
                     .disabled(model.toolBusy != nil)
                 if model.umuRun == nil {
-                    Button("Install umu-launcher") { Task { await model.installUmu() } }.fixedSize()
+                    GlassButton(title: "Install umu-launcher", icon: "download", size: 13) { Task { await model.installUmu() } }
                         .fixedSize()
                         .disabled(model.toolBusy != nil)
                 }
@@ -83,10 +83,10 @@ struct SettingsView: View {
 
     var prefixCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("EA APP / EPIC COPY").stencil()
+            Stencil("EA App / Epic Copy")
             Text("No Steam? Draconis can make its own Wine prefix (in its data folder, never ~/.wine) and install the EA app there. Sign in, install Titanfall 2 from the EA app, then Rescan. Epic owners: link your Epic account in the EA app.")
                 .foregroundColor(Theme.secondary)
-            Button("Create prefix with the EA app") { Task { await model.createPrefixWithEAApp() } }.fixedSize()
+            GlassButton(title: "Create prefix with the EA app", icon: "folder-plus", size: 13) { Task { await model.createPrefixWithEAApp() } }
                 .disabled(model.toolBusy != nil || model.selectedRunner == nil)
         }
         .glassCard()
@@ -106,13 +106,13 @@ struct SettingsView: View {
 
     var aboutCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("ABOUT").stencil()
+            Stencil("About")
             Text("Draconis \(AppInfo.version) for \(os)").font(.system(size: 15, weight: .semibold))
             Text("Data folder: \(CorePaths.dataDirectory.path)").foregroundColor(Theme.faint)
             ButtonRow {
                 OpenLinkButton(title: "Releases", url: AppInfo.releasesPage)
-                OpenLinkButton(title: "Report a bug", url: AppInfo.issuesPage)
-                Button("Check for updates") { Task { await model.checkForDraconisUpdate() } }.fixedSize()
+                OpenLinkButton(title: "Report a bug", url: AppInfo.issuesPage, icon: "circle-alert")
+                GlassButton(title: "Check for updates", icon: "refresh-cw", size: 13) { Task { await model.checkForDraconisUpdate() } }
             }
             Text("Draconis is free software under the GPL-3.0-or-later. It uses SwiftCrossUI (MIT), ZIPFoundation (MIT), swift-crypto (Apache-2.0) and the Orbitron font (SIL OFL 1.1); see THIRD-PARTY-NOTICES.md. umu-launcher (GPL-3.0) and GE-Proton are downloaded only when you ask.")
                 .foregroundColor(Theme.faint)

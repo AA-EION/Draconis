@@ -19,9 +19,9 @@ struct ModsView: View {
     var installedCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("INSTALLED MODS").stencil()
+                Stencil("Installed Mods")
                 Spacer()
-                Button("Install from zip…") {
+                GlassButton(title: "Install from zip…", icon: "folder-plus", size: 13) {
                     Task {
                         if let url = await chooseFile(title: "Install a mod zip", defaultButtonLabel: "Install") {
                             await model.installLocalZip(url)
@@ -42,7 +42,7 @@ struct ModsView: View {
                     Spacer()
                     Toggle("Enabled", isOn: Binding(get: { mod.enabled }, set: { model.setEnabled(mod, $0) }))
                 .toggleStyle(.switch)
-                    Button("Remove") { model.uninstall(mod) }.fixedSize()
+                    GlassButton(title: "Remove", icon: "trash", size: 13) { model.uninstall(mod) }
                 }
             }
         }
@@ -52,10 +52,10 @@ struct ModsView: View {
     var browseCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("THUNDERSTORE").stencil()
+                Stencil("Thunderstore")
                 Spacer()
                 TextField("Search mods…", text: $model.modFilter).frame(width: 260)
-                Button(model.modsLoading ? "Loading…" : "Refresh") { Task { await model.refreshMods() } }.fixedSize()
+                GlassButton(title: model.modsLoading ? "Loading…" : "Refresh", icon: "refresh-cw", size: 13) { Task { await model.refreshMods() } }
             }
             if model.modsLoading && model.packages.isEmpty {
                 ProgressView("Loading the mod list…")
@@ -74,9 +74,9 @@ struct ModsView: View {
                     if model.modBusy == package.fullName {
                         ProgressView()
                     } else if model.isInstalled(package) {
-                        Text("INSTALLED").stencil()
+                        Stencil("Installed")
                     } else {
-                        Button("Install") { Task { await model.install(package) } }.fixedSize()
+                        GlassButton(title: "Install", icon: "download", size: 13) { Task { await model.install(package) } }
                             .disabled(model.selectedGame == nil)
                     }
                 }

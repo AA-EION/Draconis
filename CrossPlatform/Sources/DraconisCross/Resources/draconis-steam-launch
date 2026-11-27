@@ -1,0 +1,132 @@
+#!/bin/bash
+# Draconis: Titanfall 2's Steam launch wrapper (Linux). Steam runs it in front
+# of its own command (launch options: ... "<this>" %command%). Normal launches
+# pass straight through; Draconis adds one of these to `steam -applaunch`:
+#   -draconis-vr        start Titanfall 2 VR (CircuitLord's mod) instead
+#   -draconis-vr-setup  build the VR mod's game assets with asset_patcher.exe
+# Both run inside Steam's own Proton and runtime container, so SteamVR / Steam
+# Link and the host's OpenXR runtimes work as for any Steam game.
+# Based on tf2vr-frame-launch from MWGIH/TF2SteamFrame (GPL-3.0).
+set -uo pipefail
+SELF=$(readlink -f "${BASH_SOURCE[0]}")
+STATE="$(dirname "$(dirname "$SELF")")/VR"
+LOG="$STATE/launch.log"
+OFFER="Origin.OFR.50.0001456"
+mkdir -p "$STATE"
+log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
+win() { local p; p=$(readlink -f "$1"); printf 'Z:%s' "${p//\//\\}"; }
+
+running() { # running <pattern>: a process whose first two args match
+  local p a
+  for p in /proc/[0-9]*; do
+    a=$(tr '\0' '\n' 2>/dev/null < "$p/cmdline" | head -n 2 | tr '\n' ' ') 2>/dev/null || continue
+    [[ ${a,,} == *"${1,,}"* ]] && return 0
+  done
+  return 1
+}
+
+end_session() {
+  local ws
+  for ws in "$(dirname "$PROTON")/files/bin/wineserver" "$(dirname "$PROTON")/dist/bin/wineserver"; do
+    [ -x "$ws" ] && { WINEPREFIX="$STEAM_COMPAT_DATA_PATH/pfx" timeout 20 "$ws" -k 2>/dev/null; break; }
+  done
+}
+
+inner() {
+  local job=$1 n=$2
+  shift 2
+  local -a runner=("${@:1:$n}")
+  shift "$n"
+  local exe=$1
+  shift
+  G=$(dirname "$(readlink -f "$exe")")
+  PROTON=${runner[0]}
+  [ "$(basename "$PROTON")" = proton ] || { log "ERROR: Steam didn't run Titanfall 2 with Proton (${runner[*]})"; exit 1; }
+  local stage="$G/.draconis-vr-stage"
+  case "$job" in
+    setup)
+      rm -rf "$stage/assets" "$STATE/asset_patcher.done"
+      log "Building the VR mod's game assets..."
+      "$PROTON" run "$stage/mod/asset_patcher.exe" apply "$(win "$G")" "$(win "$stage/mod/patches")" "$(win "$stage/assets")" \
+        > "$STATE/asset_patcher.log" 2>&1
+      local rc=$?
+      log "asset_patcher.exe exited with $rc"
+      end_session
+      echo "$rc" > "$STATE/asset_patcher.done"
+      ;;
+    vr)
+      local v args=()
+      while IFS= read -r v; do case "$v" in TF2VR_*) unset "$v" ;; esac; done < <(compgen -e)
+      unset PROTON_USE_WINED3D PROTON_USE_WINED3D11
+      export TF2VR_OPENXR=1
+      mapfile -t args < "$G/TF2VR/tools/draconis-launch-args.txt"
+      log "VR environment: $(env | grep -E '^(XR_|VR_|PRESSURE_VESSEL_IMPORT)' | sort | tr '\n' ' ')"
+      local ea='C:\Program Files\Electronic Arts\EA Desktop\EA Desktop\EADesktop.exe'
+      local ea_log="$STEAM_COMPAT_DATA_PATH/pfx/drive_c/ProgramData/EA Desktop/Logs/EADesktop.log" start i
+      if ! running 'EADesktop.exe'; then
+        rm -f "$STEAM_COMPAT_DATA_PATH/pfx/drive_c/ProgramData/EA Desktop/backgroundservice.ini"
+        start=$(stat -c %s "$ea_log" 2>/dev/null || echo 0)
+        log "Starting the EA app..."
+        "$PROTON" run "$ea" >/dev/null 2>&1 &
+        for i in $(seq 1 240); do
+          tail -c +$((start + 1)) "$ea_log" 2>/dev/null | grep -q onAuthSuccessUpdated && { log "EA app signed in."; sleep 2; break; }
+          sleep 1
+        done
+      fi
+      log "Launching Titanfall 2 VR from $G"
+      cd "$G" || exit 1
+      DXVK_CONFIG="${DXVK_CONFIG:-dxgi.syncInterval = 0}" MESA_VK_WSI_PRESENT_MODE="${MESA_VK_WSI_PRESENT_MODE:-immediate}" \
+        ContentId=$OFFER "$PROTON" run "$G/TF2VR/tools/crash_monitor.exe" "$(win "$G/TF2VR")" "$(win "$G/Titanfall2VRLauncher.exe")" \
+        "${args[@]}" "$@" >> "$LOG" 2>&1 &
+      local pid=$!
+      for i in $(seq 1 120); do running 'crash_monitor.exe' && break; sleep 1; done
+      while running 'crash_monitor.exe'; do sleep 2; done
+      wait "$pid" 2>/dev/null
+      log "Titanfall 2 VR ended."
+      end_session
+      ;;
+  esac
+}
+
+if [ "${1:-}" = --inner ]; then
+  shift
+  inner "$@"
+  exit $?
+fi
+
+mode=""
+cmd=()
+for a in "$@"; do
+  case "$a" in
+    -draconis-vr) mode=vr ;;
+    -draconis-vr-setup) mode=setup ;;
+    *) cmd+=("$a") ;;
+  esac
+done
+[ -n "$mode" ] || exec "$@"
+
+log "---- Steam launch ($mode): ${cmd[*]}"
+exe_i=-1
+for i in "${!cmd[@]}"; do
+  case "$(basename "${cmd[$i]}" | tr '[:upper:]' '[:lower:]')" in titanfall2.exe) exe_i=$i; break ;; esac
+done
+if [ "$exe_i" -lt 0 ]; then # Steam may start the game through an EA app link instead
+  for i in "${!cmd[@]}"; do
+    case "${cmd[$i]}" in
+      steam2ea://*|link2ea://*|origin2://*)
+        [ -f "${STEAM_COMPAT_INSTALL_PATH:-}/Titanfall2.exe" ] && { cmd[$i]="$STEAM_COMPAT_INSTALL_PATH/Titanfall2.exe"; exe_i=$i; }
+        break ;;
+    esac
+  done
+fi
+runner_i=-1
+for ((i = exe_i - 1; i >= 0; i--)); do
+  [ "$(basename "${cmd[$i]}")" = proton ] && { runner_i=$i; break; }
+done
+if [ "$exe_i" -lt 0 ] || [ "$runner_i" -lt 0 ]; then
+  log "ERROR: couldn't find Titanfall2.exe and Proton in Steam's command line; starting the game normally."
+  exec "${cmd[@]}"
+fi
+pre=("${cmd[@]:0:runner_i}")
+runner=("${cmd[@]:runner_i:exe_i-runner_i}")
+exec "${pre[@]}" "$SELF" --inner "$mode" "${#runner[@]}" "${runner[@]}" "${cmd[$exe_i]}" "${cmd[@]:exe_i+1}"

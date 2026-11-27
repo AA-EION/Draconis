@@ -75,6 +75,18 @@ import Testing
         #expect(SteamLaunchOptions.withNorthstarOverride("\(o) %command%") == nil)
     }
 
+    @Test func addsTheVRWrapperKeepingUserOptions() {
+        let o = SteamLaunchOptions.override, x = SteamLaunchOptions.openXRImport
+        let w = "/home/u/.local/share/draconis/bin/draconis-steam-launch"
+        let first = SteamLaunchOptions.updated("gamemoderun %command% -novid", wrapper: w)
+        #expect(first == "\(o) \(x) gamemoderun \"\(w)\" %command% -novid")
+        #expect(SteamLaunchOptions.updated(first!, wrapper: w) == nil)
+        #expect(SteamLaunchOptions.updated("\(o) %command%", wrapper: w) == "\(o) \(x) \"\(w)\" %command%")
+        // A moved data folder replaces the old wrapper path.
+        let moved = SteamLaunchOptions.updated(first!, wrapper: "/new/draconis-steam-launch")
+        #expect(moved == "\(o) \(x) gamemoderun \"/new/draconis-steam-launch\" %command% -novid")
+    }
+
     @Test func writesLocalConfigKeepingEverythingElse() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -117,3 +129,49 @@ let isWindows = true
 #else
 let isWindows = false
 #endif
+
+@Suite struct LoopbackPatchTests {
+    // Run with DRACONIS_VR_DLL=/path/to/a copy of Titanfall2VR.dll; it is patched in place.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DRACONIS_VR_DLL"] != nil))
+    func patchesTheRealDLL() throws {
+        let dll = URL(fileURLWithPath: ProcessInfo.processInfo.environment["DRACONIS_VR_DLL"]!)
+        #expect(LoopbackPatch.check(dll) == .unpatched)
+        #expect(try LoopbackPatch.apply(to: dll) == .patched)
+        #expect(LoopbackPatch.check(dll) == .patched)
+        #expect(try LoopbackPatch.apply(to: dll) == .patched)
+    }
+
+    @Test func rejectsNonPEFiles() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("not a dll".utf8).write(to: file)
+        #expect(LoopbackPatch.check(file) == .unknown("not a PE file"))
+    }
+}
+
+@Suite struct TitanfallVRTests {
+    @Test func readsTheNorthstarPin() throws {
+        let source = """
+            public const string NorthstarVersion = "1.31.13";
+            public const string NorthstarUrl = "https://github.com/R2Northstar/Northstar/releases/download/v1.31.13/Northstar.release.v1.31.13.zip";
+            public const string NorthstarSha256 = "E622B96E";
+        """
+        let pin = try TitanfallVR.northstarPin(in: source)
+        #expect(pin.version == "1.31.13")
+        #expect(pin.url.lastPathComponent == "Northstar.release.v1.31.13.zip")
+        #expect(pin.sha256 == "e622b96e")
+    }
+
+    @Test func fillsLaunchArguments() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let tools = root.appendingPathComponent("TF2VR/tools")
+        try FileManager.default.createDirectory(at: tools, withIntermediateDirectories: true)
+        try #"{"arguments": ["-profile={profile}", "-w", "{width}", "+sound_without_focus", "{sound}"], "vrArguments": ["+fps_max", "0"]}"#
+            .write(to: tools.appendingPathComponent("launch.json"), atomically: true, encoding: .utf8)
+        #expect(try TitanfallVR.launchArguments(gameRoot: root) == ["-profile=TF2VR", "-w", "1280", "+sound_without_focus", "1", "+fps_max", "0"])
+    }
+
+    @Test func cleansTheEnvironment() {
+        let env = TitanfallVR.environment(["PATH": "/bin", "TF2VR_TIMING": "1", "XR_RUNTIME_JSON": "x", "VR_CONFIG_PATH": "y"])
+        #expect(env == ["PATH": "/bin", "TF2VR_OPENXR": "1"])
+    }
+}

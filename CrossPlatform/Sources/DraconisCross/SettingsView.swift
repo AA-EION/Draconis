@@ -33,7 +33,7 @@ struct SettingsView: View {
                     if game.id == model.selectedGame?.id {
                         Stencil("Selected")
                     } else {
-                        GlassButton(title: "Use", icon: "circle-check", size: 13) { model.settings.selectedGame = game.id; model.refreshInstalledMods() }
+                        GlassButton(title: "Use", icon: "circle-check", size: 13) { model.settings.selectedGame = game.id; model.refreshInstalledMods(); Task { await model.refreshVR() } }
                     }
                 }
             }

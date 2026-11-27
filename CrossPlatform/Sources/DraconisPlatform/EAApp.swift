@@ -90,13 +90,13 @@ public enum HostProcesses {
 public enum GameProcess {
     public static func isRunning() -> Bool {
         #if os(Windows)
-        for exe in ["Titanfall2.exe", "NorthstarLauncher.exe"] {
+        for exe in ["Titanfall2.exe", "NorthstarLauncher.exe", "Titanfall2VRLauncher.exe"] {
             let out = (try? Spawner.capture(#"C:\Windows\System32\tasklist.exe"#, ["/FI", "IMAGENAME eq \(exe)", "/NH"])) ?? ""
             if out.contains(exe) { return true }
         }
         return false
         #else
-        return HostProcesses.anyCommandLine(containing: ["Titanfall2.exe", "NorthstarLauncher.exe"])
+        return HostProcesses.anyCommandLine(containing: ["Titanfall2.exe", "NorthstarLauncher.exe", "Titanfall2VRLauncher.exe"])
         #endif
     }
 }

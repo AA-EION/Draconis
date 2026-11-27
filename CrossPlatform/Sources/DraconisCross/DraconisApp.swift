@@ -114,7 +114,7 @@ struct RootView: View {
             } else {
                 Picker(of: model.games, selection: Binding(
                     get: { model.selectedGame },
-                    set: { model.settings.selectedGame = $0?.id; model.refreshInstalledMods() }
+                    set: { model.settings.selectedGame = $0?.id; model.refreshInstalledMods(); Task { await model.refreshVR() } }
                 ))
             }
             GlassButton(title: model.scanning ? "Scanning…" : "Rescan", icon: "refresh-cw", size: 13) {

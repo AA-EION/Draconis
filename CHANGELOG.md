@@ -8,6 +8,12 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.13.3] — 2026-11-27
+
+### Fixed
+- **Linux: "Launch Northstar" started vanilla Titanfall 2** (the same bug as Viper). Northstar's `wsock32.dll` only loads when Proton is told to prefer it, and Steam passes that to the game only through its launch options. Draconis now adds `WINEDLLOVERRIDES="wsock32=n,b" %command%` to Titanfall 2's launch options (keeping any you had, with a backup of Steam's config). Steam rewrites its config when it quits, so if it's running Draconis closes it once first. Vanilla launches are unaffected: without `-northstar` the game starts vanilla.
+- **Launching gave no feedback** and Launch could be pressed again. The button now reads "Launching…" and a card says what's happening (closing Steam, Steam starting the game) until Titanfall 2 is running; then it reads "Running" until the game closes. If the game doesn't start within 3 minutes, Draconis says so.
+
 ## [0.13.2] — 2026-11-27
 
 ### Fixed

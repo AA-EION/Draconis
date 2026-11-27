@@ -58,8 +58,9 @@ public enum LaunchPlanner {
         return ("NorthstarLauncher.exe", args)
     }
 
-    /// Arguments Steam passes to Titanfall2.exe. `-northstar` goes last:
-    /// GE-Proton keys its wsock32 override on it, and older Protons dropped
+    /// Arguments Steam passes to Titanfall2.exe. `-northstar` only works with
+    /// `WINEDLLOVERRIDES="wsock32=n,b"` in Titanfall 2's Steam launch options
+    /// (see `SteamLaunchOptions`); it goes last because older Protons dropped
     /// arguments after the first.
     public static func steamArguments(mode: LaunchMode, hasNorthstar: Bool) throws -> [String] {
         if mode == .northstar && !hasNorthstar { throw PlanError.northstarMissing }
@@ -147,14 +148,5 @@ public enum LaunchPlanner {
         if let text = try? String(contentsOf: file, encoding: .utf8), text.hasPrefix("0") {
             try? "1".write(to: file, atomically: true, encoding: .utf8)
         }
-    }
-
-    /// Steam copies on Linux need a Proton that loads Northstar's proxy DLL.
-    public static func steamNorthstarWarning(compatTool: String?) -> String? {
-        guard let tool = compatTool?.lowercased(),
-              tool.contains("ge-proton") || tool.contains("northstar") else {
-            return "Steam runs Titanfall 2 with \(compatTool ?? "its default Proton"). For Northstar, either pick GE-Proton for Titanfall 2 in Steam (Properties → Compatibility), or set its launch options to WINEDLLOVERRIDES=\"wsock32=n,b\" %command%"
-        }
-        return nil
     }
 }

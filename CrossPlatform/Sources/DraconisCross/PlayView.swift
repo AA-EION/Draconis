@@ -13,10 +13,8 @@ struct PlayView: View {
             if let game = model.selectedGame {
                 pills(game)
                 actions(game)
+                if model.launching || model.gameRunning { launchCard }
                 if model.northstarBusy || model.toolBusy != nil { progressCard }
-                if let warning = model.steamWarning {
-                    notice("STEAM AND NORTHSTAR", warning)
-                }
                 if model.needsRunner && model.selectedRunner == nil {
                     notice("RUNNER", "This copy runs through Wine or Proton. Pick or download one in Settings.")
                 }
@@ -95,7 +93,7 @@ struct PlayView: View {
 
     func launchTitle(_ game: GameInstall) -> String {
         if model.gameRunning { return "Running" }
-        if model.launching { return "Starting…" }
+        if model.launching { return "Launching…" }
         return mode == .northstar ? "Launch Northstar" : "Launch"
     }
 
@@ -108,6 +106,22 @@ struct PlayView: View {
             return game.hasNorthstar ? "Northstar's vanilla-compatible mode: joins official servers."
                 : "The unmodified game on official servers."
         }
+    }
+
+    var launchCard: some View {
+        HStack(spacing: 14) {
+            if model.launching {
+                ProgressView()
+            } else {
+                IconView(name: "circle-check", size: 20)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Stencil(model.launching ? "Launching" : "Running", size: 11)
+                Text(model.launching ? (model.status ?? "Starting…") : "Titanfall 2 is running. Launch is available again once it closes.")
+                    .foregroundColor(Theme.secondary)
+            }
+        }
+        .glassCard(tinted: true, radius: 18, padding: 16)
     }
 
     var progressCard: some View {

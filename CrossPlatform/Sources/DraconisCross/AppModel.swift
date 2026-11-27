@@ -85,16 +85,6 @@ final class AppModel {
         return GameFiles.versionsMatch(installed: game.northstarVersion, releaseTag: latest.tagName)
     }
 
-    var steamWarning: String? {
-        #if os(Windows)
-        return nil
-        #else
-        guard let game = selectedGame, game.hasNorthstar,
-              case .steam(_, _, let tool) = game.source else { return nil }
-        return LaunchPlanner.steamNorthstarWarning(compatTool: tool)
-        #endif
-    }
-
     var matchingPackages: [ThunderstorePackage] {
         // Northstar itself is managed on the Play page; mod managers aren't mods.
         let hidden: Set<String> = ["northstar-Northstar", "northstar-NorthstarReleaseCandidate", "ebkr-r2modman"]
@@ -203,14 +193,17 @@ final class AppModel {
     // MARK: - Launch
 
     func launch(_ mode: LaunchMode) async {
-        guard let game = selectedGame, !launching else { return }
+        guard let game = selectedGame, !launching, !gameRunning else { return }
         launching = true
         error = nil
-        defer { launching = false }
+        defer { launching = false; status = nil }
         do {
             LaunchPlanner.prepareFiles(game: game, mode: mode)
             var prefixRunning = false
             #if !os(Windows)
+            if case .steam(let root, let kind, _) = game.source, game.hasNorthstar {
+                try await addNorthstarLaunchOption(root: root, kind: kind)
+            }
             let isLooseFolder: Bool = { if case .native = game.source { return true }; return false }()
             if let prefix = game.prefix ?? (isLooseFolder ? defaultPrefix : nil) {
                 prefixRunning = try await startEAApp(in: prefix)
@@ -221,11 +214,38 @@ final class AppModel {
                 defaultPrefix: defaultPrefix, prefixRunning: prefixRunning)
             try Spawner.launch(command.executable, command.arguments, environment: command.environment,
                                workingDirectory: command.workingDirectory, log: gameLog)
-            status = mode == .northstar ? "Starting Northstar…" : "Starting Titanfall 2…"
-            Task { await watchGame() }
+            let what = mode == .northstar ? "Northstar" : "Titanfall 2"
+            status = { if case .steam = game.source { return "Steam is starting \(what)…" }; return "Starting \(what)…" }()
+            Log.info("launch", "\(command.executable) \(command.arguments.joined(separator: " "))")
+            // Steam and Proton can take a while on a first start.
+            for _ in 0..<90 {
+                try await Task.sleep(for: .seconds(2))
+                if GameProcess.isRunning() { break }
+            }
+            guard GameProcess.isRunning() else {
+                throw LaunchFailure("Titanfall 2 didn't start within 3 minutes. Check Steam or the Console page, then launch again.")
+            }
+            gameRunning = true
+            Log.ok("launch", "\(what) is running")
+            Task { await watchUntilExit() }
         } catch {
             fail(error)
         }
+    }
+
+    /// Northstar's proxy DLL only loads with `wsock32=n,b`, which Steam passes
+    /// to the game only through its launch options. Steam rewrites its config
+    /// on exit, so it has to be closed while they're changed.
+    func addNorthstarLaunchOption(root: URL, kind: String) async throws {
+        let install = SteamInstall(root: root, kind: SteamInstall.Kind(rawValue: kind) ?? .native)
+        guard !install.configsNeedingNorthstarOverride(appID: SteamLocator.titanfallAppID).isEmpty else { return }
+        if SteamClient.isRunning() {
+            status = "Closing Steam once to add Northstar's launch option…"
+            guard await SteamClient.shutdown(kind: kind) else {
+                throw LaunchFailure("Close Steam, then launch again: Draconis adds Titanfall 2's launch option (\(SteamLaunchOptions.override) %command%) while Steam is closed.")
+            }
+        }
+        try install.addNorthstarOverride(appID: SteamLocator.titanfallAppID)
     }
 
     var defaultPrefix: URL { PrefixStore.url(named: "Titanfall 2") }
@@ -247,17 +267,11 @@ final class AppModel {
         throw LaunchFailure("The EA app didn't come up. Open it, sign in, then launch again.")
     }
 
-    func watchGame() async {
-        for _ in 0..<45 {
-            try? await Task.sleep(for: .seconds(2))
-            if GameProcess.isRunning() { break }
-        }
-        gameRunning = GameProcess.isRunning()
+    func watchUntilExit() async {
         while gameRunning {
             try? await Task.sleep(for: .seconds(3))
             gameRunning = GameProcess.isRunning()
         }
-        status = nil
     }
 
     // MARK: - Runners and prefixes (Linux)

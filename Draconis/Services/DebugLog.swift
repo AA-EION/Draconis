@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+@_exported import DraconisCore
 
 /// In-app console log. Every long-running operation (download, extract, launch,
 /// HTTP call) appends here so the user can open the Console view and see what
@@ -8,20 +9,7 @@ import Combine
 public final class DebugLog: ObservableObject {
     public static let shared = DebugLog()
 
-    public enum Level: String, Sendable, CaseIterable, Identifiable {
-        case info, ok, warn, error, run
-        public var id: String { rawValue }
-
-        public var symbol: String {
-            switch self {
-            case .info:  return "info.circle"
-            case .ok:    return "checkmark.seal"
-            case .warn:  return "exclamationmark.triangle"
-            case .error: return "xmark.octagon"
-            case .run:   return "terminal"
-            }
-        }
-    }
+    public typealias Level = LogLevel
 
     public struct Line: Identifiable, Hashable, Sendable {
         public let id = UUID()
@@ -34,7 +22,11 @@ public final class DebugLog: ObservableObject {
     @Published public private(set) var lines: [Line] = []
     private let maxLines = 2_000
 
-    private init() {}
+    private init() {
+        Log.sink = { level, scope, message in
+            Task { @MainActor in DebugLog.shared.log(level, scope: scope, message) }
+        }
+    }
 
     public func log(_ level: Level, scope: String, _ message: String) {
         let line = Line(
@@ -61,16 +53,14 @@ public final class DebugLog: ObservableObject {
     public func clear() { lines.removeAll() }
 }
 
-/// Non-MainActor convenience: any service can call `DebugLog.write(...)` from
-/// inside an actor or background task and it will hop to the main actor.
-public enum Log {
-    public static func info(_ scope: String, _ msg: String)  { write(.info,  scope, msg) }
-    public static func ok(_ scope: String, _ msg: String)    { write(.ok,    scope, msg) }
-    public static func warn(_ scope: String, _ msg: String)  { write(.warn,  scope, msg) }
-    public static func error(_ scope: String, _ msg: String) { write(.error, scope, msg) }
-    public static func run(_ scope: String, _ msg: String)   { write(.run,   scope, msg) }
-
-    private static func write(_ level: DebugLog.Level, _ scope: String, _ msg: String) {
-        Task { @MainActor in DebugLog.shared.log(level, scope: scope, msg) }
+extension LogLevel {
+    public var symbol: String {
+        switch self {
+        case .info:  return "info.circle"
+        case .ok:    return "checkmark.seal"
+        case .warn:  return "exclamationmark.triangle"
+        case .error: return "xmark.octagon"
+        case .run:   return "terminal"
+        }
     }
 }

@@ -591,9 +591,12 @@ extension MaximaService {
         case cliFailed(exitCode: Int32, stderr: String)
         case invalidOutput(String)
         case notLoggedIn
+        case crossOverOnly
 
         public var errorDescription: String? {
             switch self {
+            case .crossOverOnly:
+                return "Maxima is experimental and only works in CrossOver bottles."
             case .notInstalled:
                 return "Maxima isn't installed in this bottle."
             case .cxstartMissing:
@@ -631,6 +634,7 @@ extension MaximaService {
         guard let cliPath = maximaCliPath(in: bottle) else {
             throw CliError.notInstalled
         }
+        guard bottle.backend == .crossover else { throw CliError.crossOverOnly }
         guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
             throw CliError.cxstartMissing
         }
@@ -704,6 +708,7 @@ extension MaximaService {
         guard let cliPath = maximaCliPath(in: bottle) else {
             throw CliError.notInstalled
         }
+        guard bottle.backend == .crossover else { throw CliError.crossOverOnly }
         guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
             throw CliError.cxstartMissing
         }
@@ -777,6 +782,7 @@ extension MaximaService {
         guard let cliPath = maximaCliPath(in: bottle) else {
             throw CliError.notInstalled
         }
+        guard bottle.backend == .crossover else { throw CliError.crossOverOnly }
         guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
             throw CliError.cxstartMissing
         }
@@ -839,6 +845,7 @@ extension MaximaService {
         guard let uiPath = maximaUiPath(in: bottle) else {
             throw CliError.notInstalled
         }
+        guard bottle.backend == .crossover else { throw CliError.crossOverOnly }
         guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
             throw CliError.cxstartMissing
         }

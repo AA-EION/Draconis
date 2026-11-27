@@ -24,10 +24,12 @@ import Foundation
 ///     regardless of how the executable is invoked.
 ///
 ///   * **Vanilla with Northstar installed still uses NorthstarLauncher**
-///     (with `-vanilla`). Northstar's wsock32 proxy is in the install
-///     dir; even when the user picks vanilla, going through
-///     NorthstarLauncher gives us the auth-fix patches Northstar
-///     applies. `-vanilla` tells the launcher to skip mod loading.
+///     (with `-vanilla`): Northstar runs in its vanilla-compatibility mode,
+///     which can join official servers. `-nonorthstardll` would be a fully
+///     unmodified game.
+///
+///   * Without Maxima, the EA app must already be running and signed in:
+///     `-noOriginStartup` only skips Northstar's own "start Origin" step.
 public actor NorthstarLauncher {
     public static let shared = NorthstarLauncher()
 
@@ -49,7 +51,7 @@ public actor NorthstarLauncher {
         case titanfallNotFound
         case northstarNotFound
         case eaAuthBackboneMissing
-        case crossOverNotFound
+        case eaAppInstallingThroughSteam
 
         public var errorDescription: String? {
             switch self {
@@ -59,8 +61,8 @@ public actor NorthstarLauncher {
                 return "NorthstarLauncher.exe wasn't found in this bottle. Install Northstar before launching in Northstar mode."
             case .eaAuthBackboneMissing:
                 return "This launch needs an EA-auth backbone — install Maxima or EA Desktop from the onboarding wizard."
-            case .crossOverNotFound:
-                return "CrossOver (or its cxstart helper) wasn't found. Install CrossOver and try again."
+            case .eaAppInstallingThroughSteam:
+                return "Titanfall 2 was started through Steam once so Steam installs the EA app. Sign in to the EA app when it opens, then launch again."
             }
         }
     }
@@ -104,6 +106,8 @@ public actor NorthstarLauncher {
             targetArgs = ["-noOriginStartup", "-novid"]
             if mode == .vanilla {
                 targetArgs.append("-vanilla")
+            } else {
+                Self.clearNorthstarOptOut(in: tf2Root)
             }
         } else {
             // No Northstar in the bottle; fall back to Titanfall2.exe.
@@ -134,42 +138,33 @@ public actor NorthstarLauncher {
             )
 
         case .none:
-            // No Maxima — direct cxstart. This requires EA Desktop to
-            // be in the bottle to handle link2ea:// auth requests TF2
-            // (or NorthstarLauncher) emits during startup.
-            //
-            // Must go through CleanSpawn (not WineBackendManager.launch)
-            // for the same reason game launches via maxima-cli do:
-            // Foundation.Process from a .app freezes the Wine chain.
-            // See CleanSpawn.swift's doc-comment for the full reasoning.
+            // No Maxima: the EA app in the bottle handles auth.
             guard bottle.hasEAApp else {
+                if bottle.hasSteam {
+                    Log.info("northstar.launch", "No EA app yet; launching once through Steam to install it")
+                    try await SteamInstaller.shared.launchTitanfallThroughSteam(in: bottle)
+                    throw LaunchError.eaAppInstallingThroughSteam
+                }
                 throw LaunchError.eaAuthBackboneMissing
             }
-            guard let cxstart = await CrossOverDetector.shared.cxstartBinary() else {
-                Log.error("northstar.launch", "cxstart not found")
-                throw LaunchError.crossOverNotFound
-            }
-            let logURL = PathResolver.bottleLogFile(for: bottle)
-            try? FileManager.default.createDirectory(
-                at: logURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
+            try await EAInstaller.shared.startIfNeeded(in: bottle)
+            let pid = try await WineBackendManager.shared.spawn(
+                executable: targetExe,
+                arguments: targetArgs,
+                in: bottle,
+                workingDirectory: tf2Root
             )
-            if !FileManager.default.fileExists(atPath: logURL.path) {
-                FileManager.default.createFile(atPath: logURL.path, contents: nil)
-            }
-            let cxstartArgs = ["--bottle", bottle.name, targetExe] + targetArgs
-            Log.info(
-                "northstar.launch",
-                "CleanSpawn.spawn cxstart=\(cxstart.path) args=\(cxstartArgs.joined(separator: " "))"
-            )
-            let pid = try CleanSpawn.spawn(
-                executable: cxstart.path,
-                arguments: cxstartArgs,
-                stdinPath: "/dev/null",
-                stdoutPath: logURL.path
-            )
-            Log.info("northstar.launch", "cxstart spawned pid=\(pid)")
+            Log.info("northstar.launch", "Spawned pid=\(pid)")
             return pid
+        }
+    }
+
+    /// A `run_northstar.txt` starting with `0` silently turns NorthstarLauncher
+    /// into a vanilla launch.
+    private static func clearNorthstarOptOut(in tf2Root: String) {
+        let file = (tf2Root as NSString).appendingPathComponent("run_northstar.txt")
+        if let text = try? String(contentsOfFile: file, encoding: .utf8), text.hasPrefix("0") {
+            try? "1".write(toFile: file, atomically: true, encoding: .utf8)
         }
     }
 }

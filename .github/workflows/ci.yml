@@ -12,7 +12,7 @@ jobs:
     runs-on: macos-26
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -21,6 +21,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash Scripts/fetch-maxima-helper.sh
+
+      - name: Build Steam webhelper wrapper
+        run: |
+          brew install mingw-w64
+          bash Scripts/build-steam-wrapper.sh
+          test -f Draconis/Resources/steamwebhelper.exe
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -43,3 +49,42 @@ jobs:
               CODE_SIGN_IDENTITY="-" \
               CODE_SIGNING_REQUIRED=NO \
               clean build
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Swift and GTK 4
+        run: bash Scripts/linux-setup-swift.sh
+
+      - name: Test core
+        run: swift test --package-path Core
+
+      - name: Build and test the Linux app
+        run: |
+          swift build --package-path CrossPlatform
+          swift test --package-path CrossPlatform
+
+  windows:
+    name: Windows
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: compnerd/gha-setup-swift@v0.5.1
+        with:
+          swift-version: swift-6.4.3-release
+          swift-build: 6.4.3-RELEASE
+
+      - name: Test core
+        run: swift test --package-path Core
+
+      # Swift Build ignores platform conditions and compiles the GTK targets.
+      # Swift's Clang 21 is older than the runner's MSVC STL expects.
+      - name: Build the Windows app
+        env:
+          SCUI_DEFAULT_BACKEND: WinUIBackend
+        run: swift build --package-path CrossPlatform --build-system native -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+

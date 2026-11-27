@@ -112,7 +112,8 @@ public enum CleanSpawn {
         environment: [String: String]? = nil,
         stdinPath: String = "/dev/null",
         stdoutPath: String = "/dev/null",
-        stderrPath: String? = nil
+        stderrPath: String? = nil,
+        currentDirectory: String? = nil
     ) throws -> pid_t {
         // 1. argv — C-string array, NULL-terminated.
         let argvStrings = [executable] + arguments
@@ -157,6 +158,12 @@ public enum CleanSpawn {
         } else {
             _ = stderrTarget.withCString { path in
                 posix_spawn_file_actions_addopen(&fileActions, 2, path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            }
+        }
+
+        if let currentDirectory {
+            _ = currentDirectory.withCString { path in
+                posix_spawn_file_actions_addchdir_np(&fileActions, path)
             }
         }
 
@@ -209,14 +216,16 @@ public enum CleanSpawn {
         arguments: [String],
         environment: [String: String]? = nil,
         stdoutPath: String = "/dev/null",
-        stderrPath: String? = nil
+        stderrPath: String? = nil,
+        currentDirectory: String? = nil
     ) async throws -> Int32 {
         let pid = try spawn(
             executable: executable,
             arguments: arguments,
             environment: environment,
             stdoutPath: stdoutPath,
-            stderrPath: stderrPath
+            stderrPath: stderrPath,
+            currentDirectory: currentDirectory
         )
         return await withCheckedContinuation { (cont: CheckedContinuation<Int32, Never>) in
             DispatchQueue.global(qos: .utility).async {

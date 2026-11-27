@@ -39,9 +39,9 @@ public enum MaximaRole: String, Codable, Hashable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .none:        return "Don't install Maxima"
-        case .authOnly:    return "Install Maxima as auth handler"
-        case .fullReplace: return "Install Maxima + apply CEG fix"
+        case .none:        return "Don't install Maxima (recommended)"
+        case .authOnly:    return "Install Maxima as auth handler (experimental)"
+        case .fullReplace: return "Install Maxima + apply CEG fix (experimental)"
         }
     }
 
@@ -50,7 +50,7 @@ public enum MaximaRole: String, Codable, Hashable, Sendable, CaseIterable {
     public func detail(for source: BottleInstaller.Frontend) -> String {
         switch (self, source) {
         case (.none, .steam):
-            return "Use Steam's bundled EA Desktop for auth. May trigger \"File corruption detected\" on macOS/CrossOver because Steam-signed binaries fail Steam CEG validation under Wine."
+            return "Use the EA app Steam installs on first launch. Recent CrossOver runs the Steam copy without the old CEG \"File corruption\" error."
         case (.none, .ea):
             return "Use EA Desktop as the auth backbone. Simplest path on macOS — no CEG involved."
         case (.authOnly, .steam):
@@ -58,7 +58,7 @@ public enum MaximaRole: String, Codable, Hashable, Sendable, CaseIterable {
         case (.authOnly, .ea):
             return "Install Maxima as an alternative auth backbone. EA Desktop doesn't need to stay open while you play."
         case (.fullReplace, .steam):
-            return "Install Maxima and replace Titanfall2.exe + Titanfall2_trial.exe with the EA originals (~3 MB download). Save games and Northstar files preserved. Most reliable path on macOS/CrossOver."
+            return "Only if you still hit \"File corruption detected\": install Maxima and replace Titanfall2.exe + Titanfall2_trial.exe with the EA originals (~3 MB). Save games and Northstar files preserved."
         case (.fullReplace, .ea):
             return "EA installs don't carry CEG, so this option is the same as Auth-only here."
         case (.fullReplace, .maxima):

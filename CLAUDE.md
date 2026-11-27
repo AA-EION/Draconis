@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Draconis is a native macOS launcher for **Titanfall 2 + Northstar** built with SwiftUI and the Liquid Glass design system (macOS Tahoe 26+). It drives **CrossOver** as the only Wine backend. The codebase is Swift 5.10 / Swift 6 strict concurrency.
+Draconis is a launcher for **Titanfall 2 + Northstar**. The macOS app (`Draconis/`, SwiftUI + Liquid Glass, macOS Tahoe 26+) runs the game through **CrossOver** or **Draconis Wine** (its own open-source Wine, for players without CrossOver; see "Draconis Wine" below). The Linux and Windows app (`CrossPlatform/`, SwiftCrossUI) is described under "Linux and Windows". Both build on `Core/` (DraconisCore). The codebase is Swift 5.10 / Swift 6 strict concurrency.
 
 ## Key architecture
 
@@ -10,9 +10,9 @@ Draconis is a native macOS launcher for **Titanfall 2 + Northstar** built with S
 - Services are `actor`-isolated singletons (`NorthstarUpdater.shared`, `MaximaService.shared`, etc.). Never call actor methods from synchronous SwiftUI view bodies — use `@Published` properties on `AppEnvironment` instead.
 - `PathResolver` — all filesystem paths. Downloads go to `PathResolver.downloadsCache` (`~/Library/Application Support/Draconis/Downloads/`).
 - `DownloadCoordinator` — wraps `URLSessionDownloadDelegate` for streamed progress. Reports `fraction = -1` when `Content-Length` is absent.
-- Launches go through `WineBackendManager.shared.launch(...)` → `cxstart --bottle <name> [--wait] <exe> [args]`.
-- Short-lived Wine helpers that need an exit code (installers, uninstaller) use `WineBackendManager.shared.launchAndWait(...)`. Never call `Process.waitUntilExit()` from async code — use `ProcessRunner.runUntilExit(_:)` (handler installed before `run()`, resumes once).
-- Bottle creation goes through `WineBottleCreator.shared.createBottle(...)` → `cxbottle --create --template win10_64 --bottle <name>`. The previous CrossTie-based flow (bundled `Titanfall2.tie`) was dropped because it forcibly installed Steam, which leads to the Steam-CEG corruption documented below.
+- Every Windows program runs through `WineBackendManager`: `spawn(...)` for long-running ones (games, launchers), `launchAndWait(...)` for helpers that need an exit code (installers, `reg`). CrossOver bottles → `cxstart --bottle <name> [--wait]`; Draconis Wine prefixes → `WineEngine.run/spawn`. Both go through `CleanSpawn`.
+- Never call `Process.waitUntilExit()` from async code — use `ProcessRunner.runUntilExit(_:)` (handler installed before `run()`, resumes once).
+- Bottle creation goes through `WineBackendManager.createBottle(name:backend:)` → `WineBottleCreator` (`cxbottle --create --template win10_64 --bottle <name>` + MSync + TF2's CrossOver profile id) or `WineEngine.createPrefix`. Then `BottleSetup.prepare` installs what CrossOver's "Game Launcher Dependencies" would: VC++ latest x64/x86 + d3dcompiler_47 (pinned from mozilla/fxc2). The previous CrossTie-based flow (bundled `Titanfall2.tie`) was dropped because it forcibly installed Steam, which leads to the Steam-CEG corruption documented below.
 - **Game launches via maxima-cli go through `CleanSpawn.spawn(...)` — NOT `Foundation.Process`.** See "Why CleanSpawn" below; this is a real macOS gotcha worth knowing about.
 
 ## Why CleanSpawn (the spawning-Wine-from-a-.app problem)
@@ -34,8 +34,8 @@ Three things differ between `Foundation.Process` spawning and shell `fork → se
 The launch path is driven by **three variables**: whether Northstar is installed (`bottle.hasNorthstar`), the user's chosen mode (`vanilla` / `northstar`), and the bottle's persisted `MaximaRole` (`.none` / `.authOnly` / `.fullReplace`). The full 7-row decision matrix lives further down in this file under "Launch decision matrix" — that's the authoritative table.
 
 Two invariants that never change regardless of the row:
-1. **Never pass `-northstar` to `Titanfall2.exe`.** This Wine branch silently falls through to vanilla. Northstar always means `NorthstarLauncher.exe`.
-2. **Vanilla with Northstar installed still uses NorthstarLauncher** (with `-vanilla`). Northstar's `wsock32.dll` proxy applies engine fixes even in vanilla mode.
+1. **Never pass `-northstar` to `Titanfall2.exe` on macOS.** It needs Northstar's `wsock32.dll` proxy to load (`WINEDLLOVERRIDES=wsock32=n,b`), which the CrossOver / Draconis Wine path doesn't set, so it silently falls through to vanilla. Northstar on macOS always means `NorthstarLauncher.exe`. (On Linux, Steam copies do use `-northstar`; see "Linux and Windows".)
+2. **Vanilla with Northstar installed still uses NorthstarLauncher** (with `-vanilla`, Northstar's vanilla-compatibility mode, which can join official servers; `-nonorthstardll` would be a fully unmodified game). Northstar mode clears a `run_northstar.txt` that starts with `0` (it silently forces vanilla).
 
 ## Maxima integration (MaximaService.swift)
 
@@ -61,25 +61,53 @@ All `cxstart`-based methods pipe output to the per-bottle log file (`PathResolve
 
 ## Northstar version detection
 
-- `CrossOverDetector.readNorthstarVersion(in:)` reads `{tf2Root}/ns_version.txt` (written by the Northstar installer).
+- `GameFiles.northstarVersion(in:)` (Core) reads `Version` from `R2Northstar/mods/Northstar.Client/mod.json`, falling back to the legacy `ns_version.txt` (current releases don't ship it).
 - `WineBottle.northstarVersion: String?` populated during bottle scan.
-- `AppEnvironment.bootstrap()` auto-updates Northstar when `bottle.northstarVersion != latest.tagName`.
+- `AppEnvironment.bootstrap()` auto-updates Northstar unless `GameFiles.versionsMatch(installed:releaseTag:)`.
 
 ## Bottle / launcher detection
 
 - `WineBottle` has `hasSteam`, `hasEAApp`, `hasEpicGames`, `hasMaxima`, `hasLauncher` (= any of Steam/EA/Epic).
 - The Maxima route in `NorthstarLauncher.launch` checks `hasMaxima` first and routes through `maxima-cli launch` when present; everything else is fallback.
-- `BottleInstaller.detectStage()` uses `hasLauncher` so EA/Steam manual installs advance onboarding steps.
+- `BottleInstaller.detectStage(bottleID:)` watches only the bottle being set up (via `WineBackendManager.allBottles()`), and uses `hasLauncher` so EA/Steam manual installs advance onboarding steps.
 - "Is TF2 fully installed?" is `WineBottle.isTitanfallInstallComplete` everywhere (wizard routing + `detectStage`). It requires `FInstall.txt` only when TF2 lives at Maxima's own install root (`maximaInstallRoot`); a Steam/EA copy in a bottle that has Maxima for auth or the CEG fix never gets a marker.
 
 ## Onboarding sources
 
-`BottleInstaller.Frontend` (order matters — this is the order the wizard renders the picker, "most reliable on macOS" first):
+`BottleInstaller.Frontend`, in picker order. Every path first creates the bottle and runs `BottleSetup.prepare`.
 
-- `.maxima` — `startAutoBottleInstall` creates the bottle, then calls `MaximaService.downloadAndInstall(into:)` to install Maxima v0.12.0+. The wizard's progress page then auto-spawns `maxima.exe --install titanfall-2 --install-path "C:\Program Files (x86)\Origin Games\Titanfall2"` (PR-D, depends on Maxima-Draconis v0.12.0). User logs into EA in their host browser; Maxima downloads the game; Draconis watches for `FInstall.txt` and SIGTERMs Maxima when the install is truly done. Requires the game to be in the user's EA library.
-- `.ea` — `EAInstaller.install(into:silent:)` downloads EA's installer (`EAappInstaller.exe`). EA app handles `link2ea://` natively; simplest path on macOS when the user owns TF2 on EA.
-- `.steam` — `SteamInstaller.install(into:)` downloads `SteamSetup.exe` and runs it silently. User installs TF2 through Steam afterward. **Heads up:** Steam-installed TF2 hits CEG corruption on macOS/CrossOver; apply the Maxima fix afterward (see "CEG fix" below).
-- `.epic` — documented, marked `.available = false` (Coming soon).
+- `.ea` — silent `EAappInstaller.exe` (`EAX_LAUNCH_CLIENT=0 IGNORE_INSTALLED=1`, the args Steam/Heroic use), then the EA app is opened for sign-in + game install.
+- `.steam` — `SteamSetup.exe /S`, sets `HKCU\Software\Valve\Steam GPUAccelWebViewsV3=1` (black Steam window otherwise), then opens `steam://install/1237970`. When TF2 is installed but there's no EA app, Draconis runs `steam.exe -silent -applaunch 1237970` once: Steam's install script for TF2 installs the EA app. `NorthstarLauncher` does the same on a launch without the EA app.
+- `.epic` — Epic's TF2 (`creamhorn`) is EA-app-managed; Epic only proves ownership. `EpicService` downloads legendary 0.21.1 (GPL-3, checksum-pinned, ad-hoc signed) into `Draconis/Tools`, signs in via `https://legendary.gl/epiclogin` + `legendary auth --code` (tokens in `Draconis/Epic`, `LEGENDARY_CONFIG_PATH`), then `legendary launch creamhorn --origin --json` gives a `link2ea://…AUTH_TYPE=exchangecode…platform=epic` URI that `WineBackendManager.open` hands to the bottle's EA app. No Epic Games Launcher.
+- `.maxima` — **experimental, CrossOver only.** Installs Maxima; the progress page spawns `maxima.exe --install titanfall-2 --install-path …` and waits for `FInstall.txt`.
+
+`HeroicImporter` reuses Heroic's Epic setup (`heroic/GamesConfig/creamhorn.json`): a CrossOver bottle is just selected; a plain prefix is symlinked into `Draconis/Prefixes`.
+
+## Draconis Wine (WineEngine.swift)
+
+Open backend for players without CrossOver. Chosen after comparing Mythic (GPTK-based engine, unauthenticated HTTP — avoided), Recall and yaagl:
+- Wine: yaagl's `wine-crossover-11.0-1-osx64.tar.xz` (Wine built from CodeWeavers' CrossOver sources; x86_64 → Rosetta 2 on Apple Silicon; bundles wine-mono + gecko).
+- DXMT v0.80 **builtin** (D3D11 → Metal, needs macOS 15): its d3d11/dxgi/d3d10core/winemetal are copied into Wine's lib dirs, so no DLL overrides. Apple's D3DMetal isn't redistributable.
+- Both sha256-pinned. Installed to `Draconis/Engine/wine`, marker `engine-version` = `WineEngine.version`.
+- **Steam on Draconis Wine:** Steam's Chromium UI (`steamwebhelper`) draws nothing outside CrossOver. `SteamInstaller.runSteam` adds `-no-cef-sandbox -cef-single-process -noverifyfiles`, purges stale Chromium `Singleton*` locks, and puts `Tools/steamwebhelper-wrapper` (MIT, from notpop/steam-on-m1-wine; forces `--disable-gpu --single-process`) in front of every `bin/cef/cef.win*/steamwebhelper.exe`, Valve's binary renamed `steamwebhelper_real.exe`. Steam downloads its browser on first start, so a watcher installs the wrapper when it lands and restarts Steam. The wrapper is built by `Scripts/build-steam-wrapper.sh` (mingw-w64; CI and release install it) into `Draconis/Resources/steamwebhelper.exe`; builds without mingw skip it.
+- Program-specific environment is passed only to that program (`wineEnvironment:` on `WineBackendManager.spawn/launchAndWait`, ignored for CrossOver): `WineEngine.steamEnvironment` forces builtin `bcrypt`/`ncrypt` and disables Steam's `gameoverlayrenderer` (deadlocks DXMT games); `WineEngine.eaAppEnvironment` sets `QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu` for the EA app's Chromium. The base environment stays minimal. VC++ redists run `/passive` so their progress is visible.
+- **Drive links before first boot:** `WineEngine.createDriveLinks` makes `dosdevices/c: → ../drive_c` and `z: → /` before `wineboot -u`. This build's mountmgr otherwise hands C: to whatever volume is mounted (seen: `c: → /Volumes/Draconis` from the mounted DMG), and wineboot fails with exit 53 (`0xC0000135`, kernel32 not found). A prefix without `system32/kernel32.dll` counts as failed and is recreated.
+- **Prefix isolation (hard rule):** prefixes live only in `Draconis/Prefixes/<name>`; `WineEngine.validated` refuses any other path, and the environment is built from scratch (explicit `WINEPREFIX`, `WINEMSYNC=1`, `winemenubuilder` disabled) so a user's `WINEPREFIX` or `~/.wine` is never touched.
+
+## Shared core (Core/)
+
+SwiftPM package `DraconisCore`, used by both apps (the macOS project depends on it via `project.yml` `packages:`; `DebugLog.swift` re-exports it). Platform-neutral: `Log` (sink set by each app), `CorePaths` (macOS `~/Library/Application Support/Draconis`, Linux `$XDG_DATA_HOME/draconis`, Windows `%LOCALAPPDATA%\Draconis`), `GameFiles` (TF2 / Northstar detection; Northstar's version comes from `R2Northstar/mods/Northstar.Client/mod.json`), `NorthstarUpdater` (GitHub, Thunderstore fallback when rate-limited; removes the core mods before extracting and keeps `ns_startup_args*.txt`), `ThunderstoreClient`, `EnabledMods` (v1 `enabledmods.json`), `ZipExtractor` (ZIPFoundation; `tar.exe` on Windows), `DownloadCoordinator`, Steam `VDF` + `SteamLocator` (native, Flatpak, Snap, Windows registry; `CompatToolMapping`). `swift test --package-path Core`.
+
+## Linux and Windows (CrossPlatform/)
+
+SwiftCrossUI 0.11 app: GTK 4 on Linux, WinUI 3 on Windows. `DraconisPlatform` (library, unit-tested) holds the logic; `Sources/DraconisCross` the UI.
+
+- **Detection** (`GameLocator`): Steam libraries, Draconis prefixes (`<data>/Prefixes`), Heroic `GamesConfig/creamhorn.json`, user folders; Windows also `HKLM\SOFTWARE\Respawn\Titanfall2` and Epic manifests.
+- **Launch** (`LaunchPlanner`, pure): Steam copy → `steam -applaunch 1237970 [-vanilla] -northstar` (Steam must run it for its DRM/overlay; `-northstar` works because GE-Proton adds `wsock32=n,b` for app 1237970, otherwise the UI warns to set `WINEDLLOVERRIDES="wsock32=n,b" %command%`). Prefix copy → `umu-run NorthstarLauncher.exe -noOriginStartup [-vanilla]` with `GAMEID=umu-1237970`, `PROTONPATH`, `WINEPREFIX`, `WINEDLLOVERRIDES=wsock32=n,b` (`PROTON_VERB=runinprefix` while the EA app is already up), or plain `wine` for a Wine runner. The EA app is started first and Draconis waits for its LSX on 127.0.0.1:3216. Windows runs the files directly.
+- **Runners** (`RunnerLocator`): Steam's Protons and `compatibilitytools.d`, Heroic, Lutris, Bottles, system Wine. Downloads: GE-Proton (SHA-512 from the release), umu-launcher zipapp (pinned SHA-256).
+- **Prefix isolation** (hard rule, same as macOS): `PrefixStore` creates prefixes only under `<data>/Prefixes`; `Spawner.cleanEnvironment` strips AppImage/Flatpak variables. Inside Flatpak, host tools run through `flatpak-spawn --host`.
+- **Look**: `Theme.swift` (glass cards, `GlassButton`, `StatusPill`, `Segmented`, Lucide icons in `Resources/icons`), `NativeStyle.swift` (GTK CSS; fonts registered with fontconfig and applied by CSS class: `draconis-hero/display` Orbitron, `draconis-title/stencil` Barlow Condensed, Inter elsewhere; Mica on Windows). Gotchas: a `Button` label must not contain `.frame(maxWidth: .infinity)` (Int conversion crash) — custom controls use `onTapGesture`; GTK `button` CSS must exclude `.flat` (plain style); WinUI measures text with one default-font block, so Windows keeps Segoe UI Variable.
+- **Build/package**: `swift build --package-path CrossPlatform`; on Windows add `--build-system native` and `SCUI_DEFAULT_BACKEND=WinUIBackend` (Swift Build ignores platform conditions and compiles the GTK targets). `Scripts/package-linux.sh <ver> [--flatpak]` (Swift runtime bundled next to the binary, `RPATH=$ORIGIN`), `Scripts/package-windows.ps1`. `packaging/linux/` holds the desktop file, metainfo and Flatpak manifest (`io.github.aa_eion.Draconis`).
 
 ## CEG fix
 
@@ -103,7 +131,6 @@ Full root-cause analysis and empirical validation: see Maxima-Draconis CLAUDE.md
 ### Wizard UX still rough
 The wizard wires up the new launchers but the screen flow itself is the same multi-step state machine as before. Pending:
 - `.waitingForLauncher(bottleID)` stage between `.waitingForBottle` and `.waitingForTitanfall` so the UI can distinguish "no bottle yet" from "bottle exists, install your launcher".
-- "Run game once" confirmation step before offering Maxima install for Steam/Epic paths (currently the user has to know to do this themselves).
 - EA-library warning when picking the Maxima source — surface the requirement up front instead of letting `maxima-cli install` fail later.
 - Triggering the CEG dialog automatically when relevant (right now it's available but not auto-shown).
 
@@ -111,7 +138,10 @@ The wizard wires up the new launchers but the screen flow itself is the same mul
 Maxima supports offline play after a first successful online launch (license files in `C:/ProgramData/Maxima/Licenses/`, valid ~2 weeks). Not yet exposed in the Draconis UI.
 
 ### Epic Games path
-`BottleInstaller.Frontend.epic` is intentionally `.available = false`. Epic delivers TF2 with EA Desktop bundled the same way Steam does, so the path is likely identical to Steam-with-CEG-fix, but it hasn't been validated by anyone with an Epic copy.
+Wired end to end but not yet validated by someone with an Epic copy.
+
+### Fonts
+CrossOver's dependency set also installs core fonts and Source Han Sans. `BottleSetup` doesn't yet (needs cabextract); add if the EA app shows missing glyphs.
 
 ### SwiftUI Picker + container views gotcha
 SwiftUI's `Picker` with `.segmented` style expands container views (`HStack`, `VStack`, `Group`) into individual segments rather than treating the container as one label. `HStack { Image; Text }` inside `ForEach` produces two segments per item instead of one. **Rule:** only use plain `Text` (or `Label`) as direct children of `Picker { ForEach { } }` — never a container with multiple children.
@@ -241,32 +271,33 @@ NorthstarProton (Linux) explicitly disables the same Wine patch in their [proton
 | Northstar in bottle | Mode | `bottle.maximaRole` | Command |
 |---|---|---|---|
 | yes | vanilla | `.fullReplace` / `.authOnly` | `maxima-cli launch Origin.OFR.50.0001456 --game-path …\NorthstarLauncher.exe --game-args -noOriginStartup --game-args -vanilla` |
-| yes | vanilla | `.none` | `cxstart NorthstarLauncher.exe -noOriginStartup -vanilla` (requires `bottle.hasEAApp`) |
+| yes | vanilla | `.none` | `NorthstarLauncher.exe -noOriginStartup -vanilla` (needs the EA app) |
 | yes | northstar | `.fullReplace` / `.authOnly` | `maxima-cli launch ... --game-path …\NorthstarLauncher.exe --game-args -noOriginStartup` |
-| yes | northstar | `.none` | `cxstart NorthstarLauncher.exe -noOriginStartup` (requires `bottle.hasEAApp`) |
+| yes | northstar | `.none` | `NorthstarLauncher.exe -noOriginStartup` (needs the EA app) |
 | no | vanilla | `.fullReplace` / `.authOnly` | `maxima-cli launch ... --game-path …\Titanfall2.exe` |
-| no | vanilla | `.none` | `cxstart Titanfall2.exe` (requires `bottle.hasEAApp`) |
+| no | vanilla | `.none` | `Titanfall2.exe` (needs the EA app) |
 | no | northstar | * | `throw LaunchError.northstarNotFound` |
 
+`.none` rows run through `WineBackendManager.spawn` (cxstart or Draconis Wine) after `EAInstaller.startIfNeeded` brings the EA app's LSX (127.0.0.1:3216) up — `-noOriginStartup` skips Northstar's own Origin start, but it still needs a signed-in EA app. No EA app but Steam present → run once through Steam and ask the user to launch again. Maxima rows are CrossOver only.
+
 **Two never-broken invariants:**
-1. **Never pass `-northstar` to `Titanfall2.exe`.** This Wine branch ignores it and falls through to vanilla. Northstar always means launching `NorthstarLauncher.exe`.
-2. **Vanilla mode with Northstar installed still uses NorthstarLauncher** (with `-vanilla`). Northstar's wsock32 proxy patches engine bugs even in vanilla mode. `-vanilla` flag disables mod loading.
+1. **Never pass `-northstar` to `Titanfall2.exe` on macOS.** Without the `wsock32=n,b` override it falls through to vanilla. Northstar always means launching `NorthstarLauncher.exe`.
+2. **Vanilla mode with Northstar installed still uses NorthstarLauncher** (with `-vanilla`, Northstar's vanilla-compatibility mode).
 
 ## Architectural decisions taken (don't re-debate these)
 
 - **Maxima stays universal.** No TF2-specific knowledge in the Maxima codebase. Game-specific behavior (Northstar flags, exe names) lives in Draconis.
-- **Maxima is opt-in, not default.** Bottle can have Steam or EA alone and still launch TF2; Maxima is an opt-in role.
+- **Maxima is experimental and opt-in.** Recent CrossOver runs TF2 with the EA app and Steam copies no longer hit CEG, so the EA app is the default auth. Maxima is last in the picker and CrossOver only.
 - **`MaximaRole` is per-bottle, persisted in UserDefaults.** Read via `WineBottle.maximaRole` at launch time. Independent from `hasMaxima` (physical install state).
-- **Bottle creation via `cxbottle --create`** directly — no `.tie` file. The old crosstie forced Steam install, which we don't want.
-- **Northstar always via `NorthstarLauncher.exe`** — `-northstar` flag on `Titanfall2.exe` is broken on this Wine branch. Vanilla-with-Northstar-installed uses `-vanilla` flag on NorthstarLauncher.
+- **Bottle creation via `cxbottle --create`** directly — no `.tie` file. CrossOver's current TF2 profile isn't public; `BottleSetup` replicates its dependencies instead.
+- **Never the global Wine prefix.** Every Wine command targets a CrossOver bottle or a `Draconis/Prefixes` prefix.
+- **Northstar on macOS always via `NorthstarLauncher.exe`** — `-northstar` on `Titanfall2.exe` needs the `wsock32=n,b` override the macOS launch path doesn't set (Linux Steam copies use `-northstar` with GE-Proton). Vanilla-with-Northstar-installed uses `-vanilla` flag on NorthstarLauncher.
 - **`CleanSpawn` for cxstart, not `Foundation.Process`** — see the spawn section above. Critical for game launches.
 - **No `maxima-cli serve` integration from Draconis.** Single `maxima-cli launch` works for both vanilla and Northstar (with `--game-path NorthstarLauncher.exe`). The Maxima route in onboarding uses `maxima.exe --install <slug>` instead (Maxima-Draconis v0.12.0+).
 - **`FInstall.txt` is the truth source for "install complete".** Exe presence alone gives false positives mid-download. `BottleInstaller.detectStage` requires the marker for Maxima-installed bottles before advancing to `.done`.
 
 ## Out of scope (deferred)
 
-- **Epic Games install path.** `BottleInstaller.Frontend.epic.available = false`. Documented but not wired up.
-- **Run-game-once enforcement.** Currently informational copy in the wizard's progress step; not a blocking confirmation. Could become a `[I ran the game once]` button in a future PR.
 - **First-time bottle migration.** Existing users with pre-wizard bottles default to `maximaRole = .none` (or `.authOnly` if Maxima is physically installed). They'd need to re-run onboarding or get a settings UI to pick a role. Not blocking — they can still launch.
 - **`maxima-cli serve` mode integration.** If Maxima's launch mode ever stops working for Northstar (e.g., because Northstar's wsock32 emits link2ea independently and needs `/authorize`), we'd add `MaximaService.startServe(in:)` + a poll-for-port helper. Not needed yet.
 

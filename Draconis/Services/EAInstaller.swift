@@ -93,7 +93,8 @@ public actor EAInstaller {
     public func install(into bottle: WineBottle, silent: Bool = false) async throws {
         let installer = try await ensureInstallerDownloaded()
 
-        let args = silent ? ["/S"] : []
+        // The arguments Steam's and Heroic's EA app installs pass.
+        let args = silent ? ["EAX_LAUNCH_CLIENT=0", "IGNORE_INSTALLED=1"] : []
         do {
             let status = try await WineBackendManager.shared.launchAndWait(
                 executable: installer.path,
@@ -109,5 +110,45 @@ public actor EAInstaller {
             Log.error("ea.install", "\(error)")
             throw InstallError.launchFailed(error.localizedDescription)
         }
+    }
+
+    /// EA's local service (LSX) that Titanfall 2 and Northstar talk to.
+    public static let lsxPort: UInt16 = 3216
+
+    public nonisolated static func isLSXListening() -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = lsxPort.bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        return withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
+    }
+
+    /// Start the EA app in the bottle unless its LSX service is already up, and
+    /// wait for it. `-noOriginStartup` means Northstar won't start it itself,
+    /// yet still needs a signed-in EA app to authenticate.
+    public func startIfNeeded(in bottle: WineBottle, timeout: Duration = .seconds(120)) async throws {
+        if Self.isLSXListening() { return }
+        guard let exe = CrossOverDetector.locateEAApp(in: PathResolver.driveC(in: bottle.prefixURL)) else {
+            throw InstallError.launchFailed("The EA app isn't installed in “\(bottle.name)”")
+        }
+        Log.info("ea.app", "Starting the EA app…")
+        try await WineBackendManager.shared.spawn(
+            executable: exe.path, in: bottle, wineEnvironment: WineEngine.eaAppEnvironment)
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if Self.isLSXListening() {
+                Log.ok("ea.app", "EA app is running")
+                return
+            }
+            try await Task.sleep(for: .seconds(2))
+        }
+        throw InstallError.launchFailed("The EA app didn't come up. Open it, sign in, then launch again.")
     }
 }

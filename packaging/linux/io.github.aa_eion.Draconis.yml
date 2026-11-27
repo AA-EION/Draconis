@@ -1,0 +1,36 @@
+# Flatpak manifest. Packages the prebuilt Linux build (with its Swift
+# runtime libraries) on the GNOME runtime; Steam, umu-launcher, Proton and Wine run
+# on the host through flatpak-spawn.
+app-id: io.github.aa_eion.Draconis
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: draconis
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Steam libraries, Wine prefixes and Proton builds live in the home folder
+  # and on other drives.
+  - --filesystem=home
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # Steam, umu-run, Proton and Wine run on the host.
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  - name: draconis
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/draconis /app/bin
+      - cp -r draconis *.so DraconisCross_Draconis.bundle /app/lib/draconis/
+      - ln -s /app/lib/draconis/draconis /app/bin/draconis
+      - install -Dm644 io.github.aa_eion.Draconis.desktop /app/share/applications/io.github.aa_eion.Draconis.desktop
+      - install -Dm644 io.github.aa_eion.Draconis.metainfo.xml /app/share/metainfo/io.github.aa_eion.Draconis.metainfo.xml
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.aa_eion.Draconis.png
+      - install -Dm644 -t /app/share/licenses/draconis LICENSE THIRD-PARTY-NOTICES.md
+    sources:
+      - type: dir
+        path: ../../build/linux/payload

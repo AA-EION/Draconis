@@ -1,0 +1,14 @@
+[Application]
+name=io.github.aa_eion.Draconis
+runtime=org.gnome.Platform/x86_64/49
+sdk=org.gnome.Sdk/x86_64/49
+command=draconis
+
+[Context]
+shared=network;ipc;
+sockets=x11;wayland;fallback-x11;
+devices=dri;
+filesystems=home;/media;/mnt;/run/media;
+
+[Session Bus Policy]
+org.freedesktop.Flatpak=talk

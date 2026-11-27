@@ -15,6 +15,28 @@ public struct VRRuntimeStatus: Equatable, Sendable {
 
     public var anyRunning: Bool { steamVRRunning || otherRunning != nil }
 
+    public init(steamVRRunning: Bool, steamVRInstalled: Bool, otherRunning: String? = nil, activeOpenXR: String? = nil) {
+        self.steamVRRunning = steamVRRunning
+        self.steamVRInstalled = steamVRInstalled
+        self.otherRunning = otherRunning
+        self.activeOpenXR = activeOpenXR
+    }
+
+    /// What "Launch in VR" does before starting the game.
+    public enum Plan: Equatable, Sendable { case ready, startSteamVR, startActive(String), noRuntime }
+
+    public var plan: Plan {
+        if anyRunning { return .ready }
+        guard let active = activeOpenXR, !active.localizedCaseInsensitiveContains("steamvr") else {
+            return steamVRInstalled ? .startSteamVR : .noRuntime
+        }
+        #if os(Windows)
+        return .ready // Quest Link, Virtual Desktop and others can't be seen from here
+        #else
+        return .startActive(active)
+        #endif
+    }
+
     public static let steamVRAppID = "250820"
 
     public static func detect(steam: SteamInstall?) -> VRRuntimeStatus {
@@ -91,9 +113,21 @@ public enum VCRuntime {
         return version.lexicographicallyPrecedes([14, 40]) == false
     }
 
+    public static let missingTool = "Titanfall 2 VR needs cabextract to unpack Microsoft's VC++ runtime into the game's prefix. Install it (Ubuntu, Debian: sudo apt install cabextract; Fedora: sudo dnf install cabextract; Arch: sudo pacman -S cabextract), then try again."
+
+    /// Checked before the VR install starts, so it doesn't fail at the end.
+    public static func canInstall(prefix: URL?) -> Bool {
+        if let prefix, newEnough(version(of: prefix.appendingPathComponent("drive_c/windows/system32/msvcp140.dll"))) { return true }
+        if newEnough(version(of: cache.appendingPathComponent("msvcp140.dll"))) { return true }
+        return Executables.find("cabextract") != nil || Executables.find("bsdtar") != nil
+    }
+
     /// Make sure the prefix's system32 has a new enough runtime.
     public static func ensure(prefix: URL) async throws {
         let system32 = prefix.appendingPathComponent("drive_c/windows/system32")
+        guard FileManager.default.fileExists(atPath: system32.path) else {
+            throw LaunchFailureMessage("Titanfall 2's Proton prefix isn't set up yet. Start Titanfall 2 once from Steam, close it, then try again.")
+        }
         if newEnough(version(of: system32.appendingPathComponent("msvcp140.dll"))) { return }
         if !newEnough(version(of: cache.appendingPathComponent("msvcp140.dll"))) { try await unpack() }
         for dll in dlls {
@@ -134,7 +168,7 @@ public enum VCRuntime {
                 start = i + 4
             }
         } else {
-            throw LaunchFailureMessage("Titanfall 2 VR needs a newer VC++ runtime in the game's prefix. Install cabextract (or bsdtar) with your package manager and try again.")
+            throw LaunchFailureMessage(missingTool)
         }
         guard fm.fileExists(atPath: payload.path) else { throw LaunchFailureMessage("Couldn't unpack vc_redist.x64.exe.") }
         if let cab = Executables.find("cabextract") {
@@ -165,6 +199,29 @@ public enum LinuxSteamVR {
     public static var state: URL { CorePaths.directory("VR") }
     public static var wrapper: URL { CorePaths.directory("bin").appendingPathComponent("draconis-steam-launch") }
     public static let launchFlag = "-draconis-vr", setupFlag = "-draconis-vr-setup"
+    static var launchLog: URL { state.appendingPathComponent("launch.log") }
+
+    public static func launchLogSize() -> UInt64 {
+        ((try? FileManager.default.attributesOfItem(atPath: launchLog.path))?[.size] as? NSNumber)?.uint64Value ?? 0
+    }
+
+    public enum LaunchStep: Equatable, Sendable { case startingEA, signedIn, starting, failed(String) }
+
+    /// The furthest step the wrapper logged since `offset`.
+    public static func launchStep(since offset: UInt64) -> LaunchStep? {
+        guard let handle = try? FileHandle(forReadingFrom: launchLog) else { return nil }
+        defer { try? handle.close() }
+        try? handle.seek(toOffset: offset)
+        let text = String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self)
+        var step: LaunchStep?
+        for line in text.split(whereSeparator: \.isNewline) {
+            if let range = line.range(of: "ERROR: ") { return .failed(String(line[range.upperBound...])) }
+            if line.contains("Starting the EA app") { step = .startingEA }
+            if line.contains("EA app signed in") { step = .signedIn }
+            if line.contains("Launching Titanfall 2 VR") { step = .starting }
+        }
+        return step
+    }
 
     /// Copy the wrapper out of the app bundle (it moves with each update).
     public static func installWrapper(from bundled: URL) throws {

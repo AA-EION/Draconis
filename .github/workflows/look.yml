@@ -46,6 +46,13 @@ jobs:
           echo "{\"Name\":\"Northstar.Client\",\"Version\":\"${tag#v}\"}" > "$game/R2Northstar/mods/Northstar.Client/mod.json"
           defaults write org.draconis.launcher privacyConsentAccepted -bool true
           defaults write org.draconis.launcher showConsole -bool true
+          # The window's behind-window blur falls back to flat grey when transparency is reduced.
+          echo "reduceTransparency before: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)" | tee shots/transparency.txt
+          defaults write com.apple.universalaccess reduceTransparency -bool false 2>&1 | tee -a shots/transparency.txt || true
+          sudo defaults write /Library/Preferences/com.apple.universalaccess reduceTransparency -bool false 2>&1 | tee -a shots/transparency.txt || true
+          echo "after: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)" | tee -a shots/transparency.txt
+          system_profiler SPDisplaysDataType >> shots/transparency.txt 2>&1 || true
+          killall Dock SystemUIServer 2>/dev/null || true
           sleep 3
           screencapture -x shots/desktop.png
 

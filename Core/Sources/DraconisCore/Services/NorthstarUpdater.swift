@@ -48,6 +48,12 @@ public actor NorthstarUpdater {
         public var phase: Phase
         public var fraction: Double           // 0…1, -1 if indeterminate
         public var detail: String
+
+        public init(phase: Phase, fraction: Double, detail: String) {
+            self.phase = phase
+            self.fraction = fraction
+            self.detail = detail
+        }
     }
 
     public typealias ProgressHandler = @Sendable (Progress) -> Void

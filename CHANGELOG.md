@@ -8,6 +8,13 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.13.1] — 2026-11-27
+
+### Fixed
+- **The Linux .deb and .rpm wouldn't install** on distributions that renamed libxml2 (Debian 13, Ubuntu 25.10: "draconis depends on libxml2 but it is not installable"). Draconis never used it; the packages now only require GTK 4 and libcurl.
+
+---
+
 ## [0.13.0] — 2026-11-27
 
 Works with [Maxima-Draconis v0.17.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.17.0).

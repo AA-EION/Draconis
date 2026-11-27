@@ -81,6 +81,9 @@ jobs:
       - name: Test core
         run: swift test --package-path Core
 
+      # Swift Build ignores platform conditions and compiles the GTK targets.
       - name: Build the Windows app
-        run: swift build --package-path CrossPlatform
+        env:
+          SCUI_DEFAULT_BACKEND: WinUIBackend
+        run: swift build --package-path CrossPlatform --build-system native
 

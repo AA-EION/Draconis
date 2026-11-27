@@ -449,7 +449,11 @@ final class AppModel {
     // MARK: - Console
 
     func append(_ level: LogLevel, _ scope: String, _ message: String) {
-        console.append(ConsoleLine(time: Date(), level: level, scope: scope, message: message))
+        let line = ConsoleLine(time: Date(), level: level, scope: scope, message: message)
+        console.append(line)
+        #if os(Linux)
+        FileHandle.standardError.write(Data("\(line.time.formatted(date: .omitted, time: .standard)) \(level.rawValue.uppercased()) \(scope): \(message)\n".utf8))
+        #endif
         if console.count > 2000 { console.removeFirst(console.count - 2000) }
     }
 

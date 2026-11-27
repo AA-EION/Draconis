@@ -29,7 +29,7 @@ struct Settings: Codable, Equatable {
 }
 
 enum AppInfo {
-    static let version = "0.13.0"
+    static let version = "0.13.1"
     static let releasesAPI = URL(string: "https://api.github.com/repos/AA-EION/Draconis/releases/latest")!
     static let releasesPage = URL(string: "https://github.com/AA-EION/Draconis/releases/latest")!
     static let issuesPage = URL(string: "https://github.com/AA-EION/Draconis/issues/new")!

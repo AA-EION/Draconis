@@ -75,7 +75,7 @@ Package: draconis
 Version: $VERSION
 Architecture: amd64
 Maintainer: AA-EION <noreply@github.com>
-Depends: libgtk-4-1 (>= 4.6), libcurl4t64 | libcurl4, libxml2
+Depends: libgtk-4-1 (>= 4.6), libcurl4t64 | libcurl4
 Recommends: steam | umu-launcher
 Section: games
 Priority: optional
@@ -96,7 +96,7 @@ Release: 1
 Summary: Titanfall 2 and Northstar launcher
 License: GPL-3.0-or-later
 URL: https://github.com/AA-EION/Draconis
-Requires: gtk4 >= 4.6, libcurl, libxml2
+Requires: gtk4 >= 4.6, libcurl
 AutoReqProv: no
 %description
 Installs and updates Northstar, manages Thunderstore mods, browses servers and

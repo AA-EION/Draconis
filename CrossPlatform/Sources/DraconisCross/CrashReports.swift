@@ -12,16 +12,45 @@ enum CrashReports {
 
     static func enable() {
         #if os(Linux)
-        guard ProcessInfo.processInfo.environment["SWIFT_BACKTRACE"] == nil,
-              let exe = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe")
-        else { return }
-        let backtracer = URL(fileURLWithPath: exe).deletingLastPathComponent().appendingPathComponent("swift-backtrace-static")
-        guard FileManager.default.isExecutableFile(atPath: backtracer.path) else { return }
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        setenv("SWIFT_BACKTRACE", "enable=yes,interactive=no,swift-backtrace=\(backtracer.path),output-to=\(folder.path)", 1)
-        execv(exe, CommandLine.unsafeArgv)
+        let tracing = ProcessInfo.processInfo.environment["SWIFT_BACKTRACE"] != nil
+        if !tracing, let exe = try? FileManager.default.destinationOfSymbolicLink(atPath: "/proc/self/exe") {
+            let backtracer = URL(fileURLWithPath: exe).deletingLastPathComponent().appendingPathComponent("swift-backtrace-static")
+            if FileManager.default.isExecutableFile(atPath: backtracer.path) {
+                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                setenv("SWIFT_BACKTRACE", "enable=yes,interactive=no,swift-backtrace=\(backtracer.path),output-to=\(folder.path)", 1)
+                execv(exe, CommandLine.unsafeArgv)
+            }
+        }
+        // The backtracer is our child; with Yama's ptrace_scope 1 (Ubuntu's
+        // default) only ancestors may read a process, so it wrote nothing.
+        if tracing { allowTracing() }
+        if isatty(STDERR_FILENO) == 0 { captureOutput() }
         #endif
     }
+
+    #if os(Linux)
+    static func allowTracing() {
+        typealias Prctl = @convention(c) (Int32, UInt, UInt, UInt, UInt) -> Int32
+        guard let symbol = dlsym(nil, "prctl") else { return }
+        let prctl = unsafeBitCast(symbol, to: Prctl.self)
+        _ = prctl(0x5961_6D61, UInt.max, 0, 0, 0) // PR_SET_PTRACER, PR_SET_PTRACER_ANY
+    }
+
+    /// Started from a desktop launcher, stderr goes nowhere useful; keep it
+    /// (Swift's fatal error messages, the console) in Logs/draconis.log.
+    static func captureOutput() {
+        let logs = CorePaths.logs
+        let log = logs.appendingPathComponent("draconis.log")
+        let previous = logs.appendingPathComponent("draconis.previous.log")
+        try? FileManager.default.removeItem(at: previous)
+        try? FileManager.default.moveItem(at: log, to: previous)
+        let fd = open(log.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { return }
+        dup2(fd, STDOUT_FILENO)
+        dup2(fd, STDERR_FILENO)
+        close(fd)
+    }
+    #endif
 
     /// Reports from earlier runs, newest first.
     static func previous() -> [URL] {

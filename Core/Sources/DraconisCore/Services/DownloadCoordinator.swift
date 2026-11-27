@@ -4,7 +4,10 @@ import FoundationNetworking
 #endif
 
 /// URLSessionDownloadDelegate bridge that exposes per-chunk progress to an
-/// async caller.
+/// async caller. Every download shares one session that's never invalidated:
+/// on Linux, invalidating a session from its own delegate callback frees
+/// libcurl's handle while it's still in use and crashes the app
+/// ("_MultiHandle deallocated with non-zero retain count").
 public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
 
     public typealias Progress = NorthstarUpdater.Progress
@@ -20,32 +23,48 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @u
         }
     }
 
-    private let url: URL
-    private let progress: ProgressHandler?
-    private var continuation: CheckedContinuation<URL, Error>?
-
-    init(url: URL, progress: ProgressHandler?) {
-        self.url = url
-        self.progress = progress
+    private struct Job {
+        let progress: ProgressHandler?
+        let continuation: CheckedContinuation<URL, Error>
     }
+
+    private static let shared = DownloadCoordinator()
+    private let lock = NSLock()
+    private var jobs: [Int: Job] = [:]
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60
+        config.httpAdditionalHeaders = ["User-Agent": "Draconis-Launcher"]
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
 
     /// One-shot async download with progress.
     public static func download(
         from url: URL, progress: ProgressHandler? = nil
     ) async throws -> URL {
-        let coordinator = DownloadCoordinator(url: url, progress: progress)
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 60
-        config.httpAdditionalHeaders = ["User-Agent": "Draconis-Launcher"]
-        let session = URLSession(
-            configuration: config,
-            delegate: coordinator,
-            delegateQueue: nil
-        )
-        return try await withCheckedThrowingContinuation { cc in
-            coordinator.continuation = cc
-            session.downloadTask(with: url).resume()
+        try await shared.start(url, progress: progress)
+    }
+
+    private func start(_ url: URL, progress: ProgressHandler?) async throws -> URL {
+        try await withCheckedThrowingContinuation { cc in
+            lock.lock()
+            let task = session.downloadTask(with: url)
+            jobs[task.taskIdentifier] = Job(progress: progress, continuation: cc)
+            lock.unlock()
+            task.resume()
         }
+    }
+
+    private func job(_ task: URLSessionTask) -> Job? {
+        lock.lock(); defer { lock.unlock() }
+        return jobs[task.taskIdentifier]
+    }
+
+    private func finish(_ task: URLSessionTask, _ result: Result<URL, Error>) {
+        lock.lock()
+        let job = jobs.removeValue(forKey: task.taskIdentifier)
+        lock.unlock()
+        job?.continuation.resume(with: result)
     }
 
     // MARK: - URLSessionDownloadDelegate
@@ -61,15 +80,16 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @u
         // In that case report indeterminate progress showing only downloaded bytes.
         let unknown = totalBytesExpectedToWrite == NSURLSessionTransferSizeUnknown
                    || totalBytesExpectedToWrite <= 0
+        guard let progress = job(downloadTask)?.progress else { return }
         if unknown {
-            progress?(Progress(
+            progress(Progress(
                 phase: .downloading,
                 fraction: -1,
                 detail: Self.bytes(totalBytesWritten)
             ))
         } else {
             let frac = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-            progress?(Progress(
+            progress(Progress(
                 phase: .downloading,
                 fraction: frac,
                 detail: "\(Self.bytes(totalBytesWritten)) / \(Self.bytes(totalBytesExpectedToWrite))"
@@ -83,8 +103,7 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @u
         didFinishDownloadingTo location: URL
     ) {
         if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            continuation?.resume(throwing: DLError.badResponse(http.statusCode))
-            continuation = nil
+            finish(downloadTask, .failure(DLError.badResponse(http.statusCode)))
             return
         }
         // We have to move the file out of the temp location BEFORE returning,
@@ -93,11 +112,10 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @u
             .appendingPathComponent(UUID().uuidString)
         do {
             try FileManager.default.moveItem(at: location, to: tmp)
-            continuation?.resume(returning: tmp)
+            finish(downloadTask, .success(tmp))
         } catch {
-            continuation?.resume(throwing: error)
+            finish(downloadTask, .failure(error))
         }
-        continuation = nil
     }
 
     public func urlSession(
@@ -105,12 +123,8 @@ public final class DownloadCoordinator: NSObject, URLSessionDownloadDelegate, @u
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
-        // didFinishDownloadingTo already resumed; this catches errors only.
-        if let error, continuation != nil {
-            continuation?.resume(throwing: error)
-            continuation = nil
-        }
-        session.finishTasksAndInvalidate()
+        // didFinishDownloadingTo already resumed a successful download.
+        finish(task, .failure(error ?? URLError(.unknown)))
     }
 
     private static func bytes(_ n: Int64) -> String {

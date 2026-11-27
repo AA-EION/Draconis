@@ -8,6 +8,17 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.14.2] — 2026-11-27
+
+### Fixed
+- **Linux: the app closed during downloads** (the VR mod, Northstar, mods). Each download had its own network session, closed from inside its own completion callback. On Linux that can free libcurl's handle while it's still in use (`_MultiHandle deallocated with non-zero retain count`). All downloads now share one session that stays open.
+- **Linux: crash reports were never written on Ubuntu.** Ubuntu only lets a process's ancestors read its memory, and Swift's crash reporter runs as Draconis's child, so it gave up. Draconis now allows it.
+
+### Added
+- **Linux:** when started from the desktop, Draconis keeps its console and error output in `Logs/draconis.log` (the previous run in `draconis.previous.log`).
+
+---
+
 ## [0.14.1] — 2026-11-27
 
 ### Fixed

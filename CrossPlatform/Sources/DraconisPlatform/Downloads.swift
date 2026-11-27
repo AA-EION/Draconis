@@ -3,7 +3,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if canImport(Crypto)
 import Crypto
+#endif
 
 /// Tools Draconis fetches for Linux: umu-launcher and GE-Proton.
 public enum RunnerDownloads {
@@ -120,6 +122,7 @@ public enum RunnerDownloads {
     }
 
     static func digest(_ url: URL, sha512: Bool) throws -> String {
+        #if canImport(Crypto)
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         var h512 = SHA512()
@@ -129,5 +132,8 @@ public enum RunnerDownloads {
         }
         let bytes: [UInt8] = sha512 ? Array(h512.finalize()) : Array(h256.finalize())
         return bytes.map { String(format: "%02x", $0) }.joined()
+        #else
+        throw DownloadError.checksum(url.lastPathComponent)
+        #endif
     }
 }

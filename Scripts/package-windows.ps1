@@ -7,9 +7,11 @@ Set-Location (Join-Path $PSScriptRoot '..')
 $settings = 'CrossPlatform/Sources/DraconisCross/Settings.swift'
 (Get-Content $settings) -replace 'static let version = "[^"]*"', "static let version = `"$Version`"" | Set-Content $settings
 
-# Swift Build ignores platform conditions and compiles the GTK targets.
+# Swift Build ignores platform conditions and compiles the GTK targets;
+# Swift's Clang 21 is older than the runner's MSVC STL expects.
 $env:SCUI_DEFAULT_BACKEND = 'WinUIBackend'
-$build = @('-c', 'release', '--package-path', 'CrossPlatform', '--build-system', 'native')
+$build = @('-c', 'release', '--package-path', 'CrossPlatform', '--build-system', 'native',
+           '-Xcxx', '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH')
 swift build @build --product Draconis
 if ($LASTEXITCODE -ne 0) { throw "swift build failed" }
 $bin = (swift build @build --show-bin-path).Trim()

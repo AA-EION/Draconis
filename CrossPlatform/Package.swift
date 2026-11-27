@@ -14,7 +14,8 @@ let package = Package(
             name: "DraconisPlatform",
             dependencies: [
                 .product(name: "DraconisCore", package: "Core"),
-                .product(name: "Crypto", package: "swift-crypto"),
+                // Only Linux downloads runners; BoringSSL's C++ doesn't build with Swift's Clang against current MSVC headers.
+                .product(name: "Crypto", package: "swift-crypto", condition: .when(platforms: [.linux])),
             ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

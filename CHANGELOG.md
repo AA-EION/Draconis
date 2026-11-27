@@ -8,6 +8,13 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.14.1] — 2026-11-27
+
+### Fixed
+- **Linux: random crashes, most often while installing the VR mod or a mod.** Draconis checks whether SteamVR, Steam or the game is running by reading each process's command line in `/proc`. Foundation returned corrupt data for long command lines (Steam's browser processes have them), and decoding it crashed the app. Those files are now read directly.
+
+---
+
 ## [0.14.0] — 2026-11-27
 
 ### Added

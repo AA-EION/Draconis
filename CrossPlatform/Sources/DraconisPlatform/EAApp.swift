@@ -54,10 +54,9 @@ public enum HostProcesses {
             let out = (try? Spawner.capture("/usr/bin/flatpak-spawn", ["--host", "ps", "-eo", "args"])) ?? ""
             return names.contains { out.contains($0) }
         }
-        let fm = FileManager.default
-        for pid in (try? fm.contentsOfDirectory(atPath: "/proc")) ?? [] where pid.allSatisfy(\.isNumber) {
-            guard let data = fm.contents(atPath: "/proc/\(pid)/cmdline") else { continue }
-            let line = String(decoding: data, as: UTF8.self)
+        for pid in pids() {
+            guard let bytes = procFile(pid, "cmdline") else { continue }
+            let line = String(decoding: bytes, as: UTF8.self)
             if names.contains(where: line.contains) { return true }
         }
         return false
@@ -73,16 +72,37 @@ public enum HostProcesses {
             let out = (try? Spawner.capture("/usr/bin/flatpak-spawn", ["--host", "ps", "-eo", "comm"])) ?? ""
             return out.split(separator: "\n").contains { $0.trimmingCharacters(in: .whitespaces) == name }
         }
-        let fm = FileManager.default
-        for pid in (try? fm.contentsOfDirectory(atPath: "/proc")) ?? [] where pid.allSatisfy(\.isNumber) {
-            guard let data = fm.contents(atPath: "/proc/\(pid)/comm") else { continue }
-            if String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) == name { return true }
+        for pid in pids() {
+            guard let bytes = procFile(pid, "comm") else { continue }
+            if String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) == name { return true }
         }
         return false
         #else
         return false
         #endif
     }
+
+    #if os(Linux)
+    static func pids() -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: "/proc")) ?? []).filter { $0.allSatisfy(\.isNumber) }
+    }
+
+    /// Foundation's file reading returns corrupt Data for long /proc files
+    /// (size 0 in stat), and decoding it crashes; read them with read(2).
+    static func procFile(_ pid: String, _ name: String) -> [UInt8]? {
+        let fd = open("/proc/\(pid)/\(name)", O_RDONLY | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var bytes: [UInt8] = []
+        var chunk = [UInt8](repeating: 0, count: 16384)
+        while true {
+            let n = chunk.withUnsafeMutableBytes { read(fd, $0.baseAddress, $0.count) }
+            if n < 0, errno == EINTR { continue }
+            guard n > 0 else { return n == 0 ? bytes : nil }
+            bytes.append(contentsOf: chunk[0..<n])
+        }
+    }
+    #endif
 }
 
 /// Is the game running? Steam starts `Titanfall2.exe`; prefix launches run

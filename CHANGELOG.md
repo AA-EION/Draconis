@@ -7,18 +7,28 @@ All notable changes to Draconis are documented here.
 ## [Unreleased]
 
 ### Added
+- **Draconis for Linux and Windows.** The same screens as the macOS app (Play, Mods, Servers, Console, Settings) and its look: glass cards, status pills, capsule buttons, Orbitron / Barlow Condensed / Inter on Linux, Mica on Windows. Built with [SwiftCrossUI](https://github.com/moreSwift/swift-cross-ui) (GTK 4 / WinUI 3) on a core shared with the Mac app.
+  - **Linux:** finds Titanfall 2 in Steam (native, Flatpak, Snap and every library folder), Heroic, Draconis's own prefixes and folders you add. Steam copies start through Steam (`-northstar` for Northstar, with a warning when Steam's Proton isn't GE-Proton and `wsock32` isn't overridden); other copies run `NorthstarLauncher.exe -noOriginStartup` through umu-launcher + Proton or plain Wine, after starting the EA app in the prefix. Runners: Steam's Protons, GE-Proton (one-click, SHA-512-checked), Heroic / Lutris / Bottles builds, system Wine. Draconis can create a prefix with the EA app, only under its own data folder.
+  - **Windows:** finds Steam, EA app and Epic copies and runs the game directly.
+  - Packages: AppImage, deb, rpm, Flatpak and tar.gz for Linux; a zip for Windows. Every release builds all three platforms.
+- When GitHub's API is rate-limited, Northstar updates come from Thunderstore instead.
 - **Draconis Wine — play without CrossOver.** A free, open-source Wine backend: `wine-crossover` 11.0 (built from CodeWeavers' published sources) plus DXMT 0.80 (Direct3D 11 → Metal), downloaded once (~450 MB, checksum-pinned). Each game gets its own prefix under `~/Library/Application Support/Draconis/Prefixes/`; every command gets an explicit `WINEPREFIX`, never the global `~/.wine`. Pick it on the first wizard page.
 - **Epic Games copies.** Sign in to Epic in your browser (through the open-source legendary CLI). Draconis then hands Titanfall 2 to the bottle's EA app, which links the account and downloads the game. No Epic launcher needed.
 - **Import from Heroic.** If the Heroic Games Launcher already set up the Epic copy, the wizard reuses that bottle or prefix.
 - **Bottle dependencies like CrossOver's own Titanfall 2 install:** the latest Visual C++ runtimes and d3dcompiler_47. CrossOver bottles also get MSync and Titanfall 2's CrossOver profile id.
 
 ### Changed
+- Northstar's version is read from `Northstar.Client/mod.json` (current releases don't ship `ns_version.txt`). Updates remove the old core mods first and keep `ns_startup_args*.txt`.
+- Enabling and disabling mods writes the current `enabledmods.json` format (`"Version": 1`, per-version entries).
+- Server names no longer show Source colour codes.
 - **Maxima is experimental.** The EA app, Steam and Epic come first in the wizard. Maxima is listed last and only works in CrossOver bottles.
 - **Steam path:** after Steam installs, Steam opens on Titanfall 2's install page. Once the game is installed, Draconis runs it once through Steam so Steam installs the EA app. A launch without the EA app does the same.
 - Launches without Maxima start the EA app if needed and wait until it's running before starting the game.
 - Northstar mode clears a `run_northstar.txt` that would silently force vanilla.
 
 ### Fixed
+- Third-party licences: Orbitron's OFL now ships with the app; DXMT is credited as LGPL-2.1-or-later (it was listed as MIT). See `THIRD-PARTY-NOTICES.md`.
+- Downloads that return an HTTP error no longer leave a broken file behind.
 - **Steam's window stayed empty with Draconis Wine** (Dock icon, no window). Steam now runs its built-in browser without the GPU through a small wrapper, the fix from [steam-on-m1-wine](https://github.com/notpop/steam-on-m1-wine) (MIT). The EA app's browser also runs without the GPU there.
 - Visual C++ installs now show their progress windows instead of running invisibly. One that stalls (Wine's installer can hang) is stopped after 10 minutes and setup carries on; Wine has its own copy of those libraries.
 - **Creating a Draconis Wine prefix failed (exit 53)** when a disk image was mounted, such as the Draconis DMG: Wine gave drive C: to that volume instead of the prefix. Draconis now links C: and Z: before Wine's first start, and recreates a prefix left broken by this. Steam's and the EA app's Wine settings also apply only to those programs now.

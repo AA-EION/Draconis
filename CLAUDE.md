@@ -2,7 +2,7 @@
 
 ## Project overview
 
-Draconis is a native macOS launcher for **Titanfall 2 + Northstar** built with SwiftUI and the Liquid Glass design system (macOS Tahoe 26+). It runs the game through **CrossOver** or **Draconis Wine** (its own open-source Wine, for players without CrossOver; see "Draconis Wine" below). The codebase is Swift 5.10 / Swift 6 strict concurrency.
+Draconis is a launcher for **Titanfall 2 + Northstar**. The macOS app (`Draconis/`, SwiftUI + Liquid Glass, macOS Tahoe 26+) runs the game through **CrossOver** or **Draconis Wine** (its own open-source Wine, for players without CrossOver; see "Draconis Wine" below). The Linux and Windows app (`CrossPlatform/`, SwiftCrossUI) is described under "Linux and Windows". Both build on `Core/` (DraconisCore). The codebase is Swift 5.10 / Swift 6 strict concurrency.
 
 ## Key architecture
 
@@ -34,7 +34,7 @@ Three things differ between `Foundation.Process` spawning and shell `fork → se
 The launch path is driven by **three variables**: whether Northstar is installed (`bottle.hasNorthstar`), the user's chosen mode (`vanilla` / `northstar`), and the bottle's persisted `MaximaRole` (`.none` / `.authOnly` / `.fullReplace`). The full 7-row decision matrix lives further down in this file under "Launch decision matrix" — that's the authoritative table.
 
 Two invariants that never change regardless of the row:
-1. **Never pass `-northstar` to `Titanfall2.exe`.** This Wine branch silently falls through to vanilla. Northstar always means `NorthstarLauncher.exe`.
+1. **Never pass `-northstar` to `Titanfall2.exe` on macOS.** It needs Northstar's `wsock32.dll` proxy to load (`WINEDLLOVERRIDES=wsock32=n,b`), which the CrossOver / Draconis Wine path doesn't set, so it silently falls through to vanilla. Northstar on macOS always means `NorthstarLauncher.exe`. (On Linux, Steam copies do use `-northstar`; see "Linux and Windows".)
 2. **Vanilla with Northstar installed still uses NorthstarLauncher** (with `-vanilla`, Northstar's vanilla-compatibility mode, which can join official servers; `-nonorthstardll` would be a fully unmodified game). Northstar mode clears a `run_northstar.txt` that starts with `0` (it silently forces vanilla).
 
 ## Maxima integration (MaximaService.swift)
@@ -61,9 +61,9 @@ All `cxstart`-based methods pipe output to the per-bottle log file (`PathResolve
 
 ## Northstar version detection
 
-- `CrossOverDetector.readNorthstarVersion(in:)` reads `{tf2Root}/ns_version.txt` (written by the Northstar installer).
+- `GameFiles.northstarVersion(in:)` (Core) reads `Version` from `R2Northstar/mods/Northstar.Client/mod.json`, falling back to the legacy `ns_version.txt` (current releases don't ship it).
 - `WineBottle.northstarVersion: String?` populated during bottle scan.
-- `AppEnvironment.bootstrap()` auto-updates Northstar when `bottle.northstarVersion != latest.tagName`.
+- `AppEnvironment.bootstrap()` auto-updates Northstar unless `GameFiles.versionsMatch(installed:releaseTag:)`.
 
 ## Bottle / launcher detection
 
@@ -93,6 +93,21 @@ Open backend for players without CrossOver. Chosen after comparing Mythic (GPTK-
 - Program-specific environment is passed only to that program (`wineEnvironment:` on `WineBackendManager.spawn/launchAndWait`, ignored for CrossOver): `WineEngine.steamEnvironment` forces builtin `bcrypt`/`ncrypt` and disables Steam's `gameoverlayrenderer` (deadlocks DXMT games); `WineEngine.eaAppEnvironment` sets `QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu` for the EA app's Chromium. The base environment stays minimal. VC++ redists run `/passive` so their progress is visible.
 - **Drive links before first boot:** `WineEngine.createDriveLinks` makes `dosdevices/c: → ../drive_c` and `z: → /` before `wineboot -u`. This build's mountmgr otherwise hands C: to whatever volume is mounted (seen: `c: → /Volumes/Draconis` from the mounted DMG), and wineboot fails with exit 53 (`0xC0000135`, kernel32 not found). A prefix without `system32/kernel32.dll` counts as failed and is recreated.
 - **Prefix isolation (hard rule):** prefixes live only in `Draconis/Prefixes/<name>`; `WineEngine.validated` refuses any other path, and the environment is built from scratch (explicit `WINEPREFIX`, `WINEMSYNC=1`, `winemenubuilder` disabled) so a user's `WINEPREFIX` or `~/.wine` is never touched.
+
+## Shared core (Core/)
+
+SwiftPM package `DraconisCore`, used by both apps (the macOS project depends on it via `project.yml` `packages:`; `DebugLog.swift` re-exports it). Platform-neutral: `Log` (sink set by each app), `CorePaths` (macOS `~/Library/Application Support/Draconis`, Linux `$XDG_DATA_HOME/draconis`, Windows `%LOCALAPPDATA%\Draconis`), `GameFiles` (TF2 / Northstar detection; Northstar's version comes from `R2Northstar/mods/Northstar.Client/mod.json`), `NorthstarUpdater` (GitHub, Thunderstore fallback when rate-limited; removes the core mods before extracting and keeps `ns_startup_args*.txt`), `ThunderstoreClient`, `EnabledMods` (v1 `enabledmods.json`), `ZipExtractor` (ZIPFoundation; `tar.exe` on Windows), `DownloadCoordinator`, Steam `VDF` + `SteamLocator` (native, Flatpak, Snap, Windows registry; `CompatToolMapping`). `swift test --package-path Core`.
+
+## Linux and Windows (CrossPlatform/)
+
+SwiftCrossUI 0.11 app: GTK 4 on Linux, WinUI 3 on Windows. `DraconisPlatform` (library, unit-tested) holds the logic; `Sources/DraconisCross` the UI.
+
+- **Detection** (`GameLocator`): Steam libraries, Draconis prefixes (`<data>/Prefixes`), Heroic `GamesConfig/creamhorn.json`, user folders; Windows also `HKLM\SOFTWARE\Respawn\Titanfall2` and Epic manifests.
+- **Launch** (`LaunchPlanner`, pure): Steam copy → `steam -applaunch 1237970 [-vanilla] -northstar` (Steam must run it for its DRM/overlay; `-northstar` works because GE-Proton adds `wsock32=n,b` for app 1237970, otherwise the UI warns to set `WINEDLLOVERRIDES="wsock32=n,b" %command%`). Prefix copy → `umu-run NorthstarLauncher.exe -noOriginStartup [-vanilla]` with `GAMEID=umu-1237970`, `PROTONPATH`, `WINEPREFIX`, `WINEDLLOVERRIDES=wsock32=n,b` (`PROTON_VERB=runinprefix` while the EA app is already up), or plain `wine` for a Wine runner. The EA app is started first and Draconis waits for its LSX on 127.0.0.1:3216. Windows runs the files directly.
+- **Runners** (`RunnerLocator`): Steam's Protons and `compatibilitytools.d`, Heroic, Lutris, Bottles, system Wine. Downloads: GE-Proton (SHA-512 from the release), umu-launcher zipapp (pinned SHA-256).
+- **Prefix isolation** (hard rule, same as macOS): `PrefixStore` creates prefixes only under `<data>/Prefixes`; `Spawner.cleanEnvironment` strips AppImage/Flatpak variables. Inside Flatpak, host tools run through `flatpak-spawn --host`.
+- **Look**: `Theme.swift` (glass cards, `GlassButton`, `StatusPill`, `Segmented`, Lucide icons in `Resources/icons`), `NativeStyle.swift` (GTK CSS; fonts registered with fontconfig and applied by CSS class: `draconis-hero/display` Orbitron, `draconis-title/stencil` Barlow Condensed, Inter elsewhere; Mica on Windows). Gotchas: a `Button` label must not contain `.frame(maxWidth: .infinity)` (Int conversion crash) — custom controls use `onTapGesture`; GTK `button` CSS must exclude `.flat` (plain style); WinUI measures text with one default-font block, so Windows keeps Segoe UI Variable.
+- **Build/package**: `swift build --package-path CrossPlatform`; on Windows add `--build-system native` and `SCUI_DEFAULT_BACKEND=WinUIBackend` (Swift Build ignores platform conditions and compiles the GTK targets). `Scripts/package-linux.sh <ver> [--flatpak]` (Swift runtime bundled next to the binary, `RPATH=$ORIGIN`), `Scripts/package-windows.ps1`. `packaging/linux/` holds the desktop file, metainfo and Flatpak manifest (`io.github.aa_eion.Draconis`).
 
 ## CEG fix
 
@@ -266,7 +281,7 @@ NorthstarProton (Linux) explicitly disables the same Wine patch in their [proton
 `.none` rows run through `WineBackendManager.spawn` (cxstart or Draconis Wine) after `EAInstaller.startIfNeeded` brings the EA app's LSX (127.0.0.1:3216) up — `-noOriginStartup` skips Northstar's own Origin start, but it still needs a signed-in EA app. No EA app but Steam present → run once through Steam and ask the user to launch again. Maxima rows are CrossOver only.
 
 **Two never-broken invariants:**
-1. **Never pass `-northstar` to `Titanfall2.exe`.** This Wine branch ignores it and falls through to vanilla. Northstar always means launching `NorthstarLauncher.exe`.
+1. **Never pass `-northstar` to `Titanfall2.exe` on macOS.** Without the `wsock32=n,b` override it falls through to vanilla. Northstar always means launching `NorthstarLauncher.exe`.
 2. **Vanilla mode with Northstar installed still uses NorthstarLauncher** (with `-vanilla`, Northstar's vanilla-compatibility mode).
 
 ## Architectural decisions taken (don't re-debate these)
@@ -276,7 +291,7 @@ NorthstarProton (Linux) explicitly disables the same Wine patch in their [proton
 - **`MaximaRole` is per-bottle, persisted in UserDefaults.** Read via `WineBottle.maximaRole` at launch time. Independent from `hasMaxima` (physical install state).
 - **Bottle creation via `cxbottle --create`** directly — no `.tie` file. CrossOver's current TF2 profile isn't public; `BottleSetup` replicates its dependencies instead.
 - **Never the global Wine prefix.** Every Wine command targets a CrossOver bottle or a `Draconis/Prefixes` prefix.
-- **Northstar always via `NorthstarLauncher.exe`** — `-northstar` flag on `Titanfall2.exe` is broken on this Wine branch. Vanilla-with-Northstar-installed uses `-vanilla` flag on NorthstarLauncher.
+- **Northstar on macOS always via `NorthstarLauncher.exe`** — `-northstar` on `Titanfall2.exe` needs the `wsock32=n,b` override the macOS launch path doesn't set (Linux Steam copies use `-northstar` with GE-Proton). Vanilla-with-Northstar-installed uses `-vanilla` flag on NorthstarLauncher.
 - **`CleanSpawn` for cxstart, not `Foundation.Process`** — see the spawn section above. Critical for game launches.
 - **No `maxima-cli serve` integration from Draconis.** Single `maxima-cli launch` works for both vanilla and Northstar (with `--game-path NorthstarLauncher.exe`). The Maxima route in onboarding uses `maxima.exe --install <slug>` instead (Maxima-Draconis v0.12.0+).
 - **`FInstall.txt` is the truth source for "install complete".** Exe presence alone gives false positives mid-download. `BottleInstaller.detectStage` requires the marker for Maxima-installed bottles before advancing to `.done`.

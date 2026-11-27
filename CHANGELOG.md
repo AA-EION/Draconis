@@ -8,6 +8,22 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.14.0] — 2026-11-27
+
+### Added
+- **Titanfall 2 VR on Linux and Windows.** A new VR card on the Play screen installs and launches CircuitLord's Titanfall 2 VR mod (OpenXR, campaign). It's downloaded from the author's own release with its checksums, with the Northstar version his installer uses, and goes into a separate `TF2VR` profile: the normal game and your Northstar stay as they are. Draconis builds the mod's game assets (about 3 GB) and shows which VR runtime is running.
+  - **Meta Quest 3:** open Steam Link on the headset and connect to your PC; it starts SteamVR. "Start SteamVR" is on the card.
+  - **Linux:** works with the Steam copy of the game, through Steam's own Proton, with SteamVR / Steam Link, WiVRn or Monado. Draconis adds a small launch wrapper to Titanfall 2's Steam launch options (normal launches are unaffected), fixes the mod's audio crash under Wine and puts the VC++ runtime it needs into the game's prefix. Both fixes come from [TF2SteamFrame](https://github.com/MWGIH/TF2SteamFrame).
+  - **Windows:** any copy; SteamVR, Quest Link, Virtual Desktop or any OpenXR runtime.
+  - **macOS:** not yet. SteamVR no longer exists for macOS; [docs/VR.md](docs/VR.md) has what was investigated and the plan.
+
+### Fixed
+- **Linux: the dock showed Draconis as "example" with no icon.** The window identified itself as SwiftCrossUI's placeholder app (`com.example.SwiftCrossUIApp`), so desktops couldn't match it to Draconis's launcher entry. It now uses `io.github.aa_eion.Draconis` and sets its own icon, also for the AppImage and tarball.
+- **Installing mods could crash the app** when an Install button was clicked again before the first install had started. Only one mod installs at a time now, and the other Install buttons are disabled meanwhile (the same for the GE-Proton, umu and EA-app prefix buttons, which ignored their disabled state).
+
+### Added
+- **Crash reports on Linux.** The packages ship Swift's crash backtracer; if Draconis crashes, a report is written to `~/.local/share/draconis/Logs/crashes/` and Settings → About links to it.
+
 ## [0.13.3] — 2026-11-27
 
 ### Fixed

@@ -38,3 +38,14 @@ GTK 4 (LGPL-2.1-or-later) and the Windows App SDK are used from the system, not 
 | [Maxima-Draconis](https://github.com/AA-EION/Maxima-Draconis) (`MaximaSetup.exe`) | macOS | GPL-3.0 |
 | [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher) | Linux | GPL-3.0 |
 | [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom) | Linux | BSD-3-Clause and component licences |
+
+## Downloaded for Titanfall 2 VR (Linux and Windows, only when you install it)
+
+| Component | Licence |
+|---|---|
+| [Titanfall 2 VR](https://github.com/CircuitLord/CircuitLordVRModInstaller) by CircuitLord | Closed source, all rights reserved. Downloaded from the author's release; Draconis never redistributes it |
+| [Northstar](https://github.com/R2Northstar/Northstar) (the version the VR installer pins) | MIT |
+| Microsoft Visual C++ runtime DLLs, from Microsoft's `vc_redist.x64.exe` (Linux only, into the game's prefix) | Microsoft Visual C++ Redistributable licence |
+
+The Linux audio fix and VC++ runtime handling are adapted from [MWGIH/TF2SteamFrame](https://github.com/MWGIH/TF2SteamFrame) (GPL-3.0); `draconis-steam-launch` is based on its `tf2vr-frame-launch`.
+

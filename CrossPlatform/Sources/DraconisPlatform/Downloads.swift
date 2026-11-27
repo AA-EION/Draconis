@@ -132,6 +132,12 @@ public enum RunnerDownloads {
         }
         let bytes: [UInt8] = sha512 ? Array(h512.finalize()) : Array(h256.finalize())
         return bytes.map { String(format: "%02x", $0) }.joined()
+        #elseif os(Windows)
+        // certutil ships with every Windows; its second line is the hex digest.
+        let out = try Spawner.capture(#"C:\Windows\System32\certutil.exe"#, ["-hashfile", url.path, sha512 ? "SHA512" : "SHA256"])
+        let lines = out.split(whereSeparator: \.isNewline).map { $0.replacingOccurrences(of: " ", with: "") }
+        guard lines.count >= 2, lines[1].allSatisfy(\.isHexDigit) else { throw DownloadError.checksum(url.lastPathComponent) }
+        return lines[1].lowercased()
         #else
         throw DownloadError.checksum(url.lastPathComponent)
         #endif

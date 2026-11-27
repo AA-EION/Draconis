@@ -14,6 +14,7 @@ struct PlayView: View {
                 pills(game)
                 actions(game)
                 if model.launching || model.gameRunning { launchCard }
+                vrCard
                 if model.northstarBusy || model.toolBusy != nil { progressCard }
                 if model.needsRunner && model.selectedRunner == nil {
                     notice("RUNNER", "This copy runs through Wine or Proton. Pick or download one in Settings.")
@@ -106,6 +107,83 @@ struct PlayView: View {
             return game.hasNorthstar ? "Northstar's vanilla-compatible mode: joins official servers."
                 : "The unmodified game on official servers."
         }
+    }
+
+    var vrCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                IconView(name: "glasses", size: 16)
+                Stencil("Virtual reality")
+                Spacer()
+                if let record = model.vrRecord {
+                    Text("v\(record.version)").foregroundColor(Theme.faint)
+                }
+            }
+            if !model.vrSupported {
+                Text("On Linux, VR works with the Steam copy of Titanfall 2 for now.").foregroundColor(Theme.secondary)
+            } else if model.vrBusy {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text(model.vrPhase ?? "Working…").foregroundColor(Theme.secondary)
+                }
+                if let progress = model.vrProgress { ProgressView(value: progress) }
+            } else if model.vrRecord == nil {
+                Text("CircuitLord's Titanfall 2 VR mod plays the campaign in VR through OpenXR. It installs into its own TF2VR profile, so the normal game and your Northstar stay as they are. About 180 MB to download, plus 3 GB of game files built on your PC.")
+                    .foregroundColor(Theme.secondary)
+                GlassButton(title: "Install VR mod", icon: "download", kind: .prominent, disabled: model.selectedGame == nil) {
+                    Task { await model.installVR() }
+                }
+            } else {
+                vrRuntimeRow
+                HStack(spacing: 10) {
+                    GlassButton(title: model.launching ? "Launching…" : model.gameRunning ? "Running" : "Launch in VR",
+                                icon: "play", kind: .prominent, disabled: model.launching || model.gameRunning) {
+                        Task { await model.launchVR() }
+                    }
+                    if model.vrUpdateAvailable, let latest = model.vrLatest {
+                        GlassButton(title: "Update to \(latest.mod.version)", icon: "refresh-cw") { Task { await model.installVR() } }
+                    }
+                    Spacer()
+                    GlassButton(title: "Remove VR", icon: "trash", size: 13) { Task { await model.uninstallVR() } }
+                }
+            }
+            if let message = model.vrError {
+                Text(message).foregroundColor(Color(red: 1, green: 0.55, blue: 0.55))
+            }
+            if model.vrSupported, model.launching, model.vrRecord != nil, let status = model.status {
+                HStack(spacing: 10) { ProgressView(); Text(status).foregroundColor(Theme.secondary) }
+            }
+            Text(vrHelp).foregroundColor(Theme.faint)
+        }
+        .glassCard(radius: 24, padding: 22)
+    }
+
+    var vrRuntimeRow: some View {
+        HStack(spacing: 10) {
+            IconView(name: model.vrRuntime?.anyRunning == true ? "circle-check" : "circle-alert", size: 16)
+            Text(vrRuntimeText).foregroundColor(Theme.secondary)
+            Spacer()
+            if model.vrRuntime?.steamVRInstalled == true, model.vrRuntime?.steamVRRunning == false {
+                GlassButton(title: "Start SteamVR", icon: "play", size: 13) { model.startSteamVR() }
+            }
+            GlassButton(title: "Check again", icon: "refresh-cw", size: 13) { Task { await model.refreshVR() } }
+        }
+    }
+
+    var vrRuntimeText: String {
+        guard let runtime = model.vrRuntime else { return "Checking for a VR runtime…" }
+        if runtime.steamVRRunning { return "SteamVR is running." }
+        if let other = runtime.otherRunning { return "\(other) is running." }
+        if let active = runtime.activeOpenXR { return "No VR runtime is running. The active OpenXR runtime is \(active)." }
+        return "No VR runtime is running."
+    }
+
+    var vrHelp: String {
+        #if os(Windows)
+        return "Meta Quest 3: open Steam Link on the headset and connect to this PC; it starts SteamVR. Quest Link, Air Link, Virtual Desktop and other OpenXR runtimes work too: start yours first."
+        #else
+        return "Meta Quest 3: open Steam Link on the headset and connect to this PC; it starts SteamVR. Without SteamVR: WiVRn streams to Quest and Pico, Monado runs wired headsets. Start your runtime first."
+        #endif
     }
 
     var launchCard: some View {

@@ -39,19 +39,47 @@ extension VDF {
 
 /// Titanfall 2's Steam launch options. Northstar's `wsock32.dll` proxy only
 /// loads when Wine prefers the native DLL; Proton's builtin one ignores
-/// `-northstar` and the game starts vanilla (Northstar issue #291).
+/// `-northstar` and the game starts vanilla (Northstar issue #291). For VR,
+/// Steam's runtime container must also see the host's OpenXR runtimes, and
+/// Draconis's wrapper (which leaves normal launches alone) starts the VR
+/// launcher when the launch carries `-draconis-vr`.
 public enum SteamLaunchOptions {
     public static let override = #"WINEDLLOVERRIDES="wsock32=n,b""#
+    public static let openXRImport = "PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1"
 
-    /// The options with the override added, or nil when they already have it.
-    public static func withNorthstarOverride(_ options: String) -> String? {
+    /// The options Draconis wants, keeping the user's own; nil when they
+    /// already match. `wrapper` is the VR wrapper script, if VR is installed.
+    public static func updated(_ options: String, wrapper: String? = nil) -> String? {
         let trimmed = options.trimmingCharacters(in: .whitespaces)
-        if trimmed.contains("wsock32=n") { return nil }
-        if trimmed.isEmpty { return "\(override) %command%" }
-        // Plain arguments: Steam appends them to the game's command line.
-        guard trimmed.contains("%command%") else { return "\(override) %command% \(trimmed)" }
-        return "\(override) \(trimmed)"
+        let hasOverride = trimmed.contains("wsock32=n")
+        let hasImport = wrapper == nil || trimmed.contains(openXRImport)
+        let hasWrapper = wrapper.map { trimmed.contains(quote($0) + " %command%") } ?? true
+        if hasOverride && hasImport && hasWrapper { return nil }
+
+        var before = "", after = trimmed
+        if let range = trimmed.range(of: "%command%") {
+            before = String(trimmed[..<range.lowerBound])
+            after = String(trimmed[range.upperBound...])
+        }
+        // Drop what Draconis put there before, keep the rest in order.
+        var tokens = before.split(separator: " ").map(String.init).filter {
+            $0 != openXRImport && !$0.contains("draconis-steam-launch")
+        }
+        if !hasOverride { tokens.insert(override, at: 0) }
+        if wrapper != nil {
+            let afterOverride = (tokens.firstIndex { $0.contains("wsock32=n") } ?? -1) + 1
+            tokens.insert(openXRImport, at: afterOverride)
+        }
+        if let wrapper { tokens.append(quote(wrapper)) }
+        tokens.append("%command%")
+        let tail = after.trimmingCharacters(in: .whitespaces)
+        return (tokens + (tail.isEmpty ? [] : [tail])).joined(separator: " ")
     }
+
+    /// Kept for callers that only need Northstar's override.
+    public static func withNorthstarOverride(_ options: String) -> String? { updated(options) }
+
+    static func quote(_ path: String) -> String { "\"\(path)\"" }
 
     static func path(appID: String) -> [String] {
         ["UserLocalConfigStore", "Software", "Valve", "Steam", "apps", appID, "LaunchOptions"]
@@ -68,25 +96,25 @@ extension SteamInstall {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
-    /// Accounts whose launch options for the app still lack the override.
-    public func configsNeedingNorthstarOverride(appID: String) -> [URL] {
+    /// Accounts whose launch options for the app aren't what Draconis needs yet.
+    public func configsNeedingNorthstarOverride(appID: String, wrapper: String? = nil) -> [URL] {
         localConfigs().filter { url in
             guard let vdf = VDF.load(url) else { return false }
             let current = vdf[SteamLaunchOptions.path(appID: appID)]?.string ?? ""
-            return SteamLaunchOptions.withNorthstarOverride(current) != nil
+            return SteamLaunchOptions.updated(current, wrapper: wrapper) != nil
         }
     }
 
-    /// Add the override to every account's launch options. Steam must be
-    /// closed: it rewrites localconfig.vdf on exit. Keeps a backup.
+    /// Update every account's launch options. Steam must be closed: it
+    /// rewrites localconfig.vdf on exit. Keeps a backup.
     @discardableResult
-    public func addNorthstarOverride(appID: String) throws -> Int {
+    public func addNorthstarOverride(appID: String, wrapper: String? = nil) throws -> Int {
         var changed = 0
         for url in localConfigs() {
             guard var vdf = VDF.load(url) else { continue }
             let path = SteamLaunchOptions.path(appID: appID)
             let current = vdf[path]?.string ?? ""
-            guard let updated = SteamLaunchOptions.withNorthstarOverride(current) else { continue }
+            guard let updated = SteamLaunchOptions.updated(current, wrapper: wrapper) else { continue }
             let backup = url.appendingPathExtension("draconis-backup")
             try? FileManager.default.removeItem(at: backup)
             try FileManager.default.copyItem(at: url, to: backup)

@@ -57,6 +57,7 @@ If there's no **Open Anyway** button, use Option A.
 - **Guided onboarding wizard** that picks up where you left off — detects existing bottles, lets you reuse them or create new ones, and walks you through whichever step is missing.
 - **Install sources** (macOS): EA app, Steam, Epic Games (through the EA app, no Epic launcher) and, experimentally, [Maxima-Draconis](https://github.com/AA-EION/Maxima-Draconis).
 - **Runners** (Linux): Steam's own Proton, GE-Proton (one-click download), Proton builds from Heroic, Lutris and Bottles, system Wine. Draconis-made prefixes live in Draconis's data folder, never `~/.wine`.
+- **Titanfall 2 VR** (Linux and Windows): installs and launches CircuitLord's OpenXR VR mod in its own profile. Meta Quest 3 works through Steam Link; WiVRn and Monado work on Linux without SteamVR. See [docs/VR.md](docs/VR.md).
 - **Northstar auto-updater** on every launch.
 - **Thunderstore mod browser** with install / enable / disable / uninstall.
 - **Server browser** backed by the Northstar masterserver.

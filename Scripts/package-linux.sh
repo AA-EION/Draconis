@@ -44,6 +44,9 @@ strip --strip-unneeded "$PAYLOAD"/*.so || true
 # Only ever look next to ourselves, never in the build machine's toolchain.
 patchelf --set-rpath '$ORIGIN' "$PAYLOAD/draconis"
 for so in "$PAYLOAD"/*.so; do patchelf --set-rpath '$ORIGIN' "$so"; done
+# Swift's crash backtracer (statically linked); Draconis turns it on at startup
+# so crashes leave a report in its Logs/crashes folder.
+cp "$(dirname "$SWIFT_LIB")/../../libexec/swift/linux/swift-backtrace-static" "$PAYLOAD/"
 cp packaging/linux/$ID.desktop "$PAYLOAD/"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" packaging/linux/$ID.metainfo.xml > "$PAYLOAD/$ID.metainfo.xml"
 cp CrossPlatform/Sources/DraconisCross/Resources/icon.png "$PAYLOAD/icon.png"
@@ -58,7 +61,7 @@ tar -C "$OUT/tar" -czf "$DIST/$TARDIR.tar.gz" "$TARDIR"
 # Filesystem tree for deb and rpm.
 ROOT=$OUT/root
 install -d "$ROOT/opt/draconis" "$ROOT/usr/bin"
-cp "$PAYLOAD/draconis" "$PAYLOAD"/*.so "$ROOT/opt/draconis/"
+cp "$PAYLOAD/draconis" "$PAYLOAD/swift-backtrace-static" "$PAYLOAD"/*.so "$ROOT/opt/draconis/"
 cp -r "$PAYLOAD/DraconisCross_Draconis.bundle" "$ROOT/opt/draconis/"
 ln -s ../../opt/draconis/draconis "$ROOT/usr/bin/draconis"
 install -Dm644 "$PAYLOAD/$ID.desktop" "$ROOT/usr/share/applications/$ID.desktop"
@@ -117,7 +120,7 @@ cp "$RPMTOP"/RPMS/*/draconis-*.rpm "$DIST/"
 # AppImage (uses the system's GTK 4)
 APPDIR=$OUT/AppDir
 install -d "$APPDIR/usr/bin"
-cp "$PAYLOAD/draconis" "$PAYLOAD"/*.so "$APPDIR/usr/bin/"
+cp "$PAYLOAD/draconis" "$PAYLOAD/swift-backtrace-static" "$PAYLOAD"/*.so "$APPDIR/usr/bin/"
 cp -r "$PAYLOAD/DraconisCross_Draconis.bundle" "$APPDIR/usr/bin/"
 cp "$PAYLOAD/$ID.desktop" "$APPDIR/"
 cp "$PAYLOAD/icon.png" "$APPDIR/$ID.png"

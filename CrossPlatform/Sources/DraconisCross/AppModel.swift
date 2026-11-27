@@ -54,6 +54,15 @@ final class AppModel {
     // Draconis updates
     var newerVersion: String?
 
+    // VR (CircuitLord's Titanfall 2 VR mod)
+    var vrLatest: TitanfallVR.Release?
+    var vrRecord: TitanfallVR.Record?
+    var vrBusy = false
+    var vrPhase: String?
+    var vrProgress: Double?
+    var vrRuntime: VRRuntimeStatus?
+    var vrError: String?
+
     init() {
         Log.sink = { [weak self] level, scope, message in
             Task { @MainActor in self?.append(level, scope, message) }
@@ -114,6 +123,7 @@ final class AppModel {
         await rescan()
         if games.isEmpty { section = .settings }
         await refreshNorthstar()
+        await refreshVR(fetchLatest: true)
         await checkForDraconisUpdate()
         if settings.autoUpdateNorthstar, latestRelease != nil, let game = selectedGame, game.hasNorthstar, !northstarUpToDate {
             await installNorthstar()
@@ -137,6 +147,7 @@ final class AppModel {
         umuRun = umu
         Log.ok("app", "Found \(found.count) Titanfall 2 install(s), \(runners.count) runner(s)")
         refreshInstalledMods()
+        vrRecord = selectedGame.flatMap { TitanfallVR.isInstalled(in: $0.root) ? TitanfallVR.record(in: $0.root) : nil }
     }
 
     func addGameFolder(_ url: URL) async {
@@ -217,35 +228,40 @@ final class AppModel {
             let what = mode == .northstar ? "Northstar" : "Titanfall 2"
             status = { if case .steam = game.source { return "Steam is starting \(what)…" }; return "Starting \(what)…" }()
             Log.info("launch", "\(command.executable) \(command.arguments.joined(separator: " "))")
-            // Steam and Proton can take a while on a first start.
-            for _ in 0..<90 {
-                try await Task.sleep(for: .seconds(2))
-                if GameProcess.isRunning() { break }
-            }
-            guard GameProcess.isRunning() else {
-                throw LaunchFailure("Titanfall 2 didn't start within 3 minutes. Check Steam or the Console page, then launch again.")
-            }
-            gameRunning = true
-            Log.ok("launch", "\(what) is running")
-            Task { await watchUntilExit() }
+            try await awaitGameStart(what)
         } catch {
             fail(error)
         }
     }
 
+    /// Steam and Proton can take a while on a first start.
+    func awaitGameStart(_ what: String) async throws {
+        for _ in 0..<90 {
+            try await Task.sleep(for: .seconds(2))
+            if GameProcess.isRunning() { break }
+        }
+        guard GameProcess.isRunning() else {
+            throw LaunchFailure("\(what) didn't start within 3 minutes. Check Steam or the Console page, then launch again.")
+        }
+        gameRunning = true
+        Log.ok("launch", "\(what) is running")
+        Task { await watchUntilExit() }
+    }
+
     /// Northstar's proxy DLL only loads with `wsock32=n,b`, which Steam passes
     /// to the game only through its launch options. Steam rewrites its config
     /// on exit, so it has to be closed while they're changed.
-    func addNorthstarLaunchOption(root: URL, kind: String) async throws {
+    func addNorthstarLaunchOption(root: URL, kind: String, wrapper: String? = nil) async throws {
         let install = SteamInstall(root: root, kind: SteamInstall.Kind(rawValue: kind) ?? .native)
-        guard !install.configsNeedingNorthstarOverride(appID: SteamLocator.titanfallAppID).isEmpty else { return }
+        guard !install.configsNeedingNorthstarOverride(appID: SteamLocator.titanfallAppID, wrapper: wrapper).isEmpty else { return }
         if SteamClient.isRunning() {
-            status = "Closing Steam once to add Northstar's launch option…"
+            status = "Closing Steam once to update Titanfall 2's launch options…"
             guard await SteamClient.shutdown(kind: kind) else {
                 throw LaunchFailure("Close Steam, then launch again: Draconis adds Titanfall 2's launch option (\(SteamLaunchOptions.override) %command%) while Steam is closed.")
             }
         }
-        try install.addNorthstarOverride(appID: SteamLocator.titanfallAppID)
+        try install.addNorthstarOverride(appID: SteamLocator.titanfallAppID, wrapper: wrapper)
+        status = nil
     }
 
     var defaultPrefix: URL { PrefixStore.url(named: "Titanfall 2") }
@@ -358,7 +374,7 @@ final class AppModel {
     }
 
     func install(_ package: ThunderstorePackage) async {
-        guard let game = selectedGame, let version = package.latest else { return }
+        guard let game = selectedGame, let version = package.latest, modBusy == nil else { return }
         modBusy = package.fullName
         defer { modBusy = nil }
         do {

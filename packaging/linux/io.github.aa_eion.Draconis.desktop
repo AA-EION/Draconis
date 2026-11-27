@@ -8,4 +8,4 @@ Icon=io.github.aa_eion.Draconis
 Terminal=false
 Categories=Game;
 Keywords=Titanfall;Northstar;Steam;Proton;
-StartupWMClass=draconis
+StartupWMClass=io.github.aa_eion.Draconis

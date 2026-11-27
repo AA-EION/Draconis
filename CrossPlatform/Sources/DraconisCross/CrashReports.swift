@@ -19,7 +19,7 @@ enum CrashReports {
         guard FileManager.default.isExecutableFile(atPath: backtracer.path) else { return }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         setenv("SWIFT_BACKTRACE", "enable=yes,interactive=no,swift-backtrace=\(backtracer.path),output-to=\(folder.path)", 1)
-        execv("/proc/self/exe", CommandLine.unsafeArgv)
+        execv(exe, CommandLine.unsafeArgv)
         #endif
     }
 

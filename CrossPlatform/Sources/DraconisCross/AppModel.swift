@@ -95,14 +95,17 @@ final class AppModel {
         #endif
     }
 
-    var filteredPackages: [ThunderstorePackage] {
+    var matchingPackages: [ThunderstorePackage] {
         // Northstar itself is managed on the Play page; mod managers aren't mods.
         let hidden: Set<String> = ["northstar-Northstar", "northstar-NorthstarReleaseCandidate", "ebkr-r2modman"]
         let base = packages.filter { !$0.isDeprecated && !$0.hasNsfwContent && !hidden.contains($0.fullName) }
         let query = modFilter.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return Array(base.prefix(200)) }
+        guard !query.isEmpty else { return base }
         return base.filter { $0.name.lowercased().contains(query) || $0.owner.lowercased().contains(query) }
     }
+
+    // Every row is laid out on each update, so long lists stall the UI.
+    static let packageRowLimit = 60
 
     var filteredServers: [NorthstarServer] {
         let query = serverFilter.trimmingCharacters(in: .whitespaces).lowercased()

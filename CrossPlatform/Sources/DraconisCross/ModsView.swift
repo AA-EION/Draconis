@@ -54,13 +54,18 @@ struct ModsView: View {
             HStack {
                 Stencil("Thunderstore")
                 Spacer()
-                TextField("Search mods…", text: $model.modFilter).frame(width: 260)
+                SearchField(placeholder: "Search mods…", width: 260, query: $model.modFilter)
                 GlassButton(title: model.modsLoading ? "Loading…" : "Refresh", icon: "refresh-cw", size: 13) { Task { await model.refreshMods() } }
             }
             if model.modsLoading && model.packages.isEmpty {
                 ProgressView("Loading the mod list…")
             }
-            ForEach(model.filteredPackages) { package in
+            let matches = model.matchingPackages
+            if matches.count > AppModel.packageRowLimit {
+                Text("Showing \(AppModel.packageRowLimit) of \(matches.count) mods. Search to narrow it down.")
+                    .foregroundColor(Theme.faint)
+            }
+            ForEach(Array(matches.prefix(AppModel.packageRowLimit))) { package in
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(package.name).font(.system(size: 14, weight: .semibold))

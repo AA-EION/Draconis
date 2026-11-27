@@ -8,6 +8,12 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.13.2] — 2026-11-27
+
+### Fixed
+- **Linux/Windows: clicks inside cards and buttons did nothing.** The glass rim of every card and button was drawn on top of its contents and caught the clicks; it is now drawn underneath.
+- **The Mods search froze the app** while it laid out every matching mod on each keystroke. Searches now apply after a short pause in typing, and the list shows up to 60 mods with a count of the rest.
+
 ## [0.13.1] — 2026-11-27
 
 ### Fixed

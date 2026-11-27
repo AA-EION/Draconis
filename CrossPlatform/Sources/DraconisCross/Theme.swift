@@ -40,8 +40,10 @@ extension View {
         self
             .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: radius).fill(tinted ? Theme.tintFill : Theme.glassFill))
-            .overlay { RoundedRectangle(cornerRadius: radius).stroke(Theme.glassRim) }
+            .background(ZStack {
+                RoundedRectangle(cornerRadius: radius).fill(tinted ? Theme.tintFill : Theme.glassFill)
+                RoundedRectangle(cornerRadius: radius).stroke(Theme.glassRim)
+            })
             .nativeClass("draconis-glass")
     }
 
@@ -49,8 +51,10 @@ extension View {
         self
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.errorFill))
-            .overlay { RoundedRectangle(cornerRadius: 14).stroke(Color(red: 1, green: 0.4, blue: 0.4, opacity: 0.4)) }
+            .background(ZStack {
+                RoundedRectangle(cornerRadius: 14).fill(Theme.errorFill)
+                RoundedRectangle(cornerRadius: 14).stroke(Color(red: 1, green: 0.4, blue: 0.4, opacity: 0.4))
+            })
             .nativeClass("draconis-glass")
     }
 
@@ -118,8 +122,10 @@ struct GlassButton: View {
         .padding(.horizontal, 18)
         .padding(.vertical, fullWidth ? 12 : 9)
         .frame(maxWidth: fullWidth ? .infinity : nil)
-        .background(Capsule().fill(fill))
-        .overlay { Capsule().stroke(kind == .prominent ? Color(white: 1, opacity: 0.6) : Theme.glassRim) }
+        .background(ZStack {
+            Capsule().fill(fill)
+            Capsule().stroke(kind == .prominent ? Color(white: 1, opacity: 0.6) : Theme.glassRim)
+        })
         .opacity(disabled ? 0.45 : 1)
         .onHover { hovering = $0 }
         .onTapGesture { if !disabled { action() } }
@@ -151,8 +157,10 @@ struct StatusPill: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16).fill(active ? Theme.snow : Theme.darkGlass))
-        .overlay { RoundedRectangle(cornerRadius: 16).stroke(Theme.glassRim) }
+        .background(ZStack {
+            RoundedRectangle(cornerRadius: 16).fill(active ? Theme.snow : Theme.darkGlass)
+            RoundedRectangle(cornerRadius: 16).stroke(Theme.glassRim)
+        })
         .nativeClass("draconis-glass")
     }
 }
@@ -176,8 +184,10 @@ struct Segmented<Value: Hashable>: View {
             }
         }
         .padding(4)
-        .background(Capsule().fill(Theme.darkGlass))
-        .overlay { Capsule().stroke(Theme.glassRim) }
+        .background(ZStack {
+            Capsule().fill(Theme.darkGlass)
+            Capsule().stroke(Theme.glassRim)
+        })
     }
 }
 
@@ -187,5 +197,30 @@ struct ButtonRow<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         HStack(spacing: 10) { content }.fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// A search box that keeps its text to itself and applies it after a short
+/// pause, so typing doesn't lay out a long list on every keystroke.
+struct SearchField: View {
+    var placeholder: String
+    var width: Double
+    @Binding var query: String
+    @State private var text = ""
+    @State private var generation = 0
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .frame(width: width)
+            .onAppear { if text.isEmpty { text = query } }
+            .onChange(of: text) {
+                generation += 1
+                let current = generation
+                let value = text
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    if current == generation, query != value { query = value }
+                }
+            }
     }
 }

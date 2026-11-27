@@ -7,7 +7,7 @@ struct ServersView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                TextField("Search servers, maps, playlists…", text: $model.serverFilter).frame(width: 320)
+                SearchField(placeholder: "Search servers, maps, playlists…", width: 320, query: $model.serverFilter)
                 GlassButton(title: model.serversLoading ? "Loading…" : "Refresh", icon: "refresh-cw", size: 13) { Task { await model.refreshServers() } }
                 Spacer()
                 Stencil("\(model.filteredServers.count) servers")

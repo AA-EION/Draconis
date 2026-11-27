@@ -48,6 +48,21 @@ import Testing
         #expect(found.1.resolvingSymlinksInPath().path == game.resolvingSymlinksInPath().path)
         #expect(found.0.compatTool(appID: "1237970") == "GE-Proton11-14")
     }
+
+    // Viper only checks common/Titanfall2, so copies without a manifest must count too.
+    @Test(.enabled(if: !isWindows)) func findsTitanfallWithoutManifestInFlatpakSteam() throws {
+        let fm = FileManager.default
+        let home = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = home.appendingPathComponent(".var/app/com.valvesoftware.Steam/.steam/steam")
+        let game = root.appendingPathComponent("steamapps/common/Titanfall2")
+        try fm.createDirectory(at: game, withIntermediateDirectories: true)
+        fm.createFile(atPath: game.appendingPathComponent("Titanfall2.exe").path, contents: Data())
+
+        let installs = SteamLocator.installs(home: home, environment: [:])
+        #expect(installs.map(\.kind) == [.flatpak])
+        let found = try #require(SteamLocator.titanfall(in: installs))
+        #expect(found.1.resolvingSymlinksInPath().path == game.resolvingSymlinksInPath().path)
+    }
 }
 
 #if os(Windows)

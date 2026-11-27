@@ -12,6 +12,7 @@ All notable changes to Draconis are documented here.
 
 ### Fixed
 - **Linux/Windows: clicks inside cards and buttons did nothing.** The glass rim of every card and button was drawn on top of its contents and caught the clicks; it is now drawn underneath.
+- **Linux: Titanfall 2 in Steam wasn't always found.** Draconis needed Steam's install record for the game; like Viper, it now also finds `steamapps/common/Titanfall2` in any Steam library, and it checks Flatpak Steam's `~/.var/app/com.valvesoftware.Steam/.steam/steam`. Where it looked and what it found are written to the Console page.
 - **The Mods search froze the app** while it laid out every matching mod on each keystroke. Searches now apply after a short pause in typing, and the list shows up to 60 mods with a count of the rest.
 
 ## [0.13.1] — 2026-11-27

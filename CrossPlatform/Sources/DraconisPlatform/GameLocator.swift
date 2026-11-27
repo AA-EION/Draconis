@@ -11,7 +11,7 @@ public enum GameLocator {
             }
         }
         for install in SteamLocator.installs() {
-            if let folder = install.installFolder(appID: SteamLocator.titanfallAppID), GameFiles.isTitanfallRoot(folder) {
+            if let folder = install.titanfallFolder() {
                 add(GameInstall(root: folder, source: .steam(
                     root: install.root, kind: install.kind.rawValue,
                     compatTool: install.compatTool(appID: SteamLocator.titanfallAppID))))

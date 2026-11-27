@@ -43,15 +43,22 @@ public struct SteamInstall: Hashable, Sendable {
         return url
     }
 
-    /// Install folder of an app, when its manifest says it's fully installed
-    /// enough to have files (StateFlags isn't checked: updates keep the files).
-    public func installFolder(appID: String) -> URL? {
-        for library in libraries() {
+    /// Install folder of an app: the folder its manifest names (StateFlags
+    /// isn't checked: updates keep the files), else `common/<fallbackDir>` in
+    /// any library, the way Viper looks, for copies whose manifest is missing.
+    public func installFolder(appID: String, fallbackDir: String? = nil) -> URL? {
+        let libraries = libraries()
+        for library in libraries {
             let apps = library.appendingPathComponent("steamapps", isDirectory: true)
             guard let manifest = VDF.load(apps.appendingPathComponent("appmanifest_\(appID).acf")),
                   let dir = manifest[["AppState", "installdir"]]?.string
             else { continue }
             let folder = apps.appendingPathComponent("common/\(dir)", isDirectory: true)
+            if FileManager.default.fileExists(atPath: folder.path) { return folder }
+        }
+        guard let fallbackDir else { return nil }
+        for library in libraries {
+            let folder = library.appendingPathComponent("steamapps/common/\(fallbackDir)", isDirectory: true)
             if FileManager.default.fileExists(atPath: folder.path) { return folder }
         }
         return nil
@@ -76,6 +83,24 @@ public struct SteamInstall: Hashable, Sendable {
             if FileManager.default.fileExists(atPath: dir.appendingPathComponent("pfx").path) { return dir }
         }
         return nil
+    }
+}
+
+extension SteamInstall {
+    /// Titanfall 2 in this install's libraries, logging where it looked.
+    public func titanfallFolder() -> URL? {
+        let libraries = libraries()
+        Log.info("steam", "\(kind.rawValue) Steam at \(root.path), libraries: \(libraries.map(\.path).joined(separator: ", "))")
+        guard let folder = installFolder(appID: SteamLocator.titanfallAppID, fallbackDir: "Titanfall2") else {
+            Log.info("steam", "Titanfall 2 isn't in these libraries")
+            return nil
+        }
+        guard GameFiles.isTitanfallRoot(folder) else {
+            Log.info("steam", "\(folder.path) has no Titanfall2.exe")
+            return nil
+        }
+        Log.info("steam", "Titanfall 2 at \(folder.path)")
+        return folder
     }
 }
 
@@ -104,6 +129,7 @@ public enum SteamLocator {
             ("\(h)/.steam/debian-installation", .native),
             ("\(h)/.var/app/com.valvesoftware.Steam/.local/share/Steam", .flatpak),
             ("\(h)/.var/app/com.valvesoftware.Steam/data/Steam", .flatpak),
+            ("\(h)/.var/app/com.valvesoftware.Steam/.steam/steam", .flatpak),
             ("\(h)/snap/steam/common/.local/share/Steam", .snap),
             ("\(h)/snap/steam/common/.steam/steam", .snap),
         ]
@@ -116,15 +142,14 @@ public enum SteamLocator {
                   seen.insert(url.path).inserted else { continue }
             result.append(SteamInstall(root: url, kind: kind))
         }
+        if result.isEmpty { Log.info("steam", "No Steam install found (looked in \(candidates.map(\.0).joined(separator: ", ")))") }
         return result
     }
 
     /// Titanfall 2 in any Steam library.
     public static func titanfall(in installs: [SteamInstall] = installs()) -> (SteamInstall, URL)? {
         for install in installs {
-            if let folder = install.installFolder(appID: titanfallAppID), GameFiles.isTitanfallRoot(folder) {
-                return (install, folder)
-            }
+            if let folder = install.titanfallFolder() { return (install, folder) }
         }
         return nil
     }

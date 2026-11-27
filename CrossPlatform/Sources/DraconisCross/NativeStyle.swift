@@ -58,6 +58,11 @@ enum NativeStyle {
         progressbar progress { border-radius: 999px; background-color: #d1d8de; min-height: 8px; }
         scrollbar { background: transparent; }
         """
+        // Window icon, also for the AppImage and tarball, whose icon isn't in the theme.
+        if let display = gdk_display_get_default(), let dir = resources?.appendingPathComponent("appicon").path {
+            gtk_icon_theme_add_search_path(gtk_icon_theme_get_for_display(display), dir)
+        }
+        gtk_window_set_default_icon_name(AppInfo.appID)
         let provider = CSSProvider()
         provider.loadCss(from: css)
         self.provider = provider

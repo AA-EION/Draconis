@@ -81,8 +81,7 @@ struct ModsView: View {
                     } else if model.isInstalled(package) {
                         Stencil("Installed")
                     } else {
-                        GlassButton(title: "Install", icon: "download", size: 13) { Task { await model.install(package) } }
-                            .disabled(model.selectedGame == nil)
+                        GlassButton(title: "Install", icon: "download", size: 13, disabled: model.selectedGame == nil || model.modBusy != nil) { Task { await model.install(package) } }
                     }
                 }
             }

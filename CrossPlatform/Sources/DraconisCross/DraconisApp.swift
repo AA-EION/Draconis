@@ -3,10 +3,27 @@ import DraconisCore
 import DraconisPlatform
 import Foundation
 import SwiftCrossUI
+#if canImport(GtkBackend)
+import CGtk
+import GtkBackend
+#endif
 
 @main
 struct DraconisApp: App {
     @State var model = AppModel()
+
+    init() {
+        CrashReports.enable()
+    }
+
+    #if canImport(GtkBackend)
+    // Docks match windows to io.github.aa_eion.Draconis.desktop by this id
+    // (Wayland app_id; on X11 the WM_CLASS comes from the program name).
+    var backend: GtkBackend {
+        g_set_prgname(AppInfo.appID)
+        return GtkBackend(appIdentifier: AppInfo.appID)
+    }
+    #endif
 
     var body: some Scene {
         WindowGroup("Draconis") {

@@ -8,6 +8,15 @@ All notable changes to Draconis are documented here.
 
 ---
 
+## [0.13.4] — 2026-11-27
+
+### Fixed
+- **Linux: the dock showed Draconis as "example" with no icon.** The window identified itself as SwiftCrossUI's placeholder app (`com.example.SwiftCrossUIApp`), so desktops couldn't match it to Draconis's launcher entry. It now uses `io.github.aa_eion.Draconis` and sets its own icon, also for the AppImage and tarball.
+- **Installing mods could crash the app** when an Install button was clicked again before the first install had started. Only one mod installs at a time now, and the other Install buttons are disabled meanwhile (the same for the GE-Proton, umu and EA-app prefix buttons, which ignored their disabled state).
+
+### Added
+- **Crash reports on Linux.** The packages ship Swift's crash backtracer; if Draconis crashes, a report is written to `~/.local/share/draconis/Logs/crashes/` and Settings → About links to it.
+
 ## [0.13.3] — 2026-11-27
 
 ### Fixed

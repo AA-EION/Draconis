@@ -68,12 +68,9 @@ struct SettingsView: View {
             Text(model.umuRun.map { "umu-launcher: \($0.path)" } ?? "umu-launcher: not installed")
                 .foregroundColor(Theme.faint)
             ButtonRow {
-                GlassButton(title: "Download GE-Proton", icon: "download", size: 13) { Task { await model.installGEProton() } }
-                    .disabled(model.toolBusy != nil)
+                GlassButton(title: "Download GE-Proton", icon: "download", size: 13, disabled: model.toolBusy != nil) { Task { await model.installGEProton() } }
                 if model.umuRun == nil {
-                    GlassButton(title: "Install umu-launcher", icon: "download", size: 13) { Task { await model.installUmu() } }
-                        .fixedSize()
-                        .disabled(model.toolBusy != nil)
+                    GlassButton(title: "Install umu-launcher", icon: "download", size: 13, disabled: model.toolBusy != nil) { Task { await model.installUmu() } }
                 }
             }
             toolProgress
@@ -86,8 +83,7 @@ struct SettingsView: View {
             Stencil("EA App / Epic Copy")
             Text("No Steam? Draconis can make its own Wine prefix (in its data folder, never ~/.wine) and install the EA app there. Sign in, install Titanfall 2 from the EA app, then Rescan. Epic owners: link your Epic account in the EA app.")
                 .foregroundColor(Theme.secondary)
-            GlassButton(title: "Create prefix with the EA app", icon: "folder-plus", size: 13) { Task { await model.createPrefixWithEAApp() } }
-                .disabled(model.toolBusy != nil || model.selectedRunner == nil)
+            GlassButton(title: "Create prefix with the EA app", icon: "folder-plus", size: 13, disabled: model.toolBusy != nil || model.selectedRunner == nil) { Task { await model.createPrefixWithEAApp() } }
         }
         .glassCard()
     }
@@ -109,12 +105,17 @@ struct SettingsView: View {
             Stencil("About")
             Text("Draconis \(AppInfo.version) for \(os)").font(.system(size: 15, weight: .semibold))
             Text("Data folder: \(CorePaths.dataDirectory.path)").foregroundColor(Theme.faint)
+            if let crash = CrashReports.previous().first {
+                Text("Last crash report: \(crash.path). Attach it to a bug report.")
+                    .foregroundColor(Theme.secondary)
+                OpenLinkButton(title: "Open crash reports", url: CrashReports.folder, icon: "folder-plus")
+            }
             ButtonRow {
                 OpenLinkButton(title: "Releases", url: AppInfo.releasesPage)
                 OpenLinkButton(title: "Report a bug", url: AppInfo.issuesPage, icon: "circle-alert")
                 GlassButton(title: "Check for updates", icon: "refresh-cw", size: 13) { Task { await model.checkForDraconisUpdate() } }
             }
-            Text("Draconis is free software under the GPL-3.0-or-later. It uses SwiftCrossUI (MIT), ZIPFoundation (MIT), swift-crypto (Apache-2.0) and the Orbitron font (SIL OFL 1.1); see THIRD-PARTY-NOTICES.md. umu-launcher (GPL-3.0) and GE-Proton are downloaded only when you ask.")
+            Text("Draconis is free software under the GPL-3.0-or-later. It uses SwiftCrossUI (MIT), ZIPFoundation (MIT), swift-crypto (Apache-2.0), the Orbitron, Inter and Barlow Condensed fonts (SIL OFL 1.1) and Lucide icons (ISC); see THIRD-PARTY-NOTICES.md. umu-launcher (GPL-3.0) and GE-Proton are downloaded only when you ask.")
                 .foregroundColor(Theme.faint)
         }
         .glassCard()

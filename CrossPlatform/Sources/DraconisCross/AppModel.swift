@@ -358,7 +358,7 @@ final class AppModel {
     }
 
     func install(_ package: ThunderstorePackage) async {
-        guard let game = selectedGame, let version = package.latest else { return }
+        guard let game = selectedGame, let version = package.latest, modBusy == nil else { return }
         modBusy = package.fullName
         defer { modBusy = nil }
         do {

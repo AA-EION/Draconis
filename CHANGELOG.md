@@ -6,6 +6,12 @@ All notable changes to Draconis are documented here.
 
 ## [Unreleased]
 
+---
+
+## [0.13.0] — 2026-11-27
+
+Works with [Maxima-Draconis v0.17.0](https://github.com/AA-EION/Maxima-Draconis/releases/tag/v0.17.0).
+
 ### Added
 - **Draconis for Linux and Windows.** The same screens as the macOS app (Play, Mods, Servers, Console, Settings) and its look: glass cards, status pills, capsule buttons, Orbitron / Barlow Condensed / Inter on Linux, Mica on Windows. Built with [SwiftCrossUI](https://github.com/moreSwift/swift-cross-ui) (GTK 4 / WinUI 3) on a core shared with the Mac app.
   - **Linux:** finds Titanfall 2 in Steam (native, Flatpak, Snap and every library folder), Heroic, Draconis's own prefixes and folders you add. Steam copies start through Steam (`-northstar` for Northstar, with a warning when Steam's Proton isn't GE-Proton and `wsock32` isn't overridden); other copies run `NorthstarLauncher.exe -noOriginStartup` through umu-launcher + Proton or plain Wine, after starting the EA app in the prefix. Runners: Steam's Protons, GE-Proton (one-click, SHA-512-checked), Heroic / Lutris / Bottles builds, system Wine. Draconis can create a prefix with the EA app, only under its own data folder.

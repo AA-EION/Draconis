@@ -1,14 +1,14 @@
 name: Look comparison
 
-# Screenshots the macOS app and the Linux/Windows UI over the same wallpaper,
-# with the same sample install, so the Linux/Windows look can be matched to
-# the macOS one. Nothing is published; the images are workflow artifacts.
+# Screenshots every page of the macOS app over a fixed wallpaper, renders the
+# Linux/Windows UI over the same desktop pixels at the same size, and scores
+# each pair. Nothing is published; the images are workflow artifacts.
 
 on:
   workflow_dispatch:
   push:
     branches: ['claude/**']
-    paths: ['Desktop/**', '.github/workflows/look.yml']
+    paths: ['Desktop/**', 'Draconis/Views/**', 'Draconis/App/**', '.github/workflows/look.yml']
   pull_request:
     paths: ['Desktop/**', '.github/workflows/look.yml']
 
@@ -23,7 +23,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew install xcodegen mingw-w64
+          brew install xcodegen mingw-w64 cliclick
           bash Scripts/fetch-maxima-helper.sh
           bash Scripts/build-steam-wrapper.sh
           xcodegen generate
@@ -45,40 +45,56 @@ jobs:
           touch "$game/Titanfall2.exe" "$game/NorthstarLauncher.exe" "$game/../../../steam.exe"
           echo "{\"Name\":\"Northstar.Client\",\"Version\":\"${tag#v}\"}" > "$game/R2Northstar/mods/Northstar.Client/mod.json"
           defaults write org.draconis.launcher privacyConsentAccepted -bool true
+          defaults write org.draconis.launcher showConsole -bool true
+          sleep 3
+          screencapture -x shots/desktop.png
 
-      - name: Screenshot
+      - name: Screenshot every page
         run: |
+          rect() { osascript -e "tell application \"System Events\" to tell process \"Draconis\" to get {position, size} of $1" | tr -d ' '; }
           open build/Build/Products/Debug/Draconis.app
           sleep 30
-          screencapture -x shots/macos.png
-          osascript -e 'tell application "System Events" to get {position, size} of window 1 of process "Draconis"' > shots/macos-window.txt 2>&1 || true
           osascript -e 'tell application "Draconis" to activate' || true
           sleep 2
-          screencapture -x shots/macos-active.png
+          r=$(rect "window 1"); echo "$r" > shots/macos-window.txt
+          IFS=, read -r x y w h <<< "$r"
+          # Sidebar rows (window coordinates, from the Play screenshot): Play 86, Mods 118, Servers 150, Console 182.
+          for page in play:86 mods:118 servers:150 console:182; do
+            cliclick "c:$((x + 70)),$((y + ${page#*:}))"
+            sleep 6
+            screencapture -x "shots/macos-${page%%:*}.png"
+          done
+          cliclick "c:$((x + 70)),$((y + 86))"
+          osascript -e 'tell application "System Events" to keystroke "," using command down'
+          sleep 4
+          screencapture -x shots/macos-settings.png
+          rect "window 1" > shots/macos-settings-window.txt
+          osascript -e 'tell application "System Events" to tell process "Draconis" to get entire contents of window 1' > shots/macos-settings-ax.txt 2>&1 || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: look-macos
           path: shots/
 
-  linux:
-    name: Linux/Windows UI
+  compare:
+    name: Linux/Windows UI against macOS
+    needs: macos
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Software Vulkan
-        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libxkbcommon-dev libwayland-dev
-      - name: Render
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libxkbcommon-dev libwayland-dev imagemagick
+      - uses: actions/download-artifact@v4
+        with:
+          name: look-macos
+          path: mac
+      - name: Render and compare
         run: |
-          mkdir -p shots
-          python3 Desktop/look/wallpaper.py shots/wallpaper.png 1400 900
           cargo build --release --manifest-path Desktop/Cargo.toml
-          for page in play mods servers console settings; do
-            Desktop/target/release/draconis --snapshot "shots/linux-$page.png" 1400x900 $page --backdrop shots/wallpaper.png
-          done
-          Desktop/target/release/draconis --snapshot shots/linux-play-dark.png 1400x900 play
+          bash Desktop/look/compare.sh mac shots Desktop/target/release/draconis
+          cat shots/scores.txt >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: look-linux
+          name: look-compare
           path: shots/

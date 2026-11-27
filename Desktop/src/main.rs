@@ -4,6 +4,7 @@
 //! `draconis --snapshot out.png [WxH]` renders one frame offscreen.
 
 mod app;
+mod engine;
 mod glass;
 mod render;
 mod theme;
@@ -65,7 +66,7 @@ fn snapshot(out: &str, size: (u32, u32), section: Option<&str>, backdrop: Option
     });
     let view = target.create_view(&Default::default());
     let ctx = context();
-    let mut app = app::App::new(resources());
+    let mut app = app::App::new(resources(), engine::Engine::sample());
     if let Some(name) = section {
         app.section = app::Section::ALL.into_iter().find(|s| format!("{s:?}").eq_ignore_ascii_case(name)).unwrap_or(app.section);
     }
@@ -180,6 +181,11 @@ impl ApplicationHandler for Shell {
         let ctx = context();
         let input = egui_winit::State::new(ctx.clone(), egui::ViewportId::ROOT, &window, Some(window.scale_factor() as f32), None, None);
         let painter = render::Painter::new(&device, format);
+        // egui asks for frames (animations, engine messages): wake winit.
+        let redraw = window.clone();
+        ctx.set_request_repaint_callback(move |_| redraw.request_redraw());
+        let repaint = ctx.clone();
+        let app = app::App::new(resources(), engine::Engine::start(move || repaint.request_repaint()));
         self.state = Some(Running {
             window,
             surface,
@@ -190,7 +196,7 @@ impl ApplicationHandler for Shell {
             input,
             painter,
             layer: glass::Layer::new(),
-            app: app::App::new(resources()),
+            app,
             last: std::time::Instant::now(),
         });
     }

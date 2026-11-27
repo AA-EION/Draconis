@@ -176,3 +176,49 @@ pub fn sidebar_item(ui: &mut Ui, icons: &mut Icons, icon_name: &str, title: &str
     ui.painter().galley(egui::pos2(rect.min.x + 44.0, rect.center().y - galley.size().y / 2.0), galley, color);
     response
 }
+
+/// A macOS `.switch` toggle: a capsule track with a glass knob.
+pub fn toggle(ui: &mut Ui, id: &str, on: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(46.0, 26.0), Sense::click());
+    let t = ui.ctx().animate_bool(response.id, on);
+    glass::place(response.id.with("track"), rect, 99.0, if on { Tint::Strong } else { Tint::Dark }, 1);
+    if on {
+        ui.painter().rect_filled(rect.shrink(1.0), egui::CornerRadius::same(13), theme::ACCENT32.gamma_multiply(0.85));
+    }
+    let knob = egui::Rect::from_center_size(egui::pos2(egui::lerp(rect.min.x + 13.0..=rect.max.x - 13.0, t), rect.center().y), Vec2::splat(22.0));
+    glass::place(ui.make_persistent_id((id, "knob")), knob, 99.0, Tint::Snow, 2);
+    response
+}
+
+/// A capsule search field on dark glass.
+pub fn search(ui: &mut Ui, id: &str, hint: &str, text: &mut String, width: f32) -> Response {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 34.0), Sense::hover());
+    glass::place(ui.make_persistent_id((id, "field")), rect, 99.0, Tint::Dark, 1);
+    let inner = rect.shrink2(Vec2::new(14.0, 6.0));
+    ui.put(
+        inner,
+        egui::TextEdit::singleline(text)
+            .id_salt(id)
+            .frame(egui::Frame::NONE)
+            .hint_text(egui::RichText::new(hint).color(theme::FAINT))
+            .font(theme::body(14.0))
+            .text_color(theme::PRIMARY),
+    )
+}
+
+/// A thin capsule progress bar; `None` sweeps (unknown size).
+pub fn progress(ui: &mut Ui, fraction: Option<f64>) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 8.0), Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(rect, egui::CornerRadius::same(4), Color32::from_white_alpha(22));
+    let fill = match fraction {
+        Some(f) => egui::Rect::from_min_size(rect.min, Vec2::new(rect.width() * f.clamp(0.0, 1.0) as f32, rect.height())),
+        None => {
+            let t = (ui.input(|i| i.time) * 0.8).fract() as f32;
+            ui.ctx().request_repaint();
+            let w = rect.width() * 0.3;
+            egui::Rect::from_min_size(egui::pos2(rect.min.x + (rect.width() + w) * t - w, rect.min.y), Vec2::new(w, rect.height())).intersect(rect)
+        }
+    };
+    painter.rect_filled(fill, egui::CornerRadius::same(4), theme::ACCENT32);
+}

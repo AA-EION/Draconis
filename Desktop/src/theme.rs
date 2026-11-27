@@ -8,6 +8,10 @@ use std::sync::Arc;
 /// macOS AccentColor (#D1D8DE).
 pub const ACCENT: Color = Color { r: 0.820, g: 0.847, b: 0.871, a: 1.0 };
 
+/// The accent as an egui colour.
+pub const ACCENT32: Color32 = Color32::from_rgb(209, 216, 222);
+pub const ERROR: Color32 = Color32::from_rgb(255, 140, 140);
+pub const OK: Color32 = Color32::from_rgb(153, 242, 178);
 pub const PRIMARY: Color32 = Color32::from_rgb(244, 245, 247);
 pub const SECONDARY: Color32 = Color32::from_rgba_premultiplied(204, 204, 204, 204);
 pub const TERTIARY: Color32 = Color32::from_rgba_premultiplied(184, 184, 184, 184);

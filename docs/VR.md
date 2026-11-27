@@ -95,37 +95,41 @@ with `PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1` and Proton's `Software\Wine\VR
 (`openxr_vulkan_*_extensions`, `PROTON_VR_RUNTIME`, `state`) set in the prefix, as described on
 [vronlinux.org](https://vronlinux.org/docs/games/vr-no-steam/).
 
-## macOS — investigation (November 2026)
+## macOS — investigation (updated November 27, 2026)
 
-There is no turnkey way to play a Windows VR game on a Mac today:
+SteamVR has no macOS build (Valve removed it), so Steam Link VR can't stream from a Mac directly.
+What has changed since the first pass: several community projects now run Windows OpenXR/OpenVR
+games under Wine on Apple Silicon and stream them to a Quest. None works with stock CrossOver
+alone, and all are experimental.
 
-- **SteamVR is gone from macOS.** Valve stopped shipping it (the `macos_default` branch was removed), so
-  Steam Link VR has nothing to stream from a Mac.
-- **ALVR** officially supports Windows and Linux hosts only. Its macOS issue
-  ([alvr-org/ALVR#2047](https://github.com/alvr-org/ALVR/issues/2047)) has an unpublished proof of
-  concept (May 2026): patched ALVR + patched CrossOver + a modified DXMT, streaming The Lab and Half-Life:
-  Alyx to a Quest 3S at 90 fps on an M4 Pro. No code was released.
-- **OXRSys** (formerly OpenXR-OSX, [demonixis/oxrsys](https://github.com/demonixis/oxrsys), MPL-2.0): a native
-  macOS OpenXR runtime with Quest/Pico, Vision Pro and simulator clients, streaming with VideoToolbox over
-  Wi-Fi or USB. It serves native macOS OpenXR apps (Metal / MoltenVK); nothing connects Wine's Windows
-  OpenXR loader to it yet.
-- **Threshold XR** ([NikNakk/threshold-xr](https://github.com/NikNakk/threshold-xr)): a macOS manager for a
-  Monado-based stack on Apple Silicon (Monado, xrizer, DXMT, KosmicKrisp, Wine with a Windows-side Monado
-  client that must match the service build). Milestone 1, no CI; a native OpenXR app (Open Brush) has
-  reached "In headset"; no Windows D3D11 game has been shown.
+| Project | Wine | D3D11 → Metal | OpenXR side | Headset link | Notes |
+|---|---|---|---|---|---|
+| [orchardxr/varbor](https://github.com/orchardxr/varbor) (MIT) | NotProton runners (copies of CrossOver's Wine) | DXMT (or ARM64EC DXVK) | `wineopenxr` + Proton's `vrclient`; [WiVRn for macOS](https://github.com/orchardxr/wivrn-macos) | WiVRn app, Wi-Fi | Half-Life: Alyx confirmed; writes `Software\Khronos\OpenXR\1 ActiveRuntime`, `Software\Wine\VR state=1` and `openvrpaths.vrpath` into the prefix on every launch |
+| [anoshmisiosdev/oxrsys-winebridge](https://github.com/anoshmisiosdev/oxrsys-winebridge) | CrossOver | stock DXMT (pinned commit) | `wineopenxr` → [OXRSys](https://github.com/demonixis/oxrsys) runtime | OXRSys APK, USB | Pac-Man VR (OpenXR), SUPERHOT VR (OpenComposite); D3D11 only |
+| [abgitdev/TrailBridge-VR](https://github.com/abgitdev/TrailBridge-VR) (MIT) | its own Wine 11.10 | patched DXMT 0.80 | own OpenXR runtime (BasaltVR), not conformant | ALVR client, USB or Wi-Fi | BONELAB, Blade & Sorcery, VTOL VR, Skyrim VR; Quest 3 tested |
+| [monofunc/wineopenxr](https://github.com/monofunc/wineopenxr) (LGPL-2.1) | CrossOver 26 + files copied into its Wine tree | DXMT fork (zero-copy `MTLTexture` interop) | needs a runtime with `XR_KHR_metal_enable` (Monado fork) | — | bridge only, untested |
+| [NikNakk/macos-wine-xr](https://github.com/NikNakk/macos-wine-xr) (LGPL-2.1) | self-built Wine 11.10 | DXMT fork | RPC thunk → Monado fork / Meta XR Simulator | — | research-grade, `hello_xr` level |
+| [somsarashvili/macquestlink](https://github.com/somsarashvili/macquestlink) (MIT) | CrossOver Preview 27 | patched DXMT | real SteamVR (Windows) in the bottle + NVENC shim over VideoToolbox | Steam Link, Wi-Fi | Half-Life: Alyx ~70 fps on M4 Max; OpenVR only |
 
-What a Mac path needs, and how it maps onto Draconis Wine (wine-crossover 11 + DXMT 0.80, already in
-the macOS app):
+What this means for Titanfall 2 VR, a D3D11 OpenXR game (the best-covered case):
 
-1. A Windows-side OpenXR runtime inside the Wine prefix that forwards to a macOS runtime (OXRSys or
-   Monado). Threshold XR's Windows Monado client is the closest existing piece.
-2. D3D11 swapchain sharing between DXMT (Metal) and that runtime: OpenXR's `XR_KHR_D3D11_enable`
-   images must be backed by Metal textures the runtime can read. This is the patch the ALVR proof of
-   concept made to DXMT.
-3. The same mod install as on Windows (`TitanfallVR` in Core already does it), run through
-   `WineBackendManager`.
+1. **The Windows side is a `wineopenxr` bridge** (a PE DLL + a Unix `.so` in Wine's lib dirs, a
+   `wineopenxr64.json` manifest, and `HKLM\Software\Khronos\OpenXR\1\ActiveRuntime` pointing at it),
+   with DXMT sharing the eye textures as Metal textures.
+2. **The Mac side is a native OpenXR runtime that streams:** WiVRn for macOS (Quest over Wi-Fi, the
+   same client as Draconis's Linux WiVRn path) or OXRSys (Quest over USB).
+3. **CrossOver can't be the engine.** The bridge's Unix half has to go into Wine's own lib dirs;
+   Draconis never modifies `CrossOver.app` (signature, updates, and it's the user's install). Draconis
+   Wine (wine-crossover 11 + DXMT 0.80, ours, in `Draconis/Engine`) can carry it, the way VarboR adds
+   it to its runner copies.
+4. **The mod itself installs as on Windows** (`TitanfallVR`: download, `asset_patcher.exe` under
+   Wine, `TF2VR` profile), and probably needs the two Linux fixes: `LoopbackPatch` (Wine's
+   mmdevapi is the same) and a current VC++ runtime (`BottleSetup` already installs it).
 
-Plan: keep VR off on macOS until one of these stacks runs a D3D11 OpenXR game under Wine. Then add
-it to the macOS app as a "Labs" option on Draconis Wine prefixes (not CrossOver, whose Wine can't be
-patched), reusing `TitanfallVR` for the install and launch. Watch: the ALVR CrossOver work in #2047,
-OXRSys's support matrix, and Threshold XR's Wine bridge.
+Plan, unchanged in spirit but now concrete: a "Labs" VR option for **Draconis Wine prefixes only**:
+build `wineopenxr` against Draconis Wine (pin one of the bridges above, likely VarboR's since it
+targets WiVRn and is MIT; the PE/Unix halves are LGPL like Wine), ship it in the engine, register the
+runtime in the prefix (never globally), and point players to WiVRn for macOS. Blockers before
+shipping: DXMT's texture interop must be in the DXMT release Draconis pins (oxrsys-winebridge
+reports stock DXMT works; the others use forks), and someone has to test it on a Mac with a Quest.
+Watch: [ALVR macOS (#2047)](https://github.com/alvr-org/ALVR/issues/2047), VarboR, WiVRn for macOS.

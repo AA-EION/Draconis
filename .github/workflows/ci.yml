@@ -49,3 +49,38 @@ jobs:
               CODE_SIGN_IDENTITY="-" \
               CODE_SIGNING_REQUIRED=NO \
               clean build
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Swift and GTK 4
+        run: bash Scripts/linux-setup-swift.sh
+
+      - name: Test core
+        run: swift test --package-path Core
+
+      - name: Build and test the Linux app
+        run: |
+          swift build --package-path CrossPlatform
+          swift test --package-path CrossPlatform
+
+  windows:
+    name: Windows
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: compnerd/gha-setup-swift@v0.5.1
+        with:
+          swift-version: swift-6.4.3-release
+          swift-build: 6.4.3-RELEASE
+
+      - name: Test core
+        run: swift test --package-path Core
+
+      - name: Build the Windows app
+        run: swift build --package-path CrossPlatform
+

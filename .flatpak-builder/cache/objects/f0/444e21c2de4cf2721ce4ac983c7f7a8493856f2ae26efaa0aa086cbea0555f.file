@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.aa_eion.Draconis</id>
+  <name>Draconis</name>
+  <summary>Titanfall 2 and Northstar launcher</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.aa_eion"><name>AA-EION</name></developer>
+  <description>
+    <p>Installs and updates Northstar, manages Thunderstore mods, browses Northstar servers,
+    and launches Titanfall 2 through Steam, or through Proton (umu-launcher) or Wine for EA app
+    and Epic copies.</p>
+  </description>
+  <launchable type="desktop-id">io.github.aa_eion.Draconis.desktop</launchable>
+  <url type="homepage">https://github.com/AA-EION/Draconis</url>
+  <url type="bugtracker">https://github.com/AA-EION/Draconis/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.13.0-dev" date="2026-11-27"/>
+  </releases>
+</component>

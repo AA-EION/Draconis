@@ -1,0 +1,43 @@
+{
+  "id" : "io.github.aa_eion.Draconis",
+  "runtime" : "org.gnome.Platform",
+  "runtime-version" : "49",
+  "runtime-commit" : "2bb946ea4ebb050f6a32f90e979feb975b08280d1ff1aac881dec3d1361ad84d",
+  "sdk" : "org.gnome.Sdk",
+  "sdk-commit" : "faf37bdc962236ef8e61fd0b289fd311f7961cc5a7b4bc11a6e29506d7874003",
+  "command" : "draconis",
+  "modules" : [
+    {
+      "name" : "draconis",
+      "buildsystem" : "simple",
+      "sources" : [
+        {
+          "path" : "../../build/linux/payload",
+          "type" : "dir"
+        }
+      ],
+      "build-commands" : [
+        "mkdir -p /app/lib/draconis /app/bin",
+        "cp -r draconis *.so DraconisCross_Draconis.bundle /app/lib/draconis/",
+        "ln -s /app/lib/draconis/draconis /app/bin/draconis",
+        "install -Dm644 io.github.aa_eion.Draconis.desktop /app/share/applications/io.github.aa_eion.Draconis.desktop",
+        "install -Dm644 io.github.aa_eion.Draconis.metainfo.xml /app/share/metainfo/io.github.aa_eion.Draconis.metainfo.xml",
+        "install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.aa_eion.Draconis.png",
+        "install -Dm644 -t /app/share/licenses/draconis LICENSE THIRD-PARTY-NOTICES.md"
+      ]
+    }
+  ],
+  "finish-args" : [
+    "--share=network",
+    "--share=ipc",
+    "--socket=wayland",
+    "--socket=fallback-x11",
+    "--device=dri",
+    "--filesystem=home",
+    "--filesystem=/mnt",
+    "--filesystem=/media",
+    "--filesystem=/run/media",
+    "--talk-name=org.freedesktop.Flatpak"
+  ],
+  "source-date-epoch" : 1795751035
+}

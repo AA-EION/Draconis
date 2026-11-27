@@ -18,7 +18,8 @@ import Testing
         #expect(VDF.parse("\"a\" { \"b\" ") == nil)
     }
 
-    @Test func findsTitanfallAndCompatTool() throws {
+    // Steam roots on Windows come from the registry, not the home folder.
+    @Test(.enabled(if: !isWindows)) func findsTitanfallAndCompatTool() throws {
         let fm = FileManager.default
         let home = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = home.appendingPathComponent(".local/share/Steam")
@@ -48,3 +49,9 @@ import Testing
         #expect(found.0.compatTool(appID: "1237970") == "GE-Proton11-14")
     }
 }
+
+#if os(Windows)
+let isWindows = true
+#else
+let isWindows = false
+#endif

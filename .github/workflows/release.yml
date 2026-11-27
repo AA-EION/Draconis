@@ -15,8 +15,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build & Release
+  macos:
+    name: macOS
     runs-on: macos-26
 
     steps:
@@ -103,14 +103,107 @@ jobs:
           ---
 
           ### Installation
-          1. Download `Draconis-${{ env.TAG }}.dmg` below
-          2. Open the DMG and drag **Draconis.app** to Applications
-          3. Draconis isn't notarised, so clear the download flag once (macOS Tahoe 26.6+ otherwise only offers *Move to Trash*):
-             `xattr -dr com.apple.quarantine /Applications/Draconis.app`
-          4. Launch and follow the setup wizard
 
-          > **Requires macOS Tahoe (26.0) or later.**
+          **macOS** (Tahoe 26+)
+          1. Download `Draconis-${{ env.TAG }}.dmg`, open it and drag **Draconis.app** to Applications
+          2. Draconis isn't notarised, so clear the download flag once:
+             `xattr -dr com.apple.quarantine /Applications/Draconis.app`
+
+          **Linux** (x86_64, needs GTK 4)
+          - AppImage: `chmod +x Draconis-*.AppImage` and run it
+          - Debian/Ubuntu: `sudo apt install ./draconis_*_amd64.deb`
+          - Fedora/openSUSE: `sudo dnf install ./draconis-*.x86_64.rpm`
+          - Flatpak: `flatpak install --user Draconis-*.flatpak`
+          - Anything else: extract the `.tar.gz` and run `./draconis`
+
+          **Windows** (10/11, x64)
+          - Extract `Draconis-*-windows-x64.zip` and run `Draconis.exe`. It needs the
+            [Windows App SDK runtime](https://aka.ms/windowsappsdk/1.5/latest/windowsappruntimeinstall-x64.exe).
+
+          Checksums are in `SHA256SUMS`.
           EOF
+
+      - name: Upload DMG and notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            Draconis-${{ env.TAG }}.dmg
+            release-notes.md
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="$INPUT_TAG"; else TAG="$GITHUB_REF_NAME"; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Install Swift, GTK 4 and packaging tools
+        run: |
+          bash Scripts/linux-setup-swift.sh
+          sudo apt-get install -y -q flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.gnome.Platform//49 org.gnome.Sdk//49
+
+      - name: Build packages
+        run: bash Scripts/package-linux.sh "${TAG#v}" --flatpak
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: build/linux/dist/*
+
+  windows:
+    name: Windows
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: compnerd/gha-setup-swift@v0.5.1
+        with:
+          swift-version: swift-6.4.3-release
+          swift-build: 6.4.3-RELEASE
+
+      - name: Build package
+        shell: pwsh
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          $tag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_TAG } else { $env:GITHUB_REF_NAME }
+          ./Scripts/package-windows.ps1 -Version $tag.TrimStart('v')
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build/windows/dist/*
+
+  publish:
+    name: Publish release
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve release tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="$INPUT_TAG"; else TAG="$GITHUB_REF_NAME"; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Checksums
+        run: |
+          cat artifacts/linux/SHA256SUMS artifacts/windows/SHA256SUMS-windows > SHA256SUMS
+          (cd artifacts/macos && sha256sum *.dmg) >> SHA256SUMS
+          rm artifacts/linux/SHA256SUMS artifacts/windows/SHA256SUMS-windows
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -118,8 +211,11 @@ jobs:
           tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
           name: "Draconis ${{ env.TAG }}"
-          body_path: release-notes.md
+          body_path: artifacts/macos/release-notes.md
           draft: false
           prerelease: ${{ contains(env.TAG, '-') }}
           files: |
-            Draconis-${{ env.TAG }}.dmg
+            artifacts/macos/*.dmg
+            artifacts/linux/*
+            artifacts/windows/*
+            SHA256SUMS

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Draconis
+GenericName=Titanfall 2 Launcher
+Comment=Titanfall 2 and Northstar launcher
+Exec=draconis
+Icon=io.github.aa_eion.Draconis
+Terminal=false
+Categories=Game;
+Keywords=Titanfall;Northstar;Steam;Proton;
+StartupWMClass=draconis

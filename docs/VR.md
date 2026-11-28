@@ -90,6 +90,12 @@ Runtimes (the Play screen shows which one is running):
 | Meta Quest, Pico | [WiVRn](https://github.com/WiVRn/WiVRn) | Open source streaming, no SteamVR. Proton 9+ |
 | Index, Vive, wired headsets | SteamVR, or [Monado](https://monado.freedesktop.org) (Lighthouse needs SteamVR's driver installed) | |
 
+**Tested (November 27, 2026):** Ubuntu, Steam copy on a second disk, Proton Experimental, SteamVR 2.18.4,
+Meta Quest 3 over Steam Link. SteamVR logs show the VR launcher connect as an OpenXR scene app, render
+1936×2068 per eye at 90 Hz and run for 38 minutes before closing normally. In one recorded stretch Steam
+Link's encoder took 16 ms per frame (over the 11.1 ms budget) and 39 % of frames arrived late; lowering
+Steam Link's resolution or refresh rate (72 Hz) is the first thing to try if it stutters.
+
 Not covered yet: non-Steam copies on Linux (EA app / Heroic prefixes). They would need umu-launcher
 with `PRESSURE_VESSEL_IMPORT_OPENXR_1_RUNTIMES=1` and Proton's `Software\Wine\VR` registry keys
 (`openxr_vulkan_*_extensions`, `PROTON_VR_RUNTIME`, `state`) set in the prefix, as described on

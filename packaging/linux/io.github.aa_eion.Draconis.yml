@@ -1,5 +1,5 @@
-# Flatpak manifest. Packages the prebuilt Linux build (with its Swift
-# runtime libraries) on the GNOME runtime; Steam, umu-launcher, Proton and Wine run
+# Flatpak manifest. Packages the prebuilt Linux build (the Rust UI, the Swift
+# engine and its runtime libraries) on the GNOME runtime; Steam, umu-launcher, Proton and Wine run
 # on the host through flatpak-spawn.
 app-id: io.github.aa_eion.Draconis
 runtime: org.gnome.Platform
@@ -18,14 +18,16 @@ finish-args:
   - --filesystem=/mnt
   - --filesystem=/media
   - --filesystem=/run/media
-  # Steam, umu-run, Proton and Wine run on the host.
+  # The wallpaper behind the window's glass, when it's a system image.
+  - --filesystem=host-os:ro
+  # Steam, umu-run, Proton, Wine and gsettings (the wallpaper) run on the host.
   - --talk-name=org.freedesktop.Flatpak
 modules:
   - name: draconis
     buildsystem: simple
     build-commands:
       - mkdir -p /app/lib/draconis /app/bin
-      - cp -r draconis swift-backtrace-static *.so DraconisCross_Draconis.bundle /app/lib/draconis/
+      - cp -r draconis draconis-engine swift-backtrace-static *.so DraconisCross_DraconisEngine.bundle resources /app/lib/draconis/
       - ln -s /app/lib/draconis/draconis /app/bin/draconis
       - install -Dm644 io.github.aa_eion.Draconis.desktop /app/share/applications/io.github.aa_eion.Draconis.desktop
       - install -Dm644 io.github.aa_eion.Draconis.metainfo.xml /app/share/metainfo/io.github.aa_eion.Draconis.metainfo.xml

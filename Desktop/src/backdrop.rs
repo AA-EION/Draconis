@@ -134,23 +134,32 @@ pub fn wallpaper(size: (u32, u32)) -> Option<RgbaImage> {
 #[cfg(target_os = "linux")]
 fn wallpaper_path() -> Option<std::path::PathBuf> {
     use std::process::Command;
-    let gsettings = |key: &str| {
-        let out = Command::new("gsettings").args(["get", "org.gnome.desktop.background", key]).output().ok()?;
-        let value = String::from_utf8(out.stdout).ok()?;
-        let value = value.trim().trim_matches('\'');
-        let path = value.strip_prefix("file://").unwrap_or(value);
+    // Inside Flatpak, ask the host's gsettings and read system images through /run/host.
+    let flatpak = std::env::var_os("FLATPAK_ID").is_some();
+    let host = |path: &str| {
         let path = std::path::PathBuf::from(path.replace("%20", " "));
+        let path = match path.strip_prefix("/usr") {
+            Ok(rest) if flatpak => std::path::Path::new("/run/host/usr").join(rest),
+            _ => path,
+        };
         path.is_file().then_some(path)
     };
-    let dark = Command::new("gsettings").args(["get", "org.gnome.desktop.interface", "color-scheme"]).output().ok()
-        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains("dark"));
+    let get = |schema: &str, key: &str| {
+        let mut command = if flatpak { let mut c = Command::new("flatpak-spawn"); c.args(["--host", "gsettings"]); c } else { Command::new("gsettings") };
+        let out = command.args(["get", schema, key]).output().ok()?;
+        Some(String::from_utf8(out.stdout).ok()?.trim().trim_matches('\'').to_owned())
+    };
+    let gsettings = |key: &str| {
+        let value = get("org.gnome.desktop.background", key)?;
+        host(value.strip_prefix("file://").unwrap_or(&value))
+    };
+    let dark = get("org.gnome.desktop.interface", "color-scheme").is_some_and(|v| v.contains("dark"));
     let gnome = if dark { gsettings("picture-uri-dark").or_else(|| gsettings("picture-uri")) } else { gsettings("picture-uri") };
     gnome.or_else(|| {
         let home = std::env::var_os("HOME")?;
         let config = std::fs::read_to_string(std::path::Path::new(&home).join(".config/plasma-org.kde.plasma.desktop-appletsrc")).ok()?;
         let line = config.lines().find(|l| l.starts_with("Image="))?;
-        let path = std::path::PathBuf::from(line.trim_start_matches("Image=").trim_start_matches("file://"));
-        path.is_file().then_some(path)
+        host(line.trim_start_matches("Image=").trim_start_matches("file://"))
     })
 }
 

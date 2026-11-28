@@ -158,6 +158,27 @@ pub struct Remote {
     pub gone: Option<String>,
 }
 
+/// Applies one JSON line from the engine.
+fn apply(remote: &mut Remote, line: &str) {
+    let Ok(message) = serde_json::from_str::<Value>(line) else { return };
+    match message["type"].as_str() {
+        Some("state") => match serde_json::from_value::<State>(message["state"].clone()) {
+            Ok(state) => remote.state = Some(state),
+            Err(err) => eprintln!("draconis: unreadable engine state: {err}"),
+        },
+        Some("log") => {
+            if let Ok(line) = serde_json::from_value(message["line"].clone()) {
+                remote.console.push(line);
+                let excess = remote.console.len().saturating_sub(2000);
+                remote.console.drain(..excess);
+            }
+        }
+        Some("packages") => remote.packages = serde_json::from_value(message["packages"].clone()).unwrap_or_default(),
+        Some("servers") => remote.servers = serde_json::from_value(message["servers"].clone()).unwrap_or_default(),
+        _ => {}
+    }
+}
+
 /// Sends commands to the engine; cheap to clone into a dialog thread.
 #[derive(Clone, Default)]
 pub struct Sender(Arc<Mutex<Option<ChildStdin>>>);
@@ -193,7 +214,11 @@ fn engine_path() -> PathBuf {
 impl Engine {
     pub fn start(repaint: impl Fn() + Send + 'static) -> Self {
         let remote = Arc::new(Mutex::new(Remote::default()));
-        let spawned = Command::new(engine_path()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn();
+        let mut command = Command::new(engine_path());
+        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        #[cfg(windows)]
+        std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000); // CREATE_NO_WINDOW
+        let spawned = command.spawn();
         let mut child = match spawned {
             Ok(child) => child,
             Err(err) => {
@@ -206,25 +231,7 @@ impl Engine {
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else { break };
-                let Ok(message) = serde_json::from_str::<Value>(&line) else { continue };
-                let mut remote = shared.lock().unwrap();
-                match message["type"].as_str() {
-                    Some("state") => match serde_json::from_value::<State>(message["state"].clone()) {
-                        Ok(state) => remote.state = Some(state),
-                        Err(err) => eprintln!("draconis: unreadable engine state: {err}"),
-                    },
-                    Some("log") => {
-                        if let Ok(line) = serde_json::from_value(message["line"].clone()) {
-                            remote.console.push(line);
-                            let excess = remote.console.len().saturating_sub(2000);
-                            remote.console.drain(..excess);
-                        }
-                    }
-                    Some("packages") => remote.packages = serde_json::from_value(message["packages"].clone()).unwrap_or_default(),
-                    Some("servers") => remote.servers = serde_json::from_value(message["servers"].clone()).unwrap_or_default(),
-                    _ => {}
-                }
-                drop(remote);
+                apply(&mut shared.lock().unwrap(), &line);
                 repaint();
             }
             shared.lock().unwrap().gone = Some("draconis-engine stopped. See Logs/draconis.log in the data folder.".into());
@@ -323,5 +330,42 @@ fn sample_state() -> State {
             ..Default::default()
         },
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Lines recorded from draconis-engine (a Steam copy on a second library).
+    #[test]
+    fn reads_what_the_engine_sends() {
+        let mut remote = Remote::default();
+        for line in [include_str!("fixtures/state.json"), include_str!("fixtures/packages.json"), include_str!("fixtures/servers.json"), include_str!("fixtures/log.json")] {
+            apply(&mut remote, line);
+        }
+        let state = remote.state.expect("state");
+        let game = state.selected().expect("a game");
+        assert_eq!(game.kind, "steam");
+        assert!(game.has_northstar);
+        assert_eq!(game.northstar_version.as_deref(), Some("1.31.16"));
+        assert!(!state.vr.steam_vr_running);
+        assert_eq!(remote.packages.len(), 2);
+        assert!(remote.packages[0].icon.as_deref().is_some_and(|u| u.starts_with("https://")));
+        assert!(!remote.packages[0].categories.is_empty());
+        assert_eq!(remote.servers.len(), 1);
+        assert!(remote.servers[0].max_players > 0);
+        assert_eq!(remote.console.len(), 1);
+    }
+
+    #[test]
+    fn survives_fields_it_does_not_know() {
+        let mut remote = Remote::default();
+        apply(&mut remote, r#"{"type":"state","state":{"version":"9.9","somethingNew":1,"vr":{"steamVRRunning":true}}}"#);
+        let state = remote.state.clone().expect("state");
+        assert_eq!(state.version, "9.9");
+        assert!(state.vr.steam_vr_running);
+        apply(&mut remote, "not json");
+        assert!(remote.state.is_some());
     }
 }

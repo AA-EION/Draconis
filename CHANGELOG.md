@@ -6,6 +6,18 @@ All notable changes to Draconis are documented here.
 
 ## [Unreleased]
 
+### Linux and Windows: new app, built to look like the macOS one
+- New interface: Liquid Glass over a blurred copy of your wallpaper, with the
+  macOS layout (sidebar with Launcher / Game / Backend, traffic-light window
+  buttons, Settings in its own window). Colours, sizes and blur were measured
+  against the macOS app.
+- Mods: Thunderstore icons, categories, downloads and ratings, sort and
+  category menus, hide deprecated/NSFW, and drop a .zip on the window to install it.
+- Console: level filter, autoscroll, copy. Turn it on in Settings → General.
+- Under the hood: the interface is now Rust (egui, wgpu, liquid-rust) and the
+  logic a separate Swift process. GTK 4 and the Windows App SDK are no longer
+  needed; a Vulkan or OpenGL driver is.
+
 ---
 
 ## [0.14.3] — 2026-11-27

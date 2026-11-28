@@ -1,20 +1,25 @@
-# Builds the Windows release and packages it as a zip in build\windows\dist.
-#   pwsh Scripts/package-windows.ps1 -Version 0.13.0
+# Builds the Windows release (Rust UI in Desktop/, Swift engine in CrossPlatform/)
+# and packages it as a zip in build\windows\dist.
+#   pwsh Scripts/package-windows.ps1 -Version 0.15.0
 param([Parameter(Mandatory = $true)][string]$Version)
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
 
-$settings = 'CrossPlatform/Sources/DraconisCross/Settings.swift'
+$settings = 'CrossPlatform/Sources/DraconisEngine/Settings.swift'
 (Get-Content $settings) -replace 'static let version = "[^"]*"', "static let version = `"$Version`"" | Set-Content $settings
+$cargo = 'Desktop/Cargo.toml'
+$toml = Get-Content $cargo -Raw
+$toml = ([regex]'(?m)^version = "[^"]*"').Replace($toml, "version = `"$Version`"", 1)
+Set-Content $cargo $toml -NoNewline
 
-# Swift Build ignores platform conditions and compiles the GTK targets;
 # Swift's Clang 21 is older than the runner's MSVC STL expects.
-$env:SCUI_DEFAULT_BACKEND = 'WinUIBackend'
 $build = @('-c', 'release', '--package-path', 'CrossPlatform', '--build-system', 'native',
            '-Xcxx', '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH')
-swift build @build --product Draconis
+swift build @build --product draconis-engine
 if ($LASTEXITCODE -ne 0) { throw "swift build failed" }
 $bin = (swift build @build --show-bin-path).Trim()
+cargo build --release --locked --manifest-path Desktop/Cargo.toml
+if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 
 $name = "Draconis-$Version-windows-x64"
 $out = "build/windows/$name"
@@ -22,11 +27,12 @@ $dist = "build/windows/dist"
 Remove-Item -Recurse -Force build/windows -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $out, $dist | Out-Null
 
-Copy-Item "$bin/Draconis.exe" $out
+Copy-Item Desktop/target/release/draconis.exe "$out/Draconis.exe"
+Copy-Item -Recurse Desktop/resources "$out/resources"
+Copy-Item "$bin/draconis-engine.exe" $out
 Get-ChildItem $bin -Filter *.dll | Copy-Item -Destination $out
 Get-ChildItem $bin -Directory -Filter '*.resources' | Copy-Item -Destination $out -Recurse
 Get-ChildItem $bin -Directory -Filter '*.bundle' | Copy-Item -Destination $out -Recurse
-Get-ChildItem $bin -Filter *.pri | Copy-Item -Destination $out
 
 # The Swift runtime DLLs, from the toolchain's runtime folder.
 $swift = (Get-Command swift).Source
@@ -39,8 +45,8 @@ Copy-Item LICENSE, THIRD-PARTY-NOTICES.md $out
 @"
 Draconis $Version for Windows
 
-Run Draconis.exe. It needs the Windows App SDK runtime 1.5 or newer; if it
-doesn't start, install it from https://aka.ms/windowsappsdk/1.5/latest/windowsappruntimeinstall-x64.exe
+Run Draconis.exe. Keep the files in this folder together: Draconis.exe starts
+draconis-engine.exe next to it.
 "@ | Set-Content "$out/README.txt"
 
 Compress-Archive -Path "$out/*" -DestinationPath "$dist/$name.zip" -Force

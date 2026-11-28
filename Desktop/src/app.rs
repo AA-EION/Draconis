@@ -65,15 +65,19 @@ struct Prefs {
     hide_nsfw: bool,
 }
 
-fn prefs_path() -> Option<std::path::PathBuf> {
-    let base = if cfg!(windows) {
+/// Draconis's data folder, as the engine's `CorePaths` has it.
+pub fn data_dir() -> Option<std::path::PathBuf> {
+    if cfg!(windows) {
         std::env::var_os("LOCALAPPDATA").map(|d| std::path::PathBuf::from(d).join("Draconis"))
     } else {
-        std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from)
+        std::env::var_os("XDG_DATA_HOME").filter(|d| !d.is_empty()).map(std::path::PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share")))
             .map(|d| d.join("draconis"))
-    };
-    base.map(|d| d.join("ui.json"))
+    }
+}
+
+fn prefs_path() -> Option<std::path::PathBuf> {
+    data_dir().map(|d| d.join("ui.json"))
 }
 
 /// Thunderstore icons, fetched on a thread as rows come into view.

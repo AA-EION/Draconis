@@ -109,7 +109,7 @@ jobs:
           2. Draconis isn't notarised, so clear the download flag once:
              `xattr -dr com.apple.quarantine /Applications/Draconis.app`
 
-          **Linux** (x86_64, needs GTK 4)
+          **Linux** (x86_64, needs a Vulkan or OpenGL driver)
           - AppImage: `chmod +x Draconis-*.AppImage` and run it
           - Debian/Ubuntu: `sudo apt install ./draconis_*_amd64.deb`
           - Fedora/openSUSE: `sudo dnf install ./draconis-*.x86_64.rpm`
@@ -117,8 +117,7 @@ jobs:
           - Anything else: extract the `.tar.gz` and run `./draconis`
 
           **Windows** (10/11, x64)
-          - Extract `Draconis-*-windows-x64.zip` and run `Draconis.exe`. It needs the
-            [Windows App SDK runtime](https://aka.ms/windowsappsdk/1.5/latest/windowsappruntimeinstall-x64.exe).
+          - Extract `Draconis-*-windows-x64.zip` and run `Draconis.exe`.
 
           Checksums are in `SHA256SUMS`.
           EOF
@@ -144,7 +143,9 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TAG="$INPUT_TAG"; else TAG="$GITHUB_REF_NAME"; fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
-      - name: Install Swift, GTK 4 and packaging tools
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Swift and packaging tools
         run: |
           bash Scripts/linux-setup-swift.sh
           sudo apt-get install -y -q flatpak flatpak-builder
@@ -169,6 +170,8 @@ jobs:
         with:
           swift-version: swift-6.4.3-release
           swift-build: 6.4.3-RELEASE
+
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build package
         shell: pwsh

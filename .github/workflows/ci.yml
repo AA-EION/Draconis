@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
   pull_request:
     branches: [main]
 
@@ -58,16 +58,31 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Swift and GTK 4
-        run: bash Scripts/linux-setup-swift.sh
-
-      - name: Test core
-        run: swift test --package-path Core
-
-      - name: Build and test the Linux app
+      - name: Install Swift and packaging tools
         run: |
-          swift build --package-path CrossPlatform
+          bash Scripts/linux-setup-swift.sh
+          sudo apt-get install -y -q flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.gnome.Platform//49 org.gnome.Sdk//49
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Test core and engine
+        run: |
+          swift test --package-path Core
           swift test --package-path CrossPlatform
+
+      - name: Test the UI
+        run: cargo test --locked --manifest-path Desktop/Cargo.toml
+
+      # Test packages: deb, rpm, AppImage, Flatpak and tar.gz, versioned after the commit.
+      - name: Build packages
+        run: bash Scripts/package-linux.sh "0.15.0-dev.${GITHUB_SHA::7}" --flatpak
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-packages
+          path: build/linux/dist/*
 
   windows:
     name: Windows
@@ -80,13 +95,16 @@ jobs:
           swift-version: swift-6.4.3-release
           swift-build: 6.4.3-RELEASE
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Test core
         run: swift test --package-path Core
 
-      # Swift Build ignores platform conditions and compiles the GTK targets.
-      # Swift's Clang 21 is older than the runner's MSVC STL expects.
-      - name: Build the Windows app
-        env:
-          SCUI_DEFAULT_BACKEND: WinUIBackend
-        run: swift build --package-path CrossPlatform --build-system native -Xcxx -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+      - name: Build package
+        shell: pwsh
+        run: ./Scripts/package-windows.ps1 -Version "0.15.0-dev.$($env:GITHUB_SHA.Substring(0, 7))"
 
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-package
+          path: build/windows/dist/*

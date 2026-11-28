@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the Linux release and packages it as tar.gz, deb, rpm, AppImage and
+# Builds the Linux release (Rust UI in Desktop/, Swift engine in CrossPlatform/)
+# and packages it as tar.gz, deb, rpm, AppImage and
 # (with --flatpak) a Flatpak bundle, into build/linux/dist.
 #   Scripts/package-linux.sh <version> [--flatpak]
 set -euo pipefail
@@ -13,23 +14,25 @@ PAYLOAD=$OUT/payload
 DIST=$OUT/dist
 rm -rf "$OUT"; mkdir -p "$PAYLOAD" "$DIST"
 
-sed -i "s/static let version = \"[^\"]*\"/static let version = \"$VERSION\"/" CrossPlatform/Sources/DraconisCross/Settings.swift
-swift build -c release --package-path CrossPlatform --product Draconis
+sed -i "s/static let version = \"[^\"]*\"/static let version = \"$VERSION\"/" CrossPlatform/Sources/DraconisEngine/Settings.swift
+sed -i "0,/^version = \"[^\"]*\"/s//version = \"$VERSION\"/" Desktop/Cargo.toml
+swift build -c release --package-path CrossPlatform --product draconis-engine
 BIN=$(swift build -c release --package-path CrossPlatform --show-bin-path)
+cargo build --release --locked --manifest-path Desktop/Cargo.toml
 
-# Payload shared by every format: binary next to its resource bundle and the
-# Swift runtime it links (found through rpath $ORIGIN). GTK and libcurl come
-# from the system.
-cp "$BIN/Draconis" "$PAYLOAD/draconis"
-strip "$PAYLOAD/draconis" || true
-cp -r "$BIN/DraconisCross_Draconis.bundle" "$PAYLOAD/"
+# Payload shared by every format: the UI (Rust, links only libc; Vulkan,
+# Wayland/X11 and xkbcommon are loaded at runtime), its resources, and the
+# engine with its resource bundle and the Swift runtime it links (found
+# through rpath $ORIGIN). libcurl comes from the system.
+cp Desktop/target/release/draconis "$PAYLOAD/draconis"
+cp -r Desktop/resources "$PAYLOAD/resources"
+cp "$BIN/draconis-engine" "$PAYLOAD/draconis-engine"
+strip "$PAYLOAD/draconis-engine" || true
+cp -r "$BIN/DraconisCross_DraconisEngine.bundle" "$PAYLOAD/"
 SWIFT_LIB=$(dirname "$(dirname "$(command -v swift)")")/lib/swift/linux
-ldd "$PAYLOAD/draconis" | awk '{print $3}' | grep "^$SWIFT_LIB\|swift" | sort -u | while read -r lib; do
-  [ -f "$lib" ] && cp -L "$lib" "$PAYLOAD/"
-done
 # The resolver may only see libs through the build tree's rpath; copy any the
-# binary needs from the toolchain by name.
-for name in $(readelf -d "$PAYLOAD/draconis" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
+# engine needs from the toolchain by name.
+for name in $(readelf -d "$PAYLOAD/draconis-engine" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p'); do
   [ -f "$SWIFT_LIB/$name" ] && cp -L "$SWIFT_LIB/$name" "$PAYLOAD/"
 done
 # Runtime libs pull in more runtime libs.
@@ -42,14 +45,14 @@ for _ in 1 2 3; do
 done
 strip --strip-unneeded "$PAYLOAD"/*.so || true
 # Only ever look next to ourselves, never in the build machine's toolchain.
-patchelf --set-rpath '$ORIGIN' "$PAYLOAD/draconis"
+patchelf --set-rpath '$ORIGIN' "$PAYLOAD/draconis-engine"
 for so in "$PAYLOAD"/*.so; do patchelf --set-rpath '$ORIGIN' "$so"; done
 # Swift's crash backtracer (statically linked); Draconis turns it on at startup
 # so crashes leave a report in its Logs/crashes folder.
 cp "$(dirname "$SWIFT_LIB")/../../libexec/swift/linux/swift-backtrace-static" "$PAYLOAD/"
 cp packaging/linux/$ID.desktop "$PAYLOAD/"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" packaging/linux/$ID.metainfo.xml > "$PAYLOAD/$ID.metainfo.xml"
-cp CrossPlatform/Sources/DraconisCross/Resources/icon.png "$PAYLOAD/icon.png"
+cp Desktop/resources/icon.png "$PAYLOAD/icon.png"
 cp LICENSE THIRD-PARTY-NOTICES.md "$PAYLOAD/"
 
 # tar.gz: run ./draconis from the extracted folder.
@@ -61,8 +64,7 @@ tar -C "$OUT/tar" -czf "$DIST/$TARDIR.tar.gz" "$TARDIR"
 # Filesystem tree for deb and rpm.
 ROOT=$OUT/root
 install -d "$ROOT/opt/draconis" "$ROOT/usr/bin"
-cp "$PAYLOAD/draconis" "$PAYLOAD/swift-backtrace-static" "$PAYLOAD"/*.so "$ROOT/opt/draconis/"
-cp -r "$PAYLOAD/DraconisCross_Draconis.bundle" "$ROOT/opt/draconis/"
+cp -r "$PAYLOAD"/draconis* "$PAYLOAD/swift-backtrace-static" "$PAYLOAD"/*.so "$PAYLOAD"/DraconisCross_* "$PAYLOAD/resources" "$ROOT/opt/draconis/"
 ln -s ../../opt/draconis/draconis "$ROOT/usr/bin/draconis"
 install -Dm644 "$PAYLOAD/$ID.desktop" "$ROOT/usr/share/applications/$ID.desktop"
 install -Dm644 "$PAYLOAD/$ID.metainfo.xml" "$ROOT/usr/share/metainfo/$ID.metainfo.xml"
@@ -78,8 +80,8 @@ Package: draconis
 Version: $VERSION
 Architecture: amd64
 Maintainer: AA-EION <noreply@github.com>
-Depends: libgtk-4-1 (>= 4.6), libcurl4t64 | libcurl4
-Recommends: steam | umu-launcher, cabextract
+Depends: libcurl4t64 | libcurl4, libxkbcommon0, libvulkan1 | libegl1, libxkbcommon-x11-0 | libwayland-client0
+Recommends: mesa-vulkan-drivers, xdg-desktop-portal, steam | umu-launcher, cabextract
 Section: games
 Priority: optional
 Homepage: https://github.com/AA-EION/Draconis
@@ -99,8 +101,8 @@ Release: 1
 Summary: Titanfall 2 and Northstar launcher
 License: GPL-3.0-or-later
 URL: https://github.com/AA-EION/Draconis
-Requires: gtk4 >= 4.6, libcurl
-Recommends: cabextract
+Requires: libcurl, libxkbcommon, (vulkan-loader or libglvnd-egl)
+Recommends: mesa-vulkan-drivers, xdg-desktop-portal, cabextract
 AutoReqProv: no
 %description
 Installs and updates Northstar, manages Thunderstore mods, browses servers and
@@ -118,11 +120,10 @@ SPEC
 rpmbuild --define "_topdir $RPMTOP" --define "_build_id_links none" -bb "$RPMTOP/SPECS/draconis.spec"
 cp "$RPMTOP"/RPMS/*/draconis-*.rpm "$DIST/"
 
-# AppImage (uses the system's GTK 4)
+# AppImage (uses the system's Vulkan or OpenGL driver)
 APPDIR=$OUT/AppDir
 install -d "$APPDIR/usr/bin"
-cp "$PAYLOAD/draconis" "$PAYLOAD/swift-backtrace-static" "$PAYLOAD"/*.so "$APPDIR/usr/bin/"
-cp -r "$PAYLOAD/DraconisCross_Draconis.bundle" "$APPDIR/usr/bin/"
+cp -r "$PAYLOAD"/draconis* "$PAYLOAD/swift-backtrace-static" "$PAYLOAD"/*.so "$PAYLOAD"/DraconisCross_* "$PAYLOAD/resources" "$APPDIR/usr/bin/"
 cp "$PAYLOAD/$ID.desktop" "$APPDIR/"
 cp "$PAYLOAD/icon.png" "$APPDIR/$ID.png"
 install -Dm644 "$PAYLOAD/$ID.metainfo.xml" "$APPDIR/usr/share/metainfo/$ID.appdata.xml"

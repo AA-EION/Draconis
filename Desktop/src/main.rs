@@ -5,6 +5,8 @@
 //! renders one frame offscreen over a desktop image; `page` is play, mods,
 //! servers, console or settings.
 
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod app;
 mod backdrop;
 mod engine;
@@ -45,7 +47,28 @@ fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.iter().position(|a| a == flag).and_then(|i| args.get(i + 1)).map(String::as_str)
 }
 
+/// Panics go to Logs/crashes, next to the engine's crash reports.
+fn log_panics() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Some(dir) = app::data_dir().map(|d| d.join("Logs").join("crashes")) {
+            let _ = std::fs::create_dir_all(&dir);
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let report = format!("Draconis {} UI panic\n{info}\n\n{}", env!("CARGO_PKG_VERSION"), std::backtrace::Backtrace::force_capture());
+            let _ = std::fs::write(dir.join(format!("draconis-ui-{secs}.log")), report);
+        }
+        default(info);
+    }));
+}
+
+fn icon() -> Option<winit::window::Icon> {
+    let image = image::open(resources().join("icon.png")).ok()?.resize(128, 128, image::imageops::FilterType::Triangle).to_rgba8();
+    let (w, h) = image.dimensions();
+    winit::window::Icon::from_rgba(image.into_raw(), w, h).ok()
+}
+
 fn main() {
+    log_panics();
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--snapshot") {
         let out = args.get(1).map_or("draconis.png", String::as_str);
@@ -203,7 +226,8 @@ impl Shell {
             .with_inner_size(size)
             .with_min_inner_size(min)
             .with_decorations(false)
-            .with_transparent(true);
+            .with_transparent(true)
+            .with_window_icon(icon());
         #[cfg(target_os = "linux")]
         let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, "io.github.aa_eion.Draconis", "");
         #[cfg(target_os = "linux")]

@@ -52,6 +52,7 @@ jobs:
           sudo defaults write /Library/Preferences/com.apple.universalaccess reduceTransparency -bool false 2>&1 | tee -a shots/transparency.txt || true
           echo "after: $(defaults read com.apple.universalaccess reduceTransparency 2>&1)" | tee -a shots/transparency.txt
           system_profiler SPDisplaysDataType >> shots/transparency.txt 2>&1 || true
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true' || echo "couldn't switch to dark mode"
           killall Dock SystemUIServer 2>/dev/null || true
           sleep 3
           screencapture -x shots/desktop.png

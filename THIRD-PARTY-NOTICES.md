@@ -8,20 +8,18 @@ downloads the following third-party software.
 | Component | Used by | Licence |
 |---|---|---|
 | [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) | all | MIT |
-| [Orbitron](https://github.com/theleagueof/orbitron) font | macOS, Linux | SIL Open Font License 1.1 (`OFL.txt` / `OFL-Orbitron.txt`) |
-| [Inter](https://github.com/rsms/inter) font | Linux | SIL Open Font License 1.1 (`OFL-Inter.txt`) |
-| [Barlow Condensed](https://github.com/jpt/barlow) font | Linux | SIL Open Font License 1.1 (`OFL-BarlowCondensed.txt`) |
-| [Lucide](https://lucide.dev) icons | Linux, Windows | ISC (`LICENSE-Lucide.txt`) |
+| [Orbitron](https://github.com/theleagueof/orbitron) font | macOS | SIL Open Font License 1.1 (`OFL.txt`) |
+| [Inter](https://github.com/rsms/inter) font | Linux, Windows | SIL Open Font License 1.1 (`OFL-Inter.txt`) |
+| [Roboto Condensed](https://github.com/googlefonts/RobotoCondensed) and [Roboto Mono](https://github.com/googlefonts/robotomono) fonts (static instances) | Linux, Windows | SIL Open Font License 1.1 (`OFL-RobotoCondensed.txt`, `OFL-RobotoMono.txt`) |
+| [Phosphor](https://phosphoricons.com) icons | Linux, Windows | MIT (`LICENSE-Phosphor.txt`) |
+| [liquid-rust](https://github.com/al1h3n/liquid-rust), [egui](https://github.com/emilk/egui), [wgpu](https://github.com/gfx-rs/wgpu), [winit](https://github.com/rust-windowing/winit), [resvg](https://github.com/linebender/resvg), [ureq](https://github.com/algesten/ureq), [rfd](https://github.com/PolyMeilex/rfd) and their Rust dependencies | Linux, Windows | MIT / Apache-2.0 (dependency licences listed by `cargo about` / Cargo.lock) |
 | [sentry-cocoa](https://github.com/getsentry/sentry-cocoa) | macOS | MIT |
 | MaximaHelper from [Maxima-Draconis](https://github.com/AA-EION/Maxima-Draconis) | macOS | GPL-3.0 |
-| [SwiftCrossUI](https://github.com/moreSwift/swift-cross-ui) and its image libraries (swift-image-formats, libpng, libjpeg-turbo, libwebp, zlib) | Linux, Windows | MIT; libpng, zlib, BSD-3 (libwebp) |
 | [swift-crypto](https://github.com/apple/swift-crypto), swift-collections, swift-log, swift-system, swift-subprocess, swift-asn1 | Linux, Windows | Apache-2.0 |
-| [swift-winui](https://github.com/moreSwift/swift-winui) / swift-winrt | Windows | BSD-3-Clause |
-| swift-mutex, swift-observation-polyfill, swift-issue-reporting | Linux, Windows | MIT |
 | steamwebhelper wrapper from [steam-on-m1-wine](https://github.com/notpop/steam-on-m1-wine) (`Tools/steamwebhelper-wrapper`) | macOS (Draconis Wine) | MIT |
 | Swift runtime and Foundation | all | Apache-2.0 with Runtime Library Exception |
 
-GTK 4 (LGPL-2.1-or-later) and the Windows App SDK are used from the system, not bundled.
+Vulkan (or Direct3D 12 / OpenGL) drivers and, on Linux, libxkbcommon are used from the system, not bundled.
 
 ## Downloaded at runtime, on request
 

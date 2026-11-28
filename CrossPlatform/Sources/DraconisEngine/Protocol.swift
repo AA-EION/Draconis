@@ -55,6 +55,11 @@ struct ModInfo: Codable, Equatable {
 
 struct PackageInfo: Codable, Equatable {
     var fullName, name, owner, version, description: String
+    var icon, page: String?
+    var categories: [String]
+    var downloads, rating: Int
+    var pinned, deprecated, nsfw: Bool
+    var updated: Double
 }
 
 struct ServerInfo: Codable, Equatable {
@@ -175,9 +180,13 @@ extension AppModel {
     /// Mods worth listing: no deprecated/NSFW packages, no Northstar itself or mod managers.
     func browsablePackages() -> [PackageInfo] {
         let hidden: Set<String> = ["northstar-Northstar", "northstar-NorthstarReleaseCandidate", "ebkr-r2modman"]
-        return packages.filter { !$0.isDeprecated && !$0.hasNsfwContent && !hidden.contains($0.fullName) }.map {
+        return packages.filter { !hidden.contains($0.fullName) }.map {
             PackageInfo(fullName: $0.fullName, name: $0.name, owner: $0.owner,
-                        version: $0.latest?.versionNumber ?? "", description: $0.latest?.description ?? "")
+                        version: $0.latest?.versionNumber ?? "", description: $0.latest?.description ?? "",
+                        icon: $0.latest?.icon?.absoluteString, page: $0.packageURL?.absoluteString,
+                        categories: $0.categories, downloads: $0.latest?.downloads ?? 0,
+                        rating: $0.ratingScore, pinned: $0.isPinned, deprecated: $0.isDeprecated,
+                        nsfw: $0.hasNsfwContent, updated: $0.dateUpdated.timeIntervalSince1970)
         }
     }
 

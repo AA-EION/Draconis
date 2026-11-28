@@ -52,6 +52,15 @@ pub struct Package {
     pub owner: String,
     pub version: String,
     pub description: String,
+    pub icon: Option<String>,
+    pub page: Option<String>,
+    pub categories: Vec<String>,
+    pub downloads: i64,
+    pub rating: i64,
+    pub pinned: bool,
+    pub deprecated: bool,
+    pub nsfw: bool,
+    pub updated: f64,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -131,7 +140,7 @@ impl State {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Default)]
 pub struct Line {
     pub time: f64,
     pub level: String,
@@ -226,7 +235,50 @@ impl Engine {
 
     /// For snapshots and look tests: a fixed state, no process.
     pub fn sample() -> Self {
-        let remote = Remote { state: Some(sample_state()), ..Default::default() };
+        let package = |name: &str, owner: &str, description: &str, categories: &[&str], downloads: i64, rating: i64, pinned: bool| Package {
+            full_name: format!("{owner}-{name}"),
+            name: name.into(),
+            owner: owner.into(),
+            version: "1.0.0".into(),
+            description: description.into(),
+            categories: categories.iter().map(|c| (*c).into()).collect(),
+            downloads,
+            rating,
+            pinned,
+            ..Default::default()
+        };
+        let server = |name: &str, description: &str, map: &str, playlist: &str, region: &str, max: i64| Server {
+            id: name.into(),
+            name: name.into(),
+            description: description.into(),
+            map: map.into(),
+            playlist: playlist.into(),
+            region: Some(region.into()),
+            players: 0,
+            max_players: max,
+            password: false,
+        };
+        let line = |time: f64, level: &str, scope: &str, message: &str| Line { time, level: level.into(), scope: scope.into(), message: message.into() };
+        let remote = Remote {
+            state: Some(sample_state()),
+            packages: vec![
+                package("GaleModManager", "Kesomannen", "A modern and lightweight alternative mod manager for Thunderstore.", &[], 4_600, 235, false),
+                package("Night_City", "Rwyn", "A Cyberpunk 2077 themed, visual-only mod for Angel City.", &["Language: EN", "Mods", "Client-side"], 8_000, 25, false),
+                package("HUDRevamp", "EladNLG", "A mod that revamps the HUD. Now re-revamped.", &["Language: EN", "Mods", "Client-side"], 36_800, 23, false),
+            ],
+            servers: vec![
+                server("Neinguars Stupid Gun Game", "Neinguars Interestings Fvnkheads stupid Gun Game hosted by Neinguar (@Nocatt on discord)", "mp_colony02", "gg", "EU West", 20),
+                server("[AUS] Catnip.host COCAINE MODE Attrition", "Discord: http://discord.catnip.host - Email contact@catnip.host if you encounter any problems!", "mp_grave", "aitdm", "AUS", 16),
+                server("[FIN] MENTAL | Intense Attrition", "Server hosted by MentalEdge a.k.a. EdgeMentality. Attrition with a lot of tweaks and more players.", "mp_relic02", "aitdm", "EU North", 16),
+            ],
+            console: vec![
+                line(84231.0, "info", "app", "Draconis starting up"),
+                line(84233.0, "ok", "steam", "Titanfall 2 found"),
+                line(84234.0, "info", "northstar.update", "Fetching release list from GitHub…"),
+                line(84234.0, "ok", "northstar.update", "Northstar is up to date (v1.31.16)"),
+            ],
+            ..Default::default()
+        };
         Self { remote: Arc::new(Mutex::new(remote)), sender: Sender::default(), child: None }
     }
 }

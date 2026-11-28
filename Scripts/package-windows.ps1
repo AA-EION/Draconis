@@ -7,10 +7,6 @@ Set-Location (Join-Path $PSScriptRoot '..')
 
 $settings = 'CrossPlatform/Sources/DraconisEngine/Settings.swift'
 (Get-Content $settings) -replace 'static let version = "[^"]*"', "static let version = `"$Version`"" | Set-Content $settings
-$cargo = 'Desktop/Cargo.toml'
-$toml = Get-Content $cargo -Raw
-$toml = ([regex]'(?m)^version = "[^"]*"').Replace($toml, "version = `"$Version`"", 1)
-Set-Content $cargo $toml -NoNewline
 
 # Swift's Clang 21 is older than the runner's MSVC STL expects.
 $build = @('-c', 'release', '--package-path', 'CrossPlatform', '--build-system', 'native',
@@ -18,6 +14,7 @@ $build = @('-c', 'release', '--package-path', 'CrossPlatform', '--build-system',
 swift build @build --product draconis-engine
 if ($LASTEXITCODE -ne 0) { throw "swift build failed" }
 $bin = (swift build @build --show-bin-path).Trim()
+$env:DRACONIS_VERSION = $Version
 cargo build --release --locked --manifest-path Desktop/Cargo.toml
 if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 

@@ -15,10 +15,9 @@ DIST=$OUT/dist
 rm -rf "$OUT"; mkdir -p "$PAYLOAD" "$DIST"
 
 sed -i "s/static let version = \"[^\"]*\"/static let version = \"$VERSION\"/" CrossPlatform/Sources/DraconisEngine/Settings.swift
-sed -i "0,/^version = \"[^\"]*\"/s//version = \"$VERSION\"/" Desktop/Cargo.toml
 swift build -c release --package-path CrossPlatform --product draconis-engine
 BIN=$(swift build -c release --package-path CrossPlatform --show-bin-path)
-cargo build --release --locked --manifest-path Desktop/Cargo.toml
+DRACONIS_VERSION="$VERSION" cargo build --release --locked --manifest-path Desktop/Cargo.toml
 
 # Payload shared by every format: the UI (Rust, links only libc; Vulkan,
 # Wayland/X11 and xkbcommon are loaded at runtime), its resources, and the

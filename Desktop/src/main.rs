@@ -54,7 +54,7 @@ fn log_panics() {
         if let Some(dir) = app::data_dir().map(|d| d.join("Logs").join("crashes")) {
             let _ = std::fs::create_dir_all(&dir);
             let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-            let report = format!("Draconis {} UI panic\n{info}\n\n{}", env!("CARGO_PKG_VERSION"), std::backtrace::Backtrace::force_capture());
+            let report = format!("Draconis {} UI panic\n{info}\n\n{}", option_env!("DRACONIS_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")), std::backtrace::Backtrace::force_capture());
             let _ = std::fs::write(dir.join(format!("draconis-ui-{secs}.log")), report);
         }
         default(info);

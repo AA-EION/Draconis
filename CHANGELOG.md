@@ -7,7 +7,8 @@ All notable changes to Draconis are documented here.
 ## [Unreleased]
 
 ### Linux and Windows: new app, built to look like the macOS one
-- New interface: Liquid Glass over a blurred copy of your wallpaper, with the
+- New interface: see-through Liquid Glass (the desktop and other windows show
+  through, blurred where your desktop blurs, e.g. KDE), with the
   macOS layout (sidebar with Launcher / Game / Backend, traffic-light window
   buttons, Settings in its own window). Colours, sizes and blur were measured
   against the macOS app.

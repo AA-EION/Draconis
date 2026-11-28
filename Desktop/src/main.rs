@@ -117,13 +117,8 @@ fn snapshot(out: &str, size: (u32, u32), page: &str, desktop: Option<image::Rgba
     let screen = desktop.as_ref().map_or(size, |d| d.dimensions());
     let origin = at.unwrap_or(((screen.0 as i32 - size.0 as i32) / 2, (screen.1 as i32 - size.1 as i32) / 2));
     let mut painter = render::Painter::new(&device, format);
-    let pixels = if settings {
-        backdrop::solid(size, 1.0)
-    } else {
-        let material = desktop.as_ref().map_or_else(|| backdrop::Desktop::fallback(size), |d| backdrop::Desktop::new(d, 1.0));
-        material.content(origin, size, 1.0, Some(app::sidebar_panel(size.1 as f32)))
-    };
-    painter.set_content(&device, &queue, size, &pixels);
+    let (black, grey) = backdrop::content(size, 1.0, (!settings).then(|| app::sidebar_panel(size.1 as f32)), settings);
+    painter.set_content(&device, &queue, size, &black, &grey);
     let mut layer = glass::Layer::new();
     let input = || egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(size.0 as f32, size.1 as f32))),
@@ -146,9 +141,15 @@ fn snapshot(out: &str, size: (u32, u32), page: &str, desktop: Option<image::Rgba
     painter.paint(&device, &queue, &view, size, &ctx, output, &layer);
     let mut image = read_back(&device, &queue, &target, size);
     if let Some(desktop) = &desktop {
-        let mut under = image::imageops::crop_imm(desktop, origin.0.max(0) as u32, origin.1.max(0) as u32, size.0, size.1).to_image();
-        image::imageops::overlay(&mut under, &image, 0, 0);
-        image = under;
+        // What a blurring compositor shows: the frame (premultiplied) over the blurred desktop.
+        let behind = image::imageops::crop_imm(&backdrop::blurred(desktop), origin.0.max(0) as u32, origin.1.max(0) as u32, size.0, size.1).to_image();
+        for (p, b) in image.pixels_mut().zip(behind.pixels()) {
+            let keep = 1.0 - p[3] as f32 / 255.0;
+            for c in 0..3 {
+                p[c] = (p[c] as f32 + b[c] as f32 * keep).min(255.0) as u8;
+            }
+            p[3] = 255;
+        }
     }
     image.save(out).expect("write PNG");
     println!("wrote {out} ({})", adapter.get_info().name);
@@ -177,14 +178,6 @@ fn read_back(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture
         let start = (y * row) as usize;
         image.as_mut()[(y * size.0 * 4) as usize..((y + 1) * size.0 * 4) as usize].copy_from_slice(&data[start..start + (size.0 * 4) as usize]);
     }
-    // Premultiplied → straight alpha for PNG.
-    for p in image.pixels_mut() {
-        if p[3] > 0 && p[3] < 255 {
-            for c in 0..3 {
-                p[c] = ((p[c] as u32 * 255) / p[3] as u32).min(255) as u8;
-            }
-        }
-    }
     image
 }
 
@@ -203,9 +196,7 @@ struct View {
     layer: glass::Layer,
     last: std::time::Instant,
     cursor: PhysicalPosition<f64>,
-    /// The desktop under the main window, darkened and blurred.
-    desktop: Option<backdrop::Desktop>,
-    placed: Option<((i32, i32), (u32, u32), bool)>,
+    placed: Option<((u32, u32), bool)>,
 }
 
 #[derive(Default)]
@@ -278,7 +269,6 @@ impl Shell {
             let repaint = ctx.clone();
             self.app = Some(App::new(resources(), engine::Engine::start(move || repaint.request_repaint())));
         }
-        let desktop = (kind == Kind::Main).then(|| desktop_for(&window));
         self.views.push(View {
             kind,
             window,
@@ -290,7 +280,6 @@ impl Shell {
             layer: glass::Layer::new(),
             last: std::time::Instant::now(),
             cursor: PhysicalPosition::new(0.0, 0.0),
-            desktop,
             placed: None,
         });
     }
@@ -314,16 +303,6 @@ impl Shell {
                 Action::CloseSettings => if let Some(i) = settings { self.views.remove(i); },
             }
         }
-    }
-}
-
-/// The wallpaper, or the fixed backdrop, as the window's material.
-fn desktop_for(window: &Window) -> backdrop::Desktop {
-    let monitor = window.current_monitor().map(|m| (m.size().width, m.size().height)).unwrap_or((1920, 1080));
-    let scale = window.scale_factor() as f32;
-    match backdrop::wallpaper(monitor) {
-        Some(image) => backdrop::Desktop::new(&image, scale),
-        None => backdrop::Desktop::fallback(monitor),
     }
 }
 
@@ -405,26 +384,18 @@ impl ApplicationHandler for Shell {
 }
 
 impl View {
-    /// Rebuild the content when the window moved or changed size.
+    /// Rebuild the backdrops when the window changed size.
     fn place(&mut self, gpu: &Gpu, sidebar: bool) {
         let size = (self.config.width, self.config.height);
-        let origin = match (self.window.inner_position(), self.window.current_monitor()) {
-            (Ok(p), Some(m)) => (p.x - m.position().x, p.y - m.position().y),
-            // Wayland doesn't say where the window is: centre it on the wallpaper.
-            (_, Some(m)) => ((m.size().width as i32 - size.0 as i32) / 2, (m.size().height as i32 - size.1 as i32) / 2),
-            _ => (0, 0),
-        };
-        if self.placed == Some((origin, size, sidebar)) && self.painter.has_content(size) {
+        if self.placed == Some((size, sidebar)) && self.painter.has_content(size) {
             return;
         }
-        self.placed = Some((origin, size, sidebar));
+        self.placed = Some((size, sidebar));
         let scale = self.window.scale_factor() as f32;
-        let panel = sidebar.then(|| app::sidebar_panel(size.1 as f32 / scale));
-        let pixels = match &self.desktop {
-            Some(desktop) => desktop.content(origin, size, scale, panel),
-            None => backdrop::solid(size, scale),
-        };
-        self.painter.set_content(&gpu.device, &gpu.queue, size, &pixels);
+        let main = self.kind == Kind::Main;
+        let panel = (main && sidebar).then(|| app::sidebar_panel(size.1 as f32 / scale));
+        let (black, grey) = backdrop::content(size, scale, panel, !main);
+        self.painter.set_content(&gpu.device, &gpu.queue, size, &black, &grey);
     }
 
     fn frame(&mut self, gpu: &Gpu, app: &mut App) {

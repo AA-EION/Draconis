@@ -9,7 +9,7 @@ Sources:
 The window material was fitted with `Desktop/look/fit.py` (desktop → screenshot, least squares
 over the empty content area and the sidebar): Gaussian blur σ ≈ 115 pt, then in linear light
 × 0.79 (sidebar × 0.28), saturation 1.04, then −0.126 (sidebar −0.022) in sRGB. RMSE 0.027.
-`Desktop/src/backdrop.rs` applies exactly that; the glass cards then sit on top.
+Linux/Windows can't read or blur the desktop themselves, so the window is see-through for real (`Desktop/src/render.rs`): window 0.75 and sidebar 0.55 of the desktop come through, glass surfaces nest on top; any blur is the compositor's.
 
 Values are sRGB at 1×; "over white / over dark" means what the desktop behind was.
 

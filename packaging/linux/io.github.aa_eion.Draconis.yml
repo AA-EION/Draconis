@@ -18,9 +18,7 @@ finish-args:
   - --filesystem=/mnt
   - --filesystem=/media
   - --filesystem=/run/media
-  # The wallpaper behind the window's glass, when it's a system image.
-  - --filesystem=host-os:ro
-  # Steam, umu-run, Proton, Wine and gsettings (the wallpaper) run on the host.
+  # Steam, umu-run, Proton and Wine run on the host.
   - --talk-name=org.freedesktop.Flatpak
 modules:
   - name: draconis
